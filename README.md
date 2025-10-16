@@ -5,9 +5,12 @@ A React-based interactive map application that allows users to view maps, add cu
 ## Features
 
 ### 🗺️ Interactive Map
-- Built with React Leaflet and OpenStreetMap
+- Built with React Leaflet and multiple tile provider options
+- **Multiple Tile Providers** - Switch between Esri, CartoDB, Stamen, and OpenStreetMap
+- **Enhanced English Labels** - Optimized for English labels worldwide including Thailand
+- **Clean Design** - Minimal appearance without clutter or unnecessary symbols
 - Zoom and pan functionality
-- **NEW: Location Search** - Search for places, cities, and addresses worldwide
+- **Location Search** - Search for places, cities, and addresses worldwide
 - Dynamic map navigation with search results
 - Default location set to New York City
 - Responsive design for desktop and mobile
@@ -136,15 +139,22 @@ Edit the `center` prop in `MapContainer` component in `src/App.jsx`:
 >
 ```
 
-### Adding Different Map Tiles
-Replace the `TileLayer` component with different tile providers:
+### Changing Map Style
+The app uses CartoDB Voyager tiles for clean English labels. Other options available in `src/App.jsx`:
 
 ```jsx
-// Example: Satellite imagery
-<TileLayer
-  url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
-  attribution='Map data: &copy; OpenStreetMap contributors'
-/>
+// Current: CartoDB Voyager (clean with English labels)
+url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+
+// Alternative options:
+// Minimal light style: 
+url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+
+// No labels (clean background):
+url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
+
+// Dark theme:
+url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
 ```
 
 ### Styling
@@ -189,6 +199,23 @@ CustomMap/
 - Close other browser tabs for better performance during export
 
 ## Recent Updates
+
+### Version 1.2.3 (October 2024)
+- 🐛 **Fixed Blank Page Issue** - Resolved "subdomains.length" error causing blank webpage
+- ✅ **Improved Tile Loading** - Better handling of tile provider configurations
+- 🔧 **Enhanced Stability** - More robust tile layer switching
+
+### Version 1.2.2 (October 2024)
+- 🌏 **Enhanced Thailand Support** - Multiple tile providers for better English labels in Asia
+- 🎛️ **Tile Provider Selector** - Switch between different map styles in the sidebar
+- 🗺️ **Esri World Street Map** - Better English coverage for Southeast Asia including Thailand
+- ⚙️ **Flexible Mapping** - Choose the best tile provider for your region
+
+### Version 1.2.1 (October 2024)
+- 🗺️ **Improved Map Tiles** - Switched to CartoDB Voyager tiles for cleaner appearance
+- 🔤 **English Labels** - All road names and locations now display in English
+- 🚫 **Removed Clutter** - Eliminated medical icons and other unnecessary map symbols
+- ✨ **Professional Look** - Cleaner, more minimal map design for better usability
 
 ### Version 1.2.0 (October 2024)
 - 🖨️ **Simplified Printing** - Now uses browser's built-in print dialog for better quality

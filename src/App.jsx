@@ -14,6 +14,7 @@ import {
   Navigation 
 } from 'lucide-react';
 import MapSearch from './MapSearch.jsx';
+import { TILE_PROVIDERS, TileLayerSelector } from './TileLayerSelector.jsx';
 import './App.css';
 
 // Fix for default markers in react-leaflet
@@ -99,6 +100,7 @@ function App() {
   const [searchLocation, setSearchLocation] = useState(null);
   const [mapCenter, setMapCenter] = useState([40.7128, -74.0060]); // New York City
   const [mapZoom, setMapZoom] = useState(13);
+  const [tileProvider, setTileProvider] = useState('esri');
   
   // Form state
   const [labelText, setLabelText] = useState('');
@@ -254,6 +256,22 @@ function App() {
       <div className="main-content">
         {/* Sidebar */}
         <aside className="sidebar">
+          <h3>🗺️ Map Style</h3>
+          <div className="form-group">
+            <label htmlFor="tileProvider">Tile Provider (for English labels)</label>
+            <select
+              id="tileProvider"
+              value={tileProvider}
+              onChange={(e) => setTileProvider(e.target.value)}
+            >
+              {Object.entries(TILE_PROVIDERS).map(([key, provider]) => (
+                <option key={key} value={key}>
+                  {provider.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <h3><MapPin size={18} /> Add Custom Labels</h3>
           
           <div className="form-group">
@@ -335,11 +353,7 @@ function App() {
             zoom={mapZoom}
             style={{ height: '100%', width: '100%' }}
           >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-              subdomains="abcd"
-            />
+            <TileLayerSelector provider={tileProvider} />
             
             <MapNavigator 
               searchLocation={searchLocation}

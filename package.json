@@ -1,7 +1,7 @@
 {
   "name": "custommap",
-  "version": "1.2.0",
-  "description": "React app for viewing and customizing maps with global location search, labels and simplified printing",
+  "version": "1.2.3",
+  "description": "React app with multiple map providers for English labels worldwide, location search, custom labels and printing",
   "license": "ISC",
   "author": "",
   "type": "module",
