@@ -1,13 +1,15 @@
-import html2canvas from 'html2canvas'
 import L from 'leaflet'
-import { Download, Map, MapPin, Plus, Printer, Trash2, X } from 'lucide-react'
+import { Map, MapPin, Plus, Printer, Scan, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { MapContainer, Marker, useMap, useMapEvents } from 'react-leaflet'
 
-import MapOptions, { MAP_OVERLAY_OPTIONS, MapOptionsState, TileProvider, TileVariant } from './MapOptions'
+import MapOptions from './MapOptions'
 import MapSearch, { SearchLocation } from './MapSearch'
-import MapStyleManager from './MapStyleManager'
+import PinMarker from './PinMarker'
+import PrintAreaDrawer from './PrintAreaDrawer'
+import PrintLegend from './PrintLegend'
 import TileLayerSelector from './TileLayerSelector'
+import { DEFAULT_EMOJIS, MapStyle, Pin } from '../types'
 
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -16,31 +18,9 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png'
 })
 
-interface Label {
-  id: number
-  text: string
-  color: string
-  lat: number
-  lng: number
-}
-
 interface Notification {
   message: string
-  type: 'success' | 'error'
-}
-
-interface MapClickHandlerProps {
-  onMapClick: (latlng: L.LatLng) => void
-  isAddingLabel: boolean
-}
-
-function MapClickHandler({ onMapClick, isAddingLabel }: MapClickHandlerProps) {
-  useMapEvents({
-    click: (e) => {
-      if (isAddingLabel) onMapClick(e.latlng)
-    }
-  })
-  return null
+  type: 'success' | 'error' | 'info'
 }
 
 interface MapNavigatorProps {
@@ -57,255 +37,348 @@ function MapNavigator({ searchLocation, onMapReady }: MapNavigatorProps) {
 
   useEffect(() => {
     if (searchLocation) {
-      map.setView([searchLocation.lat, searchLocation.lng], 15, { animate: true, duration: 1 })
+      map.setView([searchLocation.lat, searchLocation.lng], 14, { animate: true, duration: 1 })
     }
   }, [searchLocation, map])
 
   return null
 }
 
-interface CustomLabelProps {
-  label: Label
-  onDelete: (id: number) => void
+interface PinPlacerProps {
+  active: boolean
+  onPlace: (latlng: L.LatLng) => void
 }
 
-function CustomLabel({ label, onDelete }: CustomLabelProps) {
+function PinPlacer({ active, onPlace }: PinPlacerProps) {
   const map = useMap()
 
   useEffect(() => {
-    const customIcon = L.divIcon({
-      html: `<div class="custom-label" style="border-color: ${label.color}; color: ${label.color};">${label.text}</div>`,
-      className: 'custom-label-icon',
-      iconSize: [100, 30],
-      iconAnchor: [50, 15]
-    })
-
-    const marker = L.marker([label.lat, label.lng], { icon: customIcon }).addTo(map)
-
-    marker.on('click', () => {
-      if (window.confirm('Delete this label?')) onDelete(label.id)
-    })
-
+    map.getContainer().style.cursor = active ? 'crosshair' : ''
     return () => {
-      map.removeLayer(marker)
+      map.getContainer().style.cursor = ''
     }
-  }, [label, map, onDelete])
+  }, [active, map])
+
+  useMapEvents({
+    click: (e) => {
+      if (active) onPlace(e.latlng)
+    }
+  })
 
   return null
 }
 
-const btnBase = 'px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 cursor-pointer'
+const btnBase = 'px-3 py-2 rounded text-sm font-medium transition-colors flex items-center gap-1.5 cursor-pointer'
+const inputClass = 'w-full py-1.5 px-2 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
+const sectionLabelClass = 'block mb-1 text-gray-500 font-semibold text-xs uppercase tracking-wide'
 
 function App() {
-  const [labels, setLabels] = useState<Label[]>([])
-  const [isAddingLabel, setIsAddingLabel] = useState(false)
-  const [notification, setNotification] = useState<Notification | null>(null)
+  const [pins, setPins] = useState<Pin[]>([])
+  const [mapStyle, setMapStyle] = useState<MapStyle>('clean')
+  const [printBounds, setPrintBounds] = useState<L.LatLngBounds | null>(null)
+  const [isSelectingArea, setIsSelectingArea] = useState(false)
+  const [mapTitle, setMapTitle] = useState('')
   const [searchLocation, setSearchLocation] = useState<SearchLocation | null>(null)
-  const [tileProvider, setTileProvider] = useState<TileProvider>('esri')
-  const [tileVariant, setTileVariant] = useState<TileVariant>('standard')
-  const [labelText, setLabelText] = useState('')
-  const [labelColor, setLabelColor] = useState('#007bff')
+  const [notification, setNotification] = useState<Notification | null>(null)
+  const [leafletMap, setLeafletMap] = useState<L.Map | null>(null)
 
-  const [mapOptions, setMapOptions] = useState<MapOptionsState>(() => Object.fromEntries(Object.entries(MAP_OVERLAY_OPTIONS).map(([key, opt]) => [key, opt.default])) as unknown as MapOptionsState)
+  // New pin form
+  const [isPlacingPin, setIsPlacingPin] = useState(false)
+  const [newPinName, setNewPinName] = useState('')
+  const [newPinDescription, setNewPinDescription] = useState('')
+  const [newPinEmoji, setNewPinEmoji] = useState('📍')
+  const [newPinColor, setNewPinColor] = useState('#3b82f6')
+  const [customEmoji, setCustomEmoji] = useState('')
 
-  const mapRef = useRef<HTMLDivElement>(null)
-  const leafletMapRef = useRef<L.Map | null>(null)
+  const mapContainerRef = useRef<HTMLDivElement>(null)
 
-  const showNotification = (message: string, type: Notification['type'] = 'success') => {
+  const showNotification = useCallback((message: string, type: Notification['type'] = 'success') => {
     setNotification({ message, type })
     setTimeout(() => setNotification(null), 3000)
-  }
+  }, [])
 
-  const handleMapClick = useCallback(
+  const handleMapReady = useCallback((map: L.Map) => {
+    setLeafletMap(map)
+  }, [])
+
+  const handlePinPlace = useCallback(
     (latlng: L.LatLng) => {
-      if (isAddingLabel && labelText.trim()) {
-        const newLabel: Label = { id: Date.now(), text: labelText.trim(), color: labelColor, lat: latlng.lat, lng: latlng.lng }
-        setLabels((prev) => [...prev, newLabel])
-        setLabelText('')
-        setIsAddingLabel(false)
-        showNotification('Label added successfully!')
+      if (!newPinName.trim()) return
+      const pin: Pin = {
+        id: Date.now(),
+        name: newPinName.trim(),
+        description: newPinDescription.trim(),
+        emoji: customEmoji.trim() || newPinEmoji,
+        color: newPinColor,
+        lat: latlng.lat,
+        lng: latlng.lng
       }
+      setPins((prev) => [...prev, pin])
+      setIsPlacingPin(false)
+      setNewPinName('')
+      setNewPinDescription('')
+      setCustomEmoji('')
+      showNotification(`"${pin.name}" placed!`)
     },
-    [isAddingLabel, labelText, labelColor]
+    [newPinName, newPinDescription, newPinEmoji, newPinColor, customEmoji, showNotification]
   )
 
-  const handleDeleteLabel = useCallback((labelId: number) => {
-    setLabels((prev) => prev.filter((label) => label.id !== labelId))
-    showNotification('Label deleted!')
-  }, [])
+  const handleDeletePin = useCallback(
+    (id: number) => {
+      setPins((prev) => prev.filter((p) => p.id !== id))
+      showNotification('Pin removed')
+    },
+    [showNotification]
+  )
 
-  const startAddingLabel = () => {
-    if (!labelText.trim()) {
-      showNotification('Please enter label text first!', 'error')
+  const startPlacingPin = () => {
+    if (!newPinName.trim()) {
+      showNotification('Enter a name for the pin first', 'error')
       return
     }
-    setIsAddingLabel(true)
-    showNotification('Click on the map to place the label')
+    setIsSelectingArea(false)
+    setIsPlacingPin(true)
+    showNotification('Click the map to place the pin', 'info')
   }
 
-  const printMap = () => {
-    try {
-      showNotification('Opening print dialog...')
-      document.body.classList.add('print-mode')
-      setTimeout(() => {
-        window.print()
-        document.body.classList.remove('print-mode')
-      }, 500)
-    } catch {
-      showNotification('Error opening print dialog', 'error')
-      document.body.classList.remove('print-mode')
+  const startSelectingArea = () => {
+    setIsPlacingPin(false)
+    setIsSelectingArea(true)
+    showNotification('Click and drag to select the print area', 'info')
+  }
+
+  const handleBoundsSet = useCallback(
+    (bounds: L.LatLngBounds) => {
+      setPrintBounds(bounds)
+      setIsSelectingArea(false)
+      showNotification('Print area set!')
+    },
+    [showNotification]
+  )
+
+  const handlePrint = () => {
+    if (!leafletMap) {
+      window.print()
+      return
     }
-  }
 
-  const downloadImage = async () => {
-    try {
-      showNotification('Generating image...')
-      const mapElement = mapRef.current
-      if (!mapElement) return
+    showNotification('Preparing print…', 'info')
 
-      const elementsToHide = document.querySelectorAll<HTMLElement>('.sidebar, header, .print-controls')
-      elementsToHide.forEach((el) => (el.style.display = 'none'))
+    const prevCenter = leafletMap.getCenter()
+    const prevZoom = leafletMap.getZoom()
 
-      const canvas = await html2canvas(mapElement, { useCORS: true, allowTaint: true, scale: 2 })
-
-      elementsToHide.forEach((el) => (el.style.display = ''))
-
-      const link = document.createElement('a')
-      link.download = `custom-map-${new Date().toISOString().split('T')[0]}.png`
-      link.href = canvas.toDataURL()
-      link.click()
-
-      showNotification('Image downloaded successfully!')
-    } catch {
-      showNotification('Error generating image', 'error')
+    if (printBounds) {
+      leafletMap.fitBounds(printBounds, { animate: false, padding: [8, 8] })
     }
+
+    setTimeout(() => {
+      window.print()
+      if (printBounds) {
+        setTimeout(() => {
+          leafletMap.setView(prevCenter, prevZoom, { animate: false })
+        }, 500)
+      }
+    }, 700)
   }
 
-  const clearAllLabels = () => {
-    if (window.confirm('Are you sure you want to clear all labels?')) {
-      setLabels([])
-      showNotification('All labels cleared!')
-    }
-  }
-
-  const handleLocationSelect = (location: SearchLocation) => {
-    setSearchLocation(location)
-    showNotification(`Navigated to ${location.label}`)
-  }
-
-  const handleSearchClear = () => setSearchLocation(null)
-
-  const handleMapReady = useCallback((mapInstance: L.Map) => {
-    leafletMapRef.current = mapInstance
-  }, [])
-
-  const toggleMapOption = (optionKey: keyof MapOptionsState) => {
-    setMapOptions((prev) => ({ ...prev, [optionKey]: !prev[optionKey] }))
-  }
-
-  const inputClass = 'w-full py-2 px-2 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25'
-  const formLabelClass = 'block mb-2 text-gray-600 font-medium text-sm'
+  const activeEmoji = customEmoji.trim() || newPinEmoji
 
   return (
-    <div className='h-screen flex flex-col bg-gray-100 font-sans'>
-      <header className='bg-white shadow-sm px-4 py-4 md:px-8 flex flex-col md:flex-row justify-between items-center z-1000 gap-4 shrink-0'>
-        <div className='shrink-0 w-full md:w-auto text-center md:text-left'>
-          <h1 className='text-gray-800 text-xl md:text-2xl font-semibold flex items-center justify-center md:justify-start gap-2'>
-            <Map size={24} /> Custom Map
+    <div className='h-screen flex flex-col bg-gray-50 font-sans'>
+      {/* Header */}
+      <header className='bg-white border-b border-gray-200 px-4 py-3 flex flex-col md:flex-row justify-between items-center z-[1000] gap-3 shrink-0 no-print'>
+        <div className='shrink-0'>
+          <h1 className='text-gray-800 text-lg font-bold flex items-center gap-2'>
+            <Map size={20} /> Custom Map
           </h1>
         </div>
-        <div className='flex-1 flex justify-center w-full md:w-auto max-w-125'>
-          <MapSearch onLocationSelect={handleLocationSelect} onClear={handleSearchClear} />
+        <div className='flex-1 flex justify-center w-full md:w-auto max-w-xl'>
+          <MapSearch onLocationSelect={(loc) => { setSearchLocation(loc); showNotification(`Navigated to ${loc.label}`) }} onClear={() => setSearchLocation(null)} />
         </div>
-        <div className='flex gap-4 items-center w-full md:w-auto justify-center md:justify-end'>
-          <button className={`${btnBase} bg-blue-600 text-white hover:bg-blue-700`} onClick={printMap}>
-            <Printer size={16} />
-            Print Map
-          </button>
-          <button className={`${btnBase} bg-green-600 text-white hover:bg-green-700`} onClick={downloadImage}>
-            <Download size={16} />
-            Download Image
-          </button>
-        </div>
+        <button className={`${btnBase} bg-blue-600 text-white hover:bg-blue-700 shrink-0`} onClick={handlePrint}>
+          <Printer size={15} /> Print Map
+        </button>
       </header>
 
       <div className='flex-1 flex flex-col md:flex-row relative overflow-hidden'>
-        <aside className='w-full max-h-[40vh] md:max-h-none md:w-75 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-4 md:p-6 overflow-y-auto z-500 shrink-0'>
-          <MapOptions
-            tileProvider={tileProvider}
-            setTileProvider={setTileProvider}
-            tileVariant={tileVariant}
-            setTileVariant={setTileVariant}
-            mapOptions={mapOptions}
-            setMapOptions={setMapOptions}
-            onToggleOption={toggleMapOption}
-          />
+        {/* Sidebar */}
+        <aside className='w-full max-h-[45vh] md:max-h-none md:w-68 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-4 overflow-y-auto z-[500] shrink-0 no-print'>
 
-          <h3 className='mb-4 text-gray-800 text-lg font-semibold flex items-center gap-2'>
-            <MapPin size={18} /> Add Custom Labels
-          </h3>
+          {/* Map Style */}
+          <MapOptions mapStyle={mapStyle} onStyleChange={setMapStyle} />
 
-          <div className='mb-4'>
-            <label htmlFor='labelText' className={formLabelClass}>
-              Label Text
-            </label>
-            <input id='labelText' type='text' value={labelText} onChange={(e) => setLabelText(e.target.value)} placeholder='Enter label text' onKeyDown={(e) => e.key === 'Enter' && startAddingLabel()} className={inputClass} />
-          </div>
+          {/* Print Settings */}
+          <div className='mb-5 pt-4 border-t border-gray-100'>
+            <h3 className='mb-3 text-gray-800 text-sm font-semibold flex items-center gap-1.5 uppercase tracking-wide'>
+              <Printer size={14} /> Print
+            </h3>
 
-          <div className='mb-4'>
-            <label htmlFor='labelColor' className={formLabelClass}>
-              Label Color
-            </label>
-            <input id='labelColor' type='color' value={labelColor} onChange={(e) => setLabelColor(e.target.value)} className='w-12 h-9 p-0.5 cursor-pointer rounded border border-gray-300' />
-          </div>
+            <div className='mb-3'>
+              <label htmlFor='mapTitle' className={sectionLabelClass}>Map Title</label>
+              <input
+                id='mapTitle'
+                type='text'
+                value={mapTitle}
+                onChange={(e) => setMapTitle(e.target.value)}
+                placeholder='e.g. "Our Adventure Map"'
+                className={inputClass}
+              />
+            </div>
 
-          <button
-            className={`${btnBase} w-full justify-center mb-4 ${isAddingLabel ? 'bg-yellow-400 text-gray-900 hover:bg-yellow-500' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-            onClick={isAddingLabel ? () => setIsAddingLabel(false) : startAddingLabel}
-          >
-            <Plus size={16} />
-            {isAddingLabel ? 'Cancel Adding' : 'Add Label to Map'}
-          </button>
-
-          {labels.length > 0 && (
-            <button className={`${btnBase} w-full justify-center mb-4 bg-gray-500 text-white hover:bg-gray-600`} onClick={clearAllLabels}>
-              <Trash2 size={16} />
-              Clear All Labels
-            </button>
-          )}
-
-          <div className='mt-6'>
-            <h3 className='mb-4 text-gray-800 text-lg font-semibold'>Labels ({labels.length})</h3>
-            {labels.map((label) => (
-              <div key={label.id} className='bg-gray-50 border border-gray-200 rounded-md p-3 mb-2 flex justify-between items-start'>
-                <div className='flex-1'>
-                  <div className='font-medium mb-1' style={{ color: label.color }}>
-                    {label.text}
+            <div>
+              <label className={sectionLabelClass}>Print Area</label>
+              {printBounds ? (
+                <div className='flex gap-2 items-center'>
+                  <div className='flex-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded px-2 py-1.5 font-medium'>
+                    Area selected ✓
                   </div>
-                  <div className='text-xs text-gray-500'>
-                    {label.lat.toFixed(4)}, {label.lng.toFixed(4)}
-                  </div>
+                  <button
+                    className='text-xs px-2.5 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 cursor-pointer'
+                    onClick={() => setPrintBounds(null)}
+                  >
+                    Clear
+                  </button>
                 </div>
-                <button className='ml-2 px-2 py-1 rounded text-xs bg-gray-500 text-white hover:bg-gray-600 flex items-center cursor-pointer' onClick={() => handleDeleteLabel(label.id)}>
-                  <X size={12} />
+              ) : (
+                <button
+                  className={`${btnBase} w-full justify-center ${isSelectingArea ? 'bg-amber-400 text-gray-900 hover:bg-amber-500' : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'}`}
+                  onClick={isSelectingArea ? () => setIsSelectingArea(false) : startSelectingArea}
+                >
+                  <Scan size={14} />
+                  {isSelectingArea ? 'Cancel — Draw on Map' : 'Select Print Area'}
                 </button>
+              )}
+              <p className='text-xs text-gray-400 mt-1.5 leading-tight'>
+                {printBounds ? 'Map zooms to selection before printing.' : 'Drag a rectangle on the map, or leave blank to print the current view.'}
+              </p>
+            </div>
+          </div>
+
+          {/* Custom Pins */}
+          <div className='pt-4 border-t border-gray-100'>
+            <h3 className='mb-3 text-gray-800 text-sm font-semibold flex items-center gap-1.5 uppercase tracking-wide'>
+              <MapPin size={14} /> Custom Pins
+            </h3>
+
+            <div className='mb-2.5'>
+              <label className={sectionLabelClass}>Pin Name</label>
+              <input
+                type='text'
+                value={newPinName}
+                onChange={(e) => setNewPinName(e.target.value)}
+                placeholder='e.g. "Swimming Hole"'
+                onKeyDown={(e) => e.key === 'Enter' && startPlacingPin()}
+                className={inputClass}
+              />
+            </div>
+
+            <div className='mb-2.5'>
+              <label className={sectionLabelClass}>Description (shows in legend)</label>
+              <input
+                type='text'
+                value={newPinDescription}
+                onChange={(e) => setNewPinDescription(e.target.value)}
+                placeholder='e.g. "Great for swimming in summer"'
+                className={inputClass}
+              />
+            </div>
+
+            <div className='mb-2.5'>
+              <label className={sectionLabelClass}>Icon</label>
+              <div className='flex flex-wrap gap-1 mb-1.5'>
+                {DEFAULT_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => { setNewPinEmoji(emoji); setCustomEmoji('') }}
+                    className={`w-8 h-8 text-base rounded cursor-pointer transition-all flex items-center justify-center ${newPinEmoji === emoji && !customEmoji.trim() ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-100'}`}
+                    title={emoji}
+                  >
+                    {emoji}
+                  </button>
+                ))}
               </div>
-            ))}
+              <input
+                type='text'
+                value={customEmoji}
+                onChange={(e) => setCustomEmoji(e.target.value)}
+                placeholder='Or type any emoji…'
+                className={inputClass}
+                maxLength={4}
+              />
+            </div>
+
+            <div className='mb-3'>
+              <label className={sectionLabelClass}>Color</label>
+              <div className='flex items-center gap-2'>
+                <input
+                  type='color'
+                  value={newPinColor}
+                  onChange={(e) => setNewPinColor(e.target.value)}
+                  className='w-10 h-8 p-0.5 cursor-pointer rounded border border-gray-300'
+                />
+                <span className='text-2xl leading-none'>{activeEmoji}</span>
+                <div className='w-3 h-3 rounded-full border-2 border-white shadow' style={{ background: newPinColor }} />
+              </div>
+            </div>
+
+            <button
+              className={`${btnBase} w-full justify-center mb-4 ${isPlacingPin ? 'bg-amber-400 text-gray-900 hover:bg-amber-500' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+              onClick={isPlacingPin ? () => setIsPlacingPin(false) : startPlacingPin}
+            >
+              <Plus size={15} />
+              {isPlacingPin ? 'Cancel — Click Map to Place' : 'Place on Map'}
+            </button>
+
+            {/* Pin list */}
+            {pins.length > 0 && (
+              <div>
+                <div className='flex justify-between items-center mb-2'>
+                  <span className='text-xs font-semibold text-gray-400 uppercase tracking-wide'>Pins ({pins.length})</span>
+                  <button
+                    className='text-xs text-gray-400 hover:text-red-500 cursor-pointer flex items-center gap-1'
+                    onClick={() => { if (window.confirm('Remove all pins?')) { setPins([]); showNotification('All pins cleared') } }}
+                  >
+                    <Trash2 size={11} /> Clear all
+                  </button>
+                </div>
+                <div className='space-y-1.5'>
+                  {pins.map((pin) => (
+                    <div key={pin.id} className='bg-gray-50 border border-gray-200 rounded px-2.5 py-2 flex items-center gap-2'>
+                      <span className='text-lg leading-none shrink-0'>{pin.emoji}</span>
+                      <div className='flex-1 min-w-0'>
+                        <div className='text-sm font-medium text-gray-800 truncate'>{pin.name}</div>
+                        {pin.description && <div className='text-xs text-gray-400 truncate'>{pin.description}</div>}
+                      </div>
+                      <button
+                        className='shrink-0 p-1 rounded hover:bg-gray-200 text-gray-300 hover:text-red-500 cursor-pointer transition-colors'
+                        onClick={() => handleDeletePin(pin.id)}
+                        title='Remove pin'
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </aside>
 
-        <div className='flex-1 relative' ref={mapRef}>
+        {/* Map */}
+        <div className='flex-1 relative map-print-container' ref={mapContainerRef}>
+          {mapTitle && <div className='print-map-title'>{mapTitle}</div>}
+
           <MapContainer center={[40.7128, -74.006]} zoom={13} style={{ height: '100%', width: '100%' }}>
-            <TileLayerSelector provider={tileProvider} variant={tileVariant} />
+            <TileLayerSelector style={mapStyle} />
             <MapNavigator searchLocation={searchLocation} onMapReady={handleMapReady} />
-            <MapStyleManager mapOptions={mapOptions} />
-            <MapClickHandler onMapClick={handleMapClick} isAddingLabel={isAddingLabel} />
+            <PrintAreaDrawer isDrawing={isSelectingArea} printBounds={printBounds} onBoundsSet={handleBoundsSet} />
+            <PinPlacer active={isPlacingPin} onPlace={handlePinPlace} />
 
             {searchLocation && (
               <Marker
                 position={[searchLocation.lat, searchLocation.lng]}
                 icon={L.divIcon({
-                  html: `<div class="search-marker"><div class="search-marker-icon">📍</div></div>`,
+                  html: `<div class="search-marker"><span class="search-marker-icon">📍</span></div>`,
                   className: 'search-marker-container',
                   iconSize: [30, 30],
                   iconAnchor: [15, 30]
@@ -313,15 +386,21 @@ function App() {
               />
             )}
 
-            {labels.map((label) => (
-              <CustomLabel key={label.id} label={label} onDelete={handleDeleteLabel} />
+            {pins.map((pin) => (
+              <PinMarker key={pin.id} pin={pin} onDelete={handleDeletePin} />
             ))}
           </MapContainer>
+
+          <PrintLegend title={mapTitle} pins={pins} />
         </div>
       </div>
 
       {notification && (
-        <div className={`fixed top-20 right-5 text-white px-6 py-4 rounded-md shadow-lg z-2000 animate-[slideIn_0.3s_ease] ${notification.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`}>
+        <div
+          className={`fixed top-16 right-4 text-white text-sm px-4 py-2.5 rounded shadow-lg z-[2000] animate-[slideIn_0.25s_ease] no-print ${
+            notification.type === 'error' ? 'bg-red-600' : notification.type === 'info' ? 'bg-blue-600' : 'bg-green-600'
+          }`}
+        >
           {notification.message}
         </div>
       )}

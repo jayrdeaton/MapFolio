@@ -1,23 +1,21 @@
 import { TileLayer } from 'react-leaflet'
 
-import { TILE_LAYER_VARIANTS, TileProvider, TileVariant } from './MapOptions'
+import { MAP_STYLE_CONFIGS, MapStyle } from '../types'
 
 interface TileLayerSelectorProps {
-  provider?: TileProvider
-  variant?: TileVariant
+  style: MapStyle
 }
 
-function TileLayerSelector({ provider = 'esri', variant = 'standard' }: TileLayerSelectorProps) {
-  const providerVariants = TILE_LAYER_VARIANTS[provider] ?? TILE_LAYER_VARIANTS.esri
-  const tileConfig = (providerVariants as Record<string, (typeof providerVariants)[keyof typeof providerVariants]>)[variant] ?? providerVariants.standard
-
-  const tileProps = {
-    attribution: tileConfig.attribution,
-    url: tileConfig.url,
-    ...(tileConfig.subdomains ? { subdomains: tileConfig.subdomains } : {})
-  }
-
-  return <TileLayer {...tileProps} />
+function TileLayerSelector({ style }: TileLayerSelectorProps) {
+  const config = MAP_STYLE_CONFIGS[style]
+  return (
+    <TileLayer
+      key={style}
+      url={config.url}
+      attribution={config.attribution}
+      {...(config.subdomains ? { subdomains: config.subdomains } : {})}
+    />
+  )
 }
 
 export default TileLayerSelector
