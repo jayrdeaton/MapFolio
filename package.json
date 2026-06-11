@@ -1,7 +1,7 @@
 {
   "name": "custommap",
   "version": "1.3.0",
-  "description": "Advanced React mapping app with full customization controls, multiple providers, location search, labels and printing",
+  "description": "Advanced Vue mapping app with full customization controls, multiple providers, location search, labels and printing",
   "license": "ISC",
   "author": "Jay Deaton",
   "type": "module",
@@ -16,26 +16,21 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@lucide/vue": "^1.17.0",
     "@tailwindcss/vite": "^4.3.0",
-    "html2canvas": "^1.4.1",
-    "jspdf": "^3.0.3",
+    "@vue-leaflet/vue-leaflet": "^0.10.0",
     "leaflet": "^1.9.4",
     "leaflet-geosearch": "^4.0.0",
-    "lucide-react": "^0.545.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "react-leaflet": "^5.0.0",
-    "tailwindcss": "^4.3.0"
+    "tailwindcss": "^4.3.0",
+    "vue": "^3.5.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
-    "@testing-library/user-event": "^14.6.1",
+    "@testing-library/vue": "^8.0.0",
     "@types/leaflet": "^1.9.4",
-    "@types/react": "^19.2.2",
-    "@types/react-dom": "^19.2.2",
     "@typescript-eslint/parser": "^8.61.0",
-    "@vitejs/plugin-react": "^5.0.4",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "@vue/test-utils": "^2.4.0",
     "eslint": "^10.4.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-package-json": "^1.3.0",
@@ -45,7 +40,7 @@
     "prettier": "^3.8.4",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.61.0",
-    "vite": "^7.1.10",
+    "vite": "^8.0.0",
     "vitest": "^4.1.8"
   }
 }
