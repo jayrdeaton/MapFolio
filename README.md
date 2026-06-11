@@ -6,9 +6,11 @@ A React-based interactive map application that allows users to view maps, add cu
 
 ### 🗺️ Interactive Map
 - Built with React Leaflet and multiple tile provider options
-- **Multiple Tile Providers** - Switch between Esri, CartoDB, Stamen, and OpenStreetMap
+- **Advanced Customization** - Control every aspect of map display
+- **Multiple Providers & Styles** - Esri, CartoDB, OpenStreetMap with variants
+- **Granular Display Controls** - Toggle labels, streets, POIs, buildings, water, parks
+- **Style Variants** - Standard, satellite, terrain, no-labels, dark themes
 - **Enhanced English Labels** - Optimized for English labels worldwide including Thailand
-- **Clean Design** - Minimal appearance without clutter or unnecessary symbols
 - Zoom and pan functionality
 - **Location Search** - Search for places, cities, and addresses worldwide
 - Dynamic map navigation with search results
@@ -64,6 +66,17 @@ npm run build
 The build artifacts will be stored in the `dist/` directory.
 
 ## Usage Guide
+
+### Customizing Map Display
+
+1. **Map Provider Selection**: Choose between Esri (best for Thailand), CartoDB, or OpenStreetMap
+2. **Style Variants**: Select from Standard, No Labels, Satellite, Terrain, or Dark themes
+3. **Display Options**: Use checkboxes to toggle:
+   - **Labels & Text**: Show/hide all labels, street names, points of interest
+   - **Geographic Features**: Control water bodies, parks, buildings visibility  
+   - **Transportation**: Toggle highways, local roads, transit stops, borders
+4. **Real-time Updates**: Changes apply instantly to the map
+5. **Print Optimization**: All settings are preserved when printing
 
 ### Searching for Locations
 
@@ -199,6 +212,13 @@ CustomMap/
 - Close other browser tabs for better performance during export
 
 ## Recent Updates
+
+### Version 1.3.0 (October 2024)
+- 🎚️ **Advanced Map Customization** - Comprehensive display options for all map elements
+- 🏷️ **Label Controls** - Toggle street names, POIs, and place labels
+- 🗺️ **Multiple Map Styles** - Satellite, terrain, no-labels variants for each provider
+- ⚙️ **Granular Options** - Control highways, local roads, water bodies, parks, buildings, and borders
+- 🎨 **Style Variants** - Standard, no labels, satellite, terrain, and dark themes
 
 ### Version 1.2.3 (October 2024)
 - 🐛 **Fixed Blank Page Issue** - Resolved "subdomains.length" error causing blank webpage

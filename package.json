@@ -1,32 +1,51 @@
 {
   "name": "custommap",
-  "version": "1.2.3",
-  "description": "React app with multiple map providers for English labels worldwide, location search, custom labels and printing",
+  "version": "1.3.0",
+  "description": "Advanced React mapping app with full customization controls, multiple providers, location search, labels and printing",
   "license": "ISC",
-  "author": "",
+  "author": "Jay Deaton",
   "type": "module",
-  "main": "index.js",
   "scripts": {
-    "dev": "vite",
     "build": "vite build",
+    "dev": "vite",
+    "fix": "eslint --fix",
+    "lint": "eslint",
     "preview": "vite preview",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "leaflet": "^1.9.4",
-    "react-leaflet": "^5.0.0",
+    "@tailwindcss/vite": "^4.3.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.3",
+    "leaflet": "^1.9.4",
+    "leaflet-geosearch": "^4.0.0",
     "lucide-react": "^0.545.0",
-    "leaflet-geosearch": "^4.0.0"
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-leaflet": "^5.0.0",
+    "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/leaflet": "^1.9.4",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
-    "@types/leaflet": "^1.9.4",
+    "@typescript-eslint/parser": "^8.61.0",
     "@vitejs/plugin-react": "^5.0.4",
-    "vite": "^7.1.10"
+    "eslint": "^10.4.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-package-json": "^1.3.0",
+    "eslint-plugin-prettier": "^5.5.6",
+    "eslint-plugin-simple-import-sort": "^13.0.0",
+    "jsdom": "^29.1.1",
+    "prettier": "^3.8.4",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.0",
+    "vite": "^7.1.10",
+    "vitest": "^4.1.8"
   }
 }
