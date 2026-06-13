@@ -1,6 +1,57 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Scroll lock — app should never scroll as a page ────────────────────── */
+
+html, body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html {
+  background-color: #f8f8f7;
+}
+
+html.dark {
+  background-color: #0f0f0f;
+}
+
+/* ── Prevent iOS auto-zoom on input focus ────────────────────────────────── */
+
+input, textarea, select {
+  font-size: max(16px, 1em);
+}
+
+/* ── Marker cluster overrides ────────────────────────────────────────────── */
+
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+  background-color: rgba(6, 182, 212, 0.18) !important;
+}
+
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+  background-color: rgba(6, 182, 212, 0.88) !important;
+  color: #fff !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  font-family: system-ui, sans-serif !important;
+}
 
 /* ── Leaflet overrides ───────────────────────────────────────────────────── */
+
+.leaflet-container {
+  background: #f8f8f7;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.dark .leaflet-container {
+  background: #0f0f0f;
+}
 
 .leaflet-div-icon {
   background: transparent;
@@ -15,6 +66,10 @@
 
 .leaflet-popup-content {
   margin: 0;
+}
+
+.leaflet-popup-close-button {
+  display: none !important;
 }
 
 .leaflet-control-zoom {
@@ -33,6 +88,22 @@
   background-color: #f9fafb !important;
 }
 
+.dark .leaflet-control-zoom a {
+  border-bottom: 1px solid #3f3f46 !important;
+  color: #d4d4d8 !important;
+  background-color: #27272a !important;
+}
+
+.dark .leaflet-control-zoom a:hover {
+  background-color: #3f3f46 !important;
+}
+
+.dark .leaflet-popup-content-wrapper,
+.dark .leaflet-popup-tip {
+  background-color: #1c1c1e;
+  color: #f4f4f5;
+}
+
 /* ── Pin markers ─────────────────────────────────────────────────────────── */
 
 .pin-marker {
@@ -43,6 +114,10 @@
   pointer-events: auto;
 }
 
+.pin-marker--pending {
+  opacity: 0.5;
+}
+
 .pin-emoji {
   font-size: 28px;
   line-height: 1;
@@ -50,102 +125,218 @@
 }
 
 .pin-dot {
-  width: 8px;
-  height: 8px;
   border-radius: 50%;
   border: 2px solid white;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   margin-top: 3px;
+  flex-shrink: 0;
 }
+
+.pin-dot--s { width: 8px;  height: 8px; }
+.pin-dot--m { width: 12px; height: 12px; }
+.pin-dot--l { width: 16px; height: 16px; }
 
 /* ── Pin popup ───────────────────────────────────────────────────────────── */
 
 .pin-popup {
-  padding: 10px 12px;
-  min-width: 140px;
+  padding: 10px 12px 8px;
+  min-width: 180px;
   font-family: system-ui, sans-serif;
 }
 
+.pin-popup-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
 .pin-popup-name {
+  flex: 1;
   font-size: 14px;
   font-weight: 600;
   color: #111827;
-  margin-bottom: 3px;
+  line-height: 1.35;
+}
+
+.pin-popup-actions {
+  display: flex;
+  gap: 1px;
+  flex-shrink: 0;
+  margin-top: -1px;
+}
+
+.pin-popup-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid #d1d5db;
+  background: none;
+  color: #4b5563;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.pin-popup-edit:hover {
+  background: #ecfeff;
+  border-color: #67e8f9;
+  color: #0891b2;
+}
+
+.pin-popup-delete:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #ef4444;
+}
+
+.pin-popup-copy:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+  color: #374151;
+}
+
+.pin-popup-copy.copied {
+  border-color: #6ee7b7;
+  color: #10b981;
 }
 
 .pin-popup-desc {
   font-size: 12px;
   color: #6b7280;
-  margin-bottom: 8px;
+  margin-top: 4px;
   line-height: 1.4;
 }
 
-.pin-popup-delete {
-  display: inline-block;
-  font-size: 11px;
-  color: #ef4444;
-  background: none;
-  border: 1px solid #fca5a5;
-  border-radius: 4px;
-  padding: 2px 8px;
-  cursor: pointer;
-  transition: background 0.15s;
+.pin-popup-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid #f3f4f6;
 }
 
-.pin-popup-delete:hover {
-  background: #fef2f2;
+.pin-popup-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pin-popup-address {
+  flex: 1;
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pin-popup-coords {
+  flex: 1;
+  font-size: 10px;
+  color: #9ca3af;
+  font-family: ui-monospace, monospace;
+  line-height: 1.3;
+}
+
+.dark .pin-popup-name {
+  color: #f4f4f5;
+}
+
+.dark .pin-popup-desc {
+  color: #a1a1aa;
+}
+
+.dark .pin-popup-address {
+  color: #a1a1aa;
+}
+
+.dark .pin-popup-coords {
+  color: #71717a;
+}
+
+.dark .pin-popup-footer {
+  border-top-color: #3f3f46;
+}
+
+.dark .pin-popup-btn {
+  border-color: #3f3f46;
+  color: #a1a1aa;
+}
+
+.dark .pin-popup-edit:hover {
+  background: rgba(6, 182, 212, 0.1);
+  border-color: #0891b2;
+  color: #22d3ee;
+}
+
+.dark .pin-popup-delete:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #991b1b;
+  color: #f87171;
+}
+
+.dark .pin-popup-copy:hover {
+  background: #27272a;
+  border-color: #71717a;
+  color: #d4d4d8;
 }
 
 /* ── Print legend overlay ────────────────────────────────────────────────── */
 
 .print-legend {
+  display: none;
   position: absolute;
   bottom: 28px;
   right: 12px;
   z-index: 400;
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid #d1d5db;
-  border-radius: 8px;
-  padding: 10px 12px;
-  min-width: 160px;
-  max-width: 220px;
+  border-radius: 6px;
+  padding: 6px 9px;
+  min-width: 120px;
+  max-width: 190px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
   pointer-events: none;
   font-family: system-ui, sans-serif;
 }
 
 .print-legend-title {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   color: #111827;
-  margin-bottom: 6px;
-  padding-bottom: 6px;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
   border-bottom: 1px solid #e5e7eb;
 }
 
 .print-legend-header {
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #9ca3af;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .print-legend-items {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 3px;
 }
 
 .print-legend-item {
   display: flex;
   align-items: flex-start;
-  gap: 7px;
+  gap: 5px;
 }
 
 .print-legend-emoji {
-  font-size: 15px;
+  font-size: 12px;
   line-height: 1.3;
   flex-shrink: 0;
 }
@@ -156,17 +347,41 @@
 }
 
 .print-legend-name {
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
   color: #1f2937;
   line-height: 1.3;
 }
 
 .print-legend-desc {
-  font-size: 10px;
+  font-size: 9px;
   color: #6b7280;
   line-height: 1.3;
   margin-top: 1px;
+}
+
+/* ── Print legend overlay — dark mode ───────────────────────────────────── */
+
+.dark .print-legend {
+  background: rgba(24, 24, 27, 0.96);
+  border-color: #3f3f46;
+}
+
+.dark .print-legend-title {
+  color: #f4f4f5;
+  border-bottom-color: #3f3f46;
+}
+
+.dark .print-legend-header {
+  color: #71717a;
+}
+
+.dark .print-legend-name {
+  color: #e4e4e7;
+}
+
+.dark .print-legend-desc {
+  color: #a1a1aa;
 }
 
 /* ── Print map title (hidden on screen, shown when printing) ─────────────── */
@@ -177,39 +392,59 @@
 
 /* ── Search marker ───────────────────────────────────────────────────────── */
 
-.search-marker-container {
-  background: transparent !important;
-  border: none !important;
-}
-
 .search-marker {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  animation: markerBounce 0.5s ease-out;
+  position: relative;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
 }
 
-.search-marker-icon {
-  font-size: 22px;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+.search-marker-ring {
+  position: absolute;
+  top: 8px; left: 8px;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2px solid #06b6d4;
+  animation: searchPulse 2s ease-out infinite;
+  pointer-events: none;
 }
+
+.search-marker-dot {
+  position: absolute;
+  top: 12px; left: 12px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #06b6d4;
+  border: 2.5px solid white;
+  box-shadow: 0 1px 8px rgba(6, 182, 212, 0.55);
+  animation: searchBounce 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 
 /* ── Keyframes ───────────────────────────────────────────────────────────── */
 
-@keyframes markerBounce {
-  0%   { transform: scale(0) translateY(-16px); opacity: 0; }
-  60%  { transform: scale(1.15) translateY(-4px); opacity: 1; }
-  100% { transform: scale(1) translateY(0); opacity: 1; }
+@keyframes searchPulse {
+  0%   { transform: scale(0.9); opacity: 0.85; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+@keyframes searchBounce {
+  from { transform: scale(0) translateY(-4px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
 }
 
 @keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to   { transform: translateX(0); opacity: 1; }
+  from { transform: translateY(-8px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
 }
 
+
 /* ── Print styles ────────────────────────────────────────────────────────── */
+
+@page {
+  margin: 0;
+  size: auto;
+}
 
 @media print {
   *,
@@ -223,11 +458,11 @@
     display: none !important;
   }
 
+  /* vw/vh in Safari @media print = screen viewport, not paper. Use position:fixed
+     with inset:0 only — that stretches to the page box edges regardless of viewport. */
   .map-print-container {
     position: fixed !important;
     inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
   }
 
   .leaflet-container {
@@ -258,6 +493,7 @@
   }
 
   .print-legend {
+    display: block;
     position: fixed !important;
     bottom: 20px !important;
     right: 16px !important;

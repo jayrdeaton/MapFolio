@@ -10,7 +10,7 @@ defineProps<{ title: string; pins: Pin[] }>()
     <template v-if="pins.length > 0">
       <div class="print-legend-header">Legend</div>
       <div class="print-legend-items">
-        <div v-for="pin in pins" :key="pin.id" class="print-legend-item">
+        <div v-for="pin in pins.filter(p => p.name)" :key="pin.id" class="print-legend-item">
           <span class="print-legend-emoji">{{ pin.emoji }}</span>
           <div class="print-legend-text">
             <div class="print-legend-name">{{ pin.name }}</div>

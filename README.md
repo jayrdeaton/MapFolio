@@ -1,279 +1,100 @@
-# Custom Map Application
+# MapFolio
 
-A React-based interactive map application that allows users to view maps, add custom labels, and print selected areas.
+An interactive mapping app for creating, annotating, and printing custom maps.
 
 ## Features
 
-### 🗺️ Interactive Map
-- Built with React Leaflet and multiple tile provider options
-- **Advanced Customization** - Control every aspect of map display
-- **Multiple Providers & Styles** - Esri, CartoDB, OpenStreetMap with variants
-- **Granular Display Controls** - Toggle labels, streets, POIs, buildings, water, parks
-- **Style Variants** - Standard, satellite, terrain, no-labels, dark themes
-- **Enhanced English Labels** - Optimized for English labels worldwide including Thailand
-- Zoom and pan functionality
-- **Location Search** - Search for places, cities, and addresses worldwide
-- Dynamic map navigation with search results
-- Default location set to New York City
-- Responsive design for desktop and mobile
-
-### 🏷️ Custom Labels
-- Add custom text labels anywhere on the map
-- Customizable label colors
-- Click-to-place interface
-- Delete labels individually or clear all
-- Labels show coordinates and can be managed from the sidebar
-
-### 🖨️ Print & Export Functionality
-- **NEW: Browser Print Dialog** - Uses native print functionality for best quality
-- Print the current map view with all labels and markers
-- Download as PNG images with high resolution
-- Print-optimized styling for clean output
-
-### 📱 User Interface
-- Clean, modern design
-- Sidebar for label management
-- Real-time notifications
-- Mobile-responsive layout
-- Intuitive controls with icons
+- **6 map styles** — Clean, Minimal, Standard, Satellite, Terrain, Dark (CartoDB & Esri)
+- **Custom pins** — emoji icons, custom colors, names, descriptions
+- **Pin editing** — edit any placed pin inline; drag to reposition on the map
+- **Pin visibility** — hide/show individual pins without deleting them
+- **Marker clustering** — nearby pins group at low zoom levels; auto-expands at zoom 17+
+- **Location search** — worldwide geocoding with keyboard navigation
+- **Go to my location** — one-click geolocation via browser GPS
+- **Fit to pins** — zoom map to frame all pins at once
+- **Undo** — 20-level undo stack for all pin actions (⌘Z / Ctrl+Z)
+- **Print** — browser print dialog with optional area selection and map title
+- **Download PNG** — export the current map view as an image
+- **Share link** — map state encodes into the URL hash for easy sharing
+- **Export pins** — save as JSON (custom format) or GeoJSON (standard, works in Google Maps / QGIS)
+- **Import pins** — load from a previously exported JSON or any `.geojson` file
+- **Right-click map** — copies coordinates to clipboard
+- **Persistence** — pins, style, title, and viewport survive page refresh
 
 ## Getting Started
 
-### Prerequisites
-- Node.js (version 14 or higher)
-- npm or yarn package manager
-
-### Installation
-
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-2. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-3. Open your browser and navigate to `http://localhost:3000`
-
-### Building for Production
-
 ```bash
-npm run build
+npm install
+npm run dev       # http://localhost:3000
+npm run build     # production build → dist/
+npm run typecheck
+npm run lint
+npm test
 ```
 
-The build artifacts will be stored in the `dist/` directory.
+## Usage
 
-## Usage Guide
+### Map styles
+Pick from the six style buttons in the sidebar. Changes apply instantly.
 
-### Customizing Map Display
+### Adding pins
+1. Enter a name (required) and optional description
+2. Choose an emoji icon and color
+3. Click **Place on Map**, then click anywhere on the map
+4. Pins can be **dragged** to reposition after placement
 
-1. **Map Provider Selection**: Choose between Esri (best for Thailand), CartoDB, or OpenStreetMap
-2. **Style Variants**: Select from Standard, No Labels, Satellite, Terrain, or Dark themes
-3. **Display Options**: Use checkboxes to toggle:
-   - **Labels & Text**: Show/hide all labels, street names, points of interest
-   - **Geographic Features**: Control water bodies, parks, buildings visibility  
-   - **Transportation**: Toggle highways, local roads, transit stops, borders
-4. **Real-time Updates**: Changes apply instantly to the map
-5. **Print Optimization**: All settings are preserved when printing
+### Managing pins
+- **Click** a pin's name or emoji in the sidebar to zoom the map to it
+- **Eye icon** — hide or show a pin on the map without deleting it
+- **Pencil icon** — edit name, description, emoji, or color inline
+- **X icon** — delete a pin (undoable)
+- **⊞ icon** — fit map to show all pins
+- **↓ icon** — export as custom JSON
+- **🌐 icon** — export as GeoJSON (importable in Google Maps, QGIS, etc.)
+- **↑ icon** — import from JSON or GeoJSON file
 
-### Searching for Locations
+### Sharing
+Click **Share** in the header to copy a URL that encodes the current pins and map style. Anyone who opens that URL sees the same map. The URL updates automatically as you work.
 
-1. **Global Search**: Use the search bar in the header to find any location worldwide
-2. **Auto-Complete**: Start typing and see suggestions appear as you type
-3. **Navigate Results**: Use arrow keys to navigate through search results
-4. **Select Location**: Click on a result or press Enter to navigate to that location
-5. **Visual Marker**: A pin marker will appear at the searched location
-6. **Clear Search**: Click the X button to clear the search and remove the marker
+### Print & export
+- **Print** — optionally select an area by dragging a rectangle, add a title, then print. Works with mouse and touch.
+- **PNG** — downloads the current map view as a PNG. If tiles appear blank, use Print → Save as PDF instead (CORS limitation with some tile providers).
 
-**Example Searches:**
-- Cities: "Tokyo", "Chiang Mai", "Paris", "New York"
-- Countries: "Thailand", "Japan", "France"
-- Addresses: "Times Square, New York"
-- Landmarks: "Eiffel Tower", "Big Ben"
+### Keyboard shortcuts
+| Shortcut | Action |
+|----------|--------|
+| ⌘Z / Ctrl+Z | Undo last pin action |
+| Right-click map | Copy coordinates to clipboard |
+| Enter (in pin name field) | Start placing pin |
+| Escape (in edit form) | Cancel edit |
 
-### Adding Labels
+## Tech stack
 
-1. **Enter Label Text**: Type your desired label text in the sidebar input field
-2. **Choose Color**: Select a color using the color picker
-3. **Place Label**: Click "Add Label to Map" button, then click anywhere on the map
-4. **Manage Labels**: View all labels in the sidebar list, delete individual labels, or clear all
+- [Vue 3](https://vuejs.org/) + TypeScript
+- [Leaflet](https://leafletjs.com/) via [@vue-leaflet/vue-leaflet](https://github.com/vue-leaflet/vue-leaflet)
+- [leaflet.markercluster](https://github.com/Leaflet/Leaflet.markercluster) for pin clustering
+- [leaflet-geosearch](https://smeijer.github.io/leaflet-geosearch/) for geocoding
+- [Tailwind CSS v4](https://tailwindcss.com/)
+- [Lucide Vue](https://lucide.dev/)
+- [html2canvas](https://html2canvas.hertzen.com/) for PNG export
+- [Vite](https://vitejs.dev/) + [Vitest](https://vitest.dev/)
 
-### Printing & Exporting
-
-1. **Print Map**: 
-   - Click "Print Map" button to open your browser's print dialog
-   - The map will be optimized for printing (UI elements hidden)
-   - Choose your printer settings (paper size, orientation, etc.)
-   - Print directly or save as PDF using browser options
-
-2. **Download Image**: 
-   - Click "Download Image" to save the current map view as a high-quality PNG
-   - Includes all visible labels and markers
-   - Downloads automatically to your default folder
-
-### Navigation
-
-- **Search**: Type in the search bar to find locations worldwide (cities, addresses, landmarks)
-- **Keyboard Navigation**: Use arrow keys to navigate search results, Enter to select
-- **Zoom**: Use the zoom controls or mouse wheel
-- **Pan**: Click and drag to move around the map
-- **Auto-Navigation**: Click on search results to automatically navigate to locations
-- **Reset**: Refresh the page to return to the default view
-
-## Technical Details
-
-### Built With
-- **React 19** - Latest UI framework with improved performance
-- **React Leaflet 5** - Latest map components for React
-- **Leaflet** - Interactive map library
-- **Leaflet GeoSearch** - Location search and geocoding
-- **Vite 7** - Latest build tool and development server
-- **html2canvas** - Screenshot generation
-- **jsPDF 3** - Latest PDF generation library
-- **Lucide React** - Modern icon library
-
-### Browser Compatibility
-- Modern browsers (Chrome, Firefox, Safari, Edge)
-- Mobile browsers (iOS Safari, Chrome Mobile)
-- Requires JavaScript enabled
-
-## Customization
-
-### Changing Default Location
-Edit the `center` prop in `MapContainer` component in `src/App.jsx`:
-
-```jsx
-<MapContainer
-  center={[40.7128, -74.0060]} // [latitude, longitude]
-  zoom={13}
-  // ...
->
-```
-
-### Changing Map Style
-The app uses CartoDB Voyager tiles for clean English labels. Other options available in `src/App.jsx`:
-
-```jsx
-// Current: CartoDB Voyager (clean with English labels)
-url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-
-// Alternative options:
-// Minimal light style: 
-url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-
-// No labels (clean background):
-url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
-
-// Dark theme:
-url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-```
-
-### Styling
-- Main styles: `src/index.css`
-- Component styles: `src/App.css`
-- Responsive breakpoints: 768px and 480px
-
-## File Structure
+## File structure
 
 ```
-CustomMap/
-├── public/
-├── src/
-│   ├── App.jsx          # Main application component
-│   ├── App.css          # Component-specific styles
-│   ├── main.jsx         # React entry point
-│   └── index.css        # Global styles
-├── index.html           # HTML template
-├── package.json         # Dependencies and scripts
-├── vite.config.js       # Vite configuration
-└── README.md           # This file
+src/
+├── components/
+│   ├── App.vue               # Root component — state, persistence, clustering
+│   ├── MapOptions.vue        # Style selector
+│   ├── MapSearch.vue         # Geocoding search bar
+│   ├── PinListItem.vue       # Sidebar pin row + inline edit form
+│   ├── PinMarker.vue         # Leaflet marker (draggable, cluster-aware, renderless)
+│   ├── PrintAreaDrawer.vue   # Drag/touch-to-select print area (renderless)
+│   ├── PrintLegend.vue       # On-map legend overlay
+│   └── TileLayerSelector.vue
+├── __tests__/
+│   └── utils.test.ts         # Unit tests for pure utility functions
+├── types.ts                  # Pin, MapStyle, MAP_STYLE_CONFIGS
+├── utils.ts                  # GeoJSON, URL encoding, import parsing
+└── index.css
 ```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Map not loading**: Check internet connection for tile downloads
-2. **Labels not appearing**: Ensure label text is entered before placing
-3. **Print/export not working**: Try refreshing and selecting a smaller area
-4. **Mobile display issues**: Rotate device or zoom out for better visibility
-5. **Location not found in search**: 
-   - Try different search terms (e.g., "Chiang Mai" vs "Chiang Mai, Thailand")
-   - Use English names for locations
-   - Check spelling and try common alternative names
-   - For small locations, try searching for nearby major cities first
-
-### Performance Tips
-
-- Limit the number of labels (recommended: under 50)
-- Select smaller print areas for faster processing
-- Close other browser tabs for better performance during export
-
-## Recent Updates
-
-### Version 1.3.0 (October 2024)
-- 🎚️ **Advanced Map Customization** - Comprehensive display options for all map elements
-- 🏷️ **Label Controls** - Toggle street names, POIs, and place labels
-- 🗺️ **Multiple Map Styles** - Satellite, terrain, no-labels variants for each provider
-- ⚙️ **Granular Options** - Control highways, local roads, water bodies, parks, buildings, and borders
-- 🎨 **Style Variants** - Standard, no labels, satellite, terrain, and dark themes
-
-### Version 1.2.3 (October 2024)
-- 🐛 **Fixed Blank Page Issue** - Resolved "subdomains.length" error causing blank webpage
-- ✅ **Improved Tile Loading** - Better handling of tile provider configurations
-- 🔧 **Enhanced Stability** - More robust tile layer switching
-
-### Version 1.2.2 (October 2024)
-- 🌏 **Enhanced Thailand Support** - Multiple tile providers for better English labels in Asia
-- 🎛️ **Tile Provider Selector** - Switch between different map styles in the sidebar
-- 🗺️ **Esri World Street Map** - Better English coverage for Southeast Asia including Thailand
-- ⚙️ **Flexible Mapping** - Choose the best tile provider for your region
-
-### Version 1.2.1 (October 2024)
-- 🗺️ **Improved Map Tiles** - Switched to CartoDB Voyager tiles for cleaner appearance
-- 🔤 **English Labels** - All road names and locations now display in English
-- 🚫 **Removed Clutter** - Eliminated medical icons and other unnecessary map symbols
-- ✨ **Professional Look** - Cleaner, more minimal map design for better usability
-
-### Version 1.2.0 (October 2024)
-- 🖨️ **Simplified Printing** - Now uses browser's built-in print dialog for better quality
-- ✨ **Enhanced Print Styles** - Optimized layout for printing with clean, full-page output
-- 🚫 **Removed Area Selection** - No more complex area selection; just print the current view
-- ⚡ **Faster Workflow** - One-click printing without PDF generation delays
-
-### Version 1.1.1 (October 2024)
-- 🐛 **Fixed Global Search** - Removed country code restrictions for true worldwide search
-- ✅ **Thailand Support** - Chiang Mai, Bangkok, and all international locations now searchable
-- ⚡ **Improved Search** - Faster response time and better result formatting
-- 📈 **More Results** - Increased search results from 5 to 8 for better coverage
-
-### Version 1.1.0 (October 2024)
-- 🆕 **Location Search** - Global search for cities, addresses, and landmarks
-- 🆕 **Auto-Navigation** - Click search results to navigate to locations
-- 🆕 **Search Markers** - Visual markers for searched locations
-- 🆕 **Keyboard Navigation** - Arrow keys and Enter support in search
-- 🆕 **Responsive Search** - Mobile-optimized search interface
-
-### Version 1.0.1 (October 2024)
-- ✅ **Updated to React 19** - Latest features and performance improvements
-- ✅ **Upgraded to Vite 7** - Faster build times and better HMR
-- ✅ **Updated React Leaflet to v5** - Better TypeScript support and performance
-- ✅ **Upgraded jsPDF to v3** - Enhanced PDF generation capabilities
-- ✅ **Updated Lucide React** - Latest icon set with more options
-- ✅ **Security fixes** - All vulnerabilities resolved
-- ✅ **Better compatibility** - Updated for modern browsers
-
-### Breaking Changes Handled
-- Updated React DOM API usage for React 19
-- Ensured compatibility with react-leaflet 5.0
-- Updated build configuration for Vite 7
-
-## License
-
-ISC License - Feel free to use and modify as needed.
-
-## Support
-
-For issues or feature requests, please check the console for error messages and ensure all dependencies are properly installed.
