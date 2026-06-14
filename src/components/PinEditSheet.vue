@@ -98,12 +98,7 @@ const btnBase = 'px-3 py-2 rounded text-sm font-medium transition-colors flex it
               v-for="emoji in showAllEmojis ? DEFAULT_EMOJIS : DEFAULT_EMOJIS.slice(0, 11)"
               :key="emoji"
               :class="['w-8 h-8 text-base rounded cursor-pointer transition-all flex items-center justify-center', newPinEmoji === emoji && !customEmoji.trim() ? 'ring-2 ring-cyan-500 bg-cyan-50 dark:bg-cyan-950/30' : 'hover:bg-gray-100 dark:hover:bg-zinc-800']"
-              @click="
-                () => {
-                  newPinEmoji = emoji
-                  customEmoji = ''
-                }
-              "
+              @click="newPinEmoji = emoji; customEmoji = ''"
             >
               {{ emoji }}
             </button>

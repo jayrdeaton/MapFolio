@@ -87,10 +87,7 @@ const inputClass = 'w-full py-1.5 px-2 border border-gray-300 dark:border-zinc-7
             :key="value"
             :title="label"
             :class="`w-9 h-9 flex items-center justify-center rounded border cursor-pointer transition-colors ${printOrientation === value ? 'border-cyan-400 bg-cyan-500 text-white hover:bg-cyan-600' : 'border-gray-300 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800'}`"
-            @click="
-              printOrientation = value
-              printPaper && emit('select-preset', printPaper, value)
-            "
+            @click="printOrientation = value; if (printPaper) emit('select-preset', printPaper, value)"
           >
             <component :is="icon" :size="15" />
           </button>
@@ -106,10 +103,7 @@ const inputClass = 'w-full py-1.5 px-2 border border-gray-300 dark:border-zinc-7
             :key="preset"
             :title="preset"
             :class="`w-7 h-9 p-0.5 rounded border cursor-pointer transition-colors ${printGrid === preset ? 'border-cyan-400' : 'border-gray-300 dark:border-zinc-700 hover:border-gray-400 dark:hover:border-zinc-500'}`"
-            @click="
-              printGrid = preset
-              printBounds && emit('resnap-print-area')
-            "
+            @click="printGrid = preset; if (printBounds) emit('resnap-print-area')"
           >
             <div class="w-full h-full grid rounded-sm overflow-hidden" :style="`grid-template-columns: repeat(${preset.split('x')[0]}, 1fr); grid-template-rows: repeat(${preset.split('x')[1]}, 1fr); gap: 1px;`" :class="printGrid === preset ? 'bg-cyan-400' : 'bg-gray-200 dark:bg-zinc-600'">
               <div v-for="i in Number(preset.split('x')[0]) * Number(preset.split('x')[1])" :key="i" :class="printGrid === preset ? 'bg-cyan-50 dark:bg-cyan-950/50' : 'bg-white dark:bg-zinc-800'" />

@@ -165,10 +165,7 @@ const sectionLabelClass = 'block text-gray-500 dark:text-zinc-400 font-semibold 
               <button
                 class="w-7 h-7 flex items-center justify-center rounded border border-gray-300 dark:border-zinc-700 text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-700 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer transition-colors"
                 title="Export all as JSON"
-                @click="
-                  emit('export-all')
-                  showExportPicker = false
-                "
+                @click="emit('export-all'); showExportPicker = false"
               >
                 <FileDown :size="13" />
               </button>
@@ -181,20 +178,14 @@ const sectionLabelClass = 'block text-gray-500 dark:text-zinc-400 font-semibold 
               <button
                 class="w-7 h-7 flex items-center justify-center rounded border border-gray-300 dark:border-zinc-700 text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-700 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer transition-colors"
                 title="Export as JSON"
-                @click="
-                  emit('export', map.id)
-                  showExportPicker = false
-                "
+                @click="emit('export', map.id); showExportPicker = false"
               >
                 <FileDown :size="13" />
               </button>
               <button
                 class="w-7 h-7 flex items-center justify-center rounded border border-gray-300 dark:border-zinc-700 text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-700 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer transition-colors"
                 title="Export as GeoJSON"
-                @click="
-                  emit('export-geojson', map.id)
-                  showExportPicker = false
-                "
+                @click="emit('export-geojson', map.id); showExportPicker = false"
               >
                 <Globe :size="13" />
               </button>
