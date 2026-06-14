@@ -1,17 +1,11 @@
-import { shallowRef, computed, watch } from 'vue'
-import type { Ref } from 'vue'
 import L from 'leaflet'
-import { MAP_STYLE_CONFIGS } from '../types'
+
 import type { MapStyle } from '../types'
+import { MAP_STYLE_CONFIGS } from '../types'
 
 const LABEL_STYLES = new Set<MapStyle>(['clean', 'satellite'])
 
-export function useMapLayers(options: {
-  leafletMap: Ref<L.Map | null>
-  mapStyle: Ref<MapStyle>
-  isDark: Ref<boolean>
-  showLabels: Ref<boolean>
-}) {
+export function useMapLayers(options: { leafletMap: Ref<L.Map | null>; mapStyle: Ref<MapStyle>; isDark: Ref<boolean>; showLabels: Ref<boolean> }) {
   const { leafletMap, mapStyle, isDark, showLabels } = options
 
   const currentTileLayer = shallowRef<L.TileLayer | null>(null)
@@ -28,22 +22,23 @@ export function useMapLayers(options: {
       subdomains: cfg.subdomains ?? '',
       maxNativeZoom: cfg.maxNativeZoom,
       maxZoom: mapMaxZoom.value,
-      crossOrigin: cfg.crossOrigin ?? false,
+      crossOrigin: cfg.crossOrigin ?? false
     }).addTo(map)
   }
 
   function applyLabelsLayer(map: L.Map) {
-    if (labelsLayer.value) { map.removeLayer(labelsLayer.value); labelsLayer.value = null }
+    if (labelsLayer.value) {
+      map.removeLayer(labelsLayer.value)
+      labelsLayer.value = null
+    }
     if (!showLabels.value || !LABEL_STYLES.has(mapStyle.value)) return
     const useDark = mapStyle.value === 'satellite' || isDark.value
-    const url = useDark
-      ? 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png'
+    const url = useDark ? 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png' : 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png'
     labelsLayer.value = L.tileLayer(url, {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CartoDB</a>',
       subdomains: 'abcd',
       maxNativeZoom: 19,
-      crossOrigin: true,
+      crossOrigin: true
     }).addTo(map)
   }
 
@@ -55,7 +50,7 @@ export function useMapLayers(options: {
       if (typeof latitude === 'number' && typeof longitude === 'number') {
         map.setView([latitude, longitude], 10, { animate: true })
       }
-    } catch { }
+    } catch {}
   }
 
   watch([mapStyle, isDark], () => {

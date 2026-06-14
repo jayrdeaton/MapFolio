@@ -1,5 +1,3 @@
-import { ref, watch } from 'vue'
-
 export type PrintPaperSize = 'letter' | 'tabloid' | 'a'
 export type PrintOrientation = 'portrait' | 'landscape'
 
@@ -40,9 +38,8 @@ export function usePrintSettings() {
   const compass = ref<boolean>(typeof saved.compass === 'boolean' ? saved.compass : true)
   const scale = ref<'off' | 'km' | 'mi'>(VALID_SCALES.includes(saved.scale as string) ? (saved.scale as 'off' | 'km' | 'mi') : 'km')
   const contrast = ref<boolean>(typeof saved.contrast === 'boolean' ? saved.contrast : true)
-  const autoTitle = ref<boolean>(typeof saved.autoTitle === 'boolean' ? saved.autoTitle : false)
 
-  watch([paper, orientation, grid, legend, compass, scale, contrast, autoTitle], () =>
+  watch([paper, orientation, grid, legend, compass, scale, contrast], () =>
     writeCookie({
       paper: paper.value,
       orientation: orientation.value,
@@ -50,10 +47,9 @@ export function usePrintSettings() {
       legend: legend.value,
       compass: compass.value,
       scale: scale.value,
-      contrast: contrast.value,
-      autoTitle: autoTitle.value
+      contrast: contrast.value
     })
   )
 
-  return { paper, orientation, grid, legend, compass, scale, contrast, autoTitle }
+  return { paper, orientation, grid, legend, compass, scale, contrast }
 }

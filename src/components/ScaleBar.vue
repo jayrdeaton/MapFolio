@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import L from 'leaflet'
-import { ref, watch, onUnmounted } from 'vue'
-
 const props = defineProps<{
   map: L.Map | null
   unit: 'km' | 'mi'
@@ -10,7 +8,7 @@ const props = defineProps<{
 const TARGET_PX = 220
 
 function niceValue(value: number, steps: number[]): number {
-  return steps.reduce((best, s) => (s <= value ? s : best), steps[0])
+  return steps.reduce((best, s) => (s <= value ? s : best), steps[0] ?? 0)
 }
 
 const barWidthPx = ref(0)
@@ -22,7 +20,7 @@ function updateScale() {
 
   const { lat } = map.getCenter()
   const zoom = map.getZoom()
-  const metersPerPx = (40075016.686 * Math.cos(lat * Math.PI / 180)) / Math.pow(2, zoom + 8)
+  const metersPerPx = (40075016.686 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom + 8)
   const targetMeters = TARGET_PX * metersPerPx
 
   let width: number
@@ -66,10 +64,14 @@ function detachListeners(map: L.Map) {
   map.off('move', updateScale)
 }
 
-watch(() => props.map, (newMap, oldMap) => {
-  if (oldMap) detachListeners(oldMap)
-  if (newMap) attachListeners(newMap)
-}, { immediate: true })
+watch(
+  () => props.map,
+  (newMap, oldMap) => {
+    if (oldMap) detachListeners(oldMap)
+    if (newMap) attachListeners(newMap)
+  },
+  { immediate: true }
+)
 
 watch(() => props.unit, updateScale)
 
@@ -81,17 +83,11 @@ onUnmounted(() => {
 <template>
   <div v-if="barWidthPx > 0" class="pointer-events-none select-none inline-block">
     <div class="bg-white/95 dark:bg-zinc-900/95 rounded-md shadow-sm border border-gray-300/60 dark:border-zinc-600/60 px-2 pt-1.5 pb-1.5">
-      <div
-        class="flex h-1.25 border border-gray-800 dark:border-zinc-300 overflow-hidden"
-        :style="{ width: `${barWidthPx}px` }"
-      >
+      <div class="flex h-1.25 border border-gray-800 dark:border-zinc-300 overflow-hidden" :style="{ width: `${barWidthPx}px` }">
         <div class="flex-1 bg-gray-800 dark:bg-zinc-300" />
         <div class="flex-1 bg-white dark:bg-zinc-900 border-l border-gray-800 dark:border-zinc-300" />
       </div>
-      <div
-        class="flex justify-between mt-0.75"
-        :style="{ width: `${barWidthPx}px` }"
-      >
+      <div class="flex justify-between mt-0.75" :style="{ width: `${barWidthPx}px` }">
         <span class="text-[9px] leading-none font-sans text-gray-900 dark:text-zinc-100">0</span>
         <span class="text-[9px] leading-none font-sans text-gray-900 dark:text-zinc-100">{{ label }}</span>
       </div>

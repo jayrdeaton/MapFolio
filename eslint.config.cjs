@@ -3,36 +3,35 @@ const prettierRecommended = require('eslint-plugin-prettier/recommended')
 const simpleImportSort = require('eslint-plugin-simple-import-sort')
 const tsParser = require('@typescript-eslint/parser')
 const tsEslint = require('typescript-eslint')
-const packageJson = require('eslint-plugin-package-json')
+const vueParser = require('vue-eslint-parser')
+const pluginVue = require('eslint-plugin-vue')
 
 module.exports = defineConfig([
   {
-    files: ['**/*.ts', '**/*.tsx'],
+    ignores: ['.nuxt/**', '.output/**', 'node_modules/**', 'coverage/**', 'dist/**', '**/*.mjs', '**/*.cjs']
+  },
+  {
+    files: ['**/*.ts'],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
-        project: './tsconfig.json'
+        extraFileExtensions: ['.vue']
       }
     }
   },
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**', '**/*.js', '**/*.mjs', '**/*.cjs', 'vite.config.ts']
-  },
-  ...tsEslint.configs.recommended,
-  prettierRecommended,
-  packageJson.configs.recommended,
-  {
-    extends: [packageJson.configs.recommended],
-    files: ['package.json'],
-    rules: {
-      'package-json/order-properties': 'warn',
-      'package-json/sort-collections': 'warn',
-      'package-json/require-exports': 'off',
-      'package-json/require-files': 'off',
-      'package-json/require-repository': 'off',
-      'package-json/require-sideEffects': 'off'
+    files: ['**/*.vue'],
+    languageOptions: {
+      parser: vueParser,
+      parserOptions: {
+        parser: tsParser,
+        extraFileExtensions: ['.vue']
+      }
     }
   },
+  ...tsEslint.configs.recommended,
+  ...pluginVue.configs['flat/recommended'],
+  prettierRecommended,
   {
     plugins: {
       'simple-import-sort': simpleImportSort
@@ -42,7 +41,8 @@ module.exports = defineConfig([
       'simple-import-sort/imports': 'warn',
       'simple-import-sort/exports': 'warn',
       'no-console': 'warn',
-      '@typescript-eslint/no-unused-vars': 'warn'
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-require-imports': 'off'
     }
   }
 ])

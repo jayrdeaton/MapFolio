@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import L from 'leaflet'
-import { onMounted, onUnmounted } from 'vue'
-
 const props = defineProps<{
   lat: number
   lng: number
@@ -32,7 +30,7 @@ function startFade() {
   const DURATION = 500
   const iconEl = marker?.getElement()
   const tooltipEl = marker?.getTooltip()?.getElement()
-  ;[iconEl, tooltipEl].forEach(el => {
+  ;[iconEl, tooltipEl].forEach((el) => {
     if (!el) return
     el.style.transition = `opacity ${DURATION}ms ease`
     el.style.opacity = '0'
@@ -48,10 +46,7 @@ function onMove() {
   const { clientWidth: w, clientHeight: h } = map.getContainer()
   const pt = map.latLngToContainerPoint([props.lat, props.lng])
   const OFFSCREEN_MARGIN = 80
-  if (
-    pt.x < -OFFSCREEN_MARGIN || pt.x > w + OFFSCREEN_MARGIN ||
-    pt.y < -OFFSCREEN_MARGIN || pt.y > h + OFFSCREEN_MARGIN
-  ) {
+  if (pt.x < -OFFSCREEN_MARGIN || pt.x > w + OFFSCREEN_MARGIN || pt.y < -OFFSCREEN_MARGIN || pt.y > h + OFFSCREEN_MARGIN) {
     startFade()
   }
 }
@@ -82,5 +77,3 @@ onUnmounted(() => {
 
 defineExpose({ fade: startFade })
 </script>
-
-<template></template>

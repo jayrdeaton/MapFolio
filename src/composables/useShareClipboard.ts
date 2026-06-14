@@ -1,15 +1,10 @@
-import type { Ref, ShallowRef } from 'vue'
 import type L from 'leaflet'
-import type { Pin, MapStyle } from '../types'
+import type { ShallowRef } from 'vue'
+
+import type { MapStyle, Pin } from '../types'
 import { encodeShareState } from '../utils'
 
-export function useShareClipboard(options: {
-  pins: Ref<Pin[]>
-  mapStyle: Ref<MapStyle>
-  mapTitle: Ref<string>
-  leafletMap: ShallowRef<L.Map | null>
-  showNotification: (message: string, type?: 'success' | 'error' | 'info') => void
-}) {
+export function useShareClipboard(options: { pins: Ref<Pin[]>; mapStyle: Ref<MapStyle>; mapTitle: Ref<string>; leafletMap: ShallowRef<L.Map | null>; showNotification: (message: string, type?: 'success' | 'error' | 'info') => void }) {
   const { pins, mapStyle, mapTitle, leafletMap, showNotification } = options
 
   let urlUpdateTimer: ReturnType<typeof setTimeout> | null = null
@@ -24,7 +19,7 @@ export function useShareClipboard(options: {
         mapStyle: mapStyle.value,
         mapTitle: mapTitle.value,
         center: c ? [c.lat, c.lng] : undefined,
-        zoom: z,
+        zoom: z
       })
       history.replaceState(null, '', `#${encoded}`)
     }, 1000)
@@ -40,7 +35,12 @@ export function useShareClipboard(options: {
     const ok = document.execCommand('copy')
     document.body.removeChild(ta)
     if (ok) return true
-    try { await navigator.clipboard.writeText(text); return true } catch { return false }
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      return false
+    }
   }
 
   async function copyShareLink() {
@@ -51,14 +51,11 @@ export function useShareClipboard(options: {
       mapStyle: mapStyle.value,
       mapTitle: mapTitle.value,
       center: c ? [c.lat, c.lng] : undefined,
-      zoom: z,
+      zoom: z
     })
     history.replaceState(null, '', `#${encoded}`)
     const ok = await copyText(location.href)
-    showNotification(
-      ok ? 'Link copied to clipboard!' : 'Could not copy — check browser permissions',
-      ok ? 'success' : 'error'
-    )
+    showNotification(ok ? 'Link copied to clipboard!' : 'Could not copy — check browser permissions', ok ? 'success' : 'error')
   }
 
   function cleanupShareClipboard() {

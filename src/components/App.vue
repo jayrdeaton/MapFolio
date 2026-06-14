@@ -1,48 +1,15 @@
 <script setup lang="ts">
+import 'leaflet.markercluster'
+
 import { LMap } from '@vue-leaflet/vue-leaflet'
 import L from 'leaflet'
-import 'leaflet.markercluster'
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 
-import AppHeader from './AppHeader.vue'
-import MapOptions from './MapOptions.vue'
-import MapSearch from './MapSearch.vue'
-import SearchMarker from './SearchMarker.vue'
-import ScaleBar from './ScaleBar.vue'
-import type { SearchLocation } from './MapSearch.vue'
-import PinMarker from './PinMarker.vue'
-import RouteLayer from './RouteLayer.vue'
-import PrintAreaDrawer from './PrintAreaDrawer.vue'
-import PrintLegend from './PrintLegend.vue'
-import WelcomeModal from './WelcomeModal.vue'
-import PinEditSheet from './PinEditSheet.vue'
-import RouteEditSheet from './RouteEditSheet.vue'
-import PrintExportPanel from './PrintExportPanel.vue'
-import PinsPanel from './PinsPanel.vue'
-import RoutesPanel from './RoutesPanel.vue'
-import MapFabStack from './MapFabStack.vue'
-import { MapStyle, Pin, PinDotSize } from '../types'
+import type { MapStyle, Pin, PinDotSize, Route } from '../types'
 import { decodeShareState } from '../utils'
-import { useColorMode } from '../composables/useColorMode'
-import { useNotification } from '../composables/useNotification'
-import { usePins } from '../composables/usePins'
-import { useRoutes } from '../composables/useRoutes'
-import { usePrintExport } from '../composables/usePrintExport'
-import { useShareClipboard } from '../composables/useShareClipboard'
-import { usePrintSettings } from '../composables/usePrintSettings'
-import { useMapLayers } from '../composables/useMapLayers'
-import { useLongPress } from '../composables/useLongPress'
+import type { SearchLocation } from './MapSearch.vue'
 
-delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-})
-
-// ── Color mode ────────────────────────────────────────────────────────────────
-
-const { preference: colorMode, isDark, cycle: cycleColorMode } = useColorMode()
+const colorMode = useColorMode()
+const isDark = computed(() => colorMode.value === 'dark')
 
 // ── Welcome modal ─────────────────────────────────────────────────────────────
 
@@ -54,38 +21,32 @@ function closeInfo() {
   showInfo.value = false
 }
 
-// ── Initial state: URL hash takes priority over localStorage ─────────────────
+// ── Multi-map state ───────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'mapfolio_v1'
-const LEGACY_KEY = 'custommap_v1'
+const { maps, activeId, activeMap, updateActiveMap, createMap, switchMap, deleteMap, renameMap, duplicateMap, exportMap, exportMapAsGeoJson, exportAllMaps, importMapFromData } = useMaps()
+
+// ── Initial state: URL hash takes priority over active map ────────────────────
 
 const urlHash = location.hash.slice(1)
 const urlState = urlHash ? decodeShareState(urlHash) : null
 const loadedFromUrl = !!urlState
 
-const localState = (() => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch { return null }
-})()
-
-const savedState = urlState || localState
-
-if (urlState && Array.isArray(localState?.pins)) {
-  const addrById = new Map<number, string>(
-    (localState.pins as Pin[]).filter(p => p.address).map(p => [p.id, p.address!])
-  )
-  urlState.pins = urlState.pins.map(p => addrById.has(p.id) ? { ...p, address: addrById.get(p.id) } : p)
+if (urlState && activeMap.value.pins.length > 0) {
+  const addrById = new Map<number, string>(activeMap.value.pins.filter((p) => p.address).map((p) => [p.id, p.address!]))
+  urlState.pins = urlState.pins.map((p) => (addrById.has(p.id) ? { ...p, address: addrById.get(p.id) } : p))
 }
 
 // ── Core reactive state ───────────────────────────────────────────────────────
 
-const mapStyle = ref<MapStyle>(savedState?.mapStyle === 'dark' ? 'minimal' : (savedState?.mapStyle ?? 'clean'))
-const showLabels = ref<boolean>(savedState?.showLabels ?? false)
-const showClusters = ref<boolean>(savedState?.showClusters ?? true)
-const pinDotSize = ref<PinDotSize>(savedState?.pinDotSize ?? 'm')
-const mapTitle = ref<string>(savedState?.mapTitle ?? '')
+const mapStyle = ref<MapStyle>(urlState?.mapStyle ?? activeMap.value.mapStyle)
+const showLabels = ref<boolean>(activeMap.value.showLabels)
+const showClusters = ref<boolean>(activeMap.value.showClusters)
+const pinDotSize = ref<PinDotSize>(activeMap.value.pinDotSize)
+const mapName = computed<string>({
+  get: () => activeMap.value.name,
+  set: (v: string) => updateActiveMap({ name: v })
+})
+const mapArea = ref<string>(activeMap.value.area ?? '')
 
 const leafletMap = shallowRef<L.Map | null>(null)
 let cleanupLongPress: (() => void) | null = null
@@ -95,6 +56,8 @@ const showSearch = ref(false)
 const isPlacingPin = ref(false)
 const isLocating = ref(false)
 const importFileRef = ref<HTMLInputElement | null>(null)
+const routeImportFileRef = ref<HTMLInputElement | null>(null)
+const mapImportFileRef = ref<HTMLInputElement | null>(null)
 
 const searchLocation = ref<SearchLocation | null>(null)
 const searchClearTrigger = ref(0)
@@ -103,14 +66,11 @@ const searchMarkerRef = ref<{ fade: () => void } | null>(null)
 const pointerCoords = ref<{ lat: number; lng: number } | null>(null)
 const mapCenterCoords = ref<{ lat: number; lng: number } | null>(null)
 const displayCoords = computed(() => pointerCoords.value ?? mapCenterCoords.value)
+const drawingPreviewLine = ref<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
 
-const hasExplicitLocation = !!(urlState?.center ?? (!loadedFromUrl && localState?.center))
-const initialCenter: [number, number] =
-  urlState?.center ??
-  ((!loadedFromUrl && localState?.center) ? localState.center : [40.7128, -74.006])
-const initialZoom: number =
-  urlState?.zoom ??
-  ((!loadedFromUrl && localState?.zoom) ? localState.zoom : 13)
+const hasExplicitLocation = !!(urlState?.center ?? (!loadedFromUrl && activeMap.value.center))
+const initialCenter: [number, number] = urlState?.center ?? (!loadedFromUrl && activeMap.value.center ? activeMap.value.center : [40.7128, -74.006])
+const initialZoom: number = urlState?.zoom ?? (!loadedFromUrl && activeMap.value.zoom ? activeMap.value.zoom : 13)
 
 // ── FAB / sheet state ─────────────────────────────────────────────────────────
 
@@ -125,67 +85,111 @@ const stickyColor = ref('#06b6d4')
 
 const { notification, showNotification, cleanupNotification } = useNotification()
 
-const {
-  pins, hiddenPinIds, resolvingPinId, addressResolveProg,
-  pinSearch, filteredPins, canUndo, allPinsHidden,
-  fetchPinAddress, pushUndo, undo,
-  handleDeletePin, handleUpdatePin, handlePinMove,
-  togglePinVisibility, toggleAllPinVisibility, clearAllPins,
-  fitToPins, zoomToPin,
-  exportPinsJson, exportGeoJson, triggerImport, handleImportFile,
-  resolveAddressesFromUrl,
-} = usePins({ initialPins: savedState?.pins ?? [], mapTitle, leafletMap, importFileRef, showNotification })
+const { pins, hiddenPinIds, resolvingPinId, addressResolveProg, pinSearch, filteredPins, canUndo, allPinsHidden, fetchPinAddress, pushUndo, undo, handleDeletePin, handleUpdatePin, handlePinMove, togglePinVisibility, toggleAllPinVisibility, clearAllPins, fitToPins, zoomToPin, exportPinsJson, exportGeoJson, triggerImport, handleImportFile, resolveAddressesFromUrl, resetPins } = usePins({ initialPins: urlState?.pins ?? activeMap.value.pins, mapTitle: mapName, leafletMap, importFileRef, showNotification })
 
 const printSettings = usePrintSettings()
 
-const {
-  routes, isDrawingRoute, drawingRoute, drawingDistance,
-  editingRoute: editingRouteRef,
-  startNewRoute, stopDrawing, addPoint, undoLastPoint, removePoint,
-  deleteRoute, fitToRoute, openEditRoute, closeEditRoute, saveEditRoute,
-} = useRoutes({ initialRoutes: savedState?.routes ?? [], leafletMap, showNotification, distanceUnit: computed(() => printSettings.scale.value === 'mi' ? 'mi' : 'km') })
+const { routes, hiddenRouteIds, allRoutesHidden, isDrawingRoute, drawingRoute, drawingDistance, drawingAnchorIndex, editingRoute: editingRouteRef, routeSnapEnabled, startNewRoute, continueDrawing, stopDrawing, addPoint, undoLastPoint, removePoint, movePoint, moveRoute, deleteRoute, fitToAllRoutes, openEditRoute, closeEditRoute, saveEditRoute, toggleRouteVisibility, toggleAllRouteVisibility, clearAllRoutes, exportRoutesJson, exportRoutesGeoJson, triggerRouteImport, handleRouteImportFile, resetRoutes, breakWaypointLink, cleanupOrphanedLinks } = useRoutes({ initialRoutes: activeMap.value.routes, mapTitle: mapName, leafletMap, routeImportFileRef, showNotification, distanceUnit: computed(() => (printSettings.scale.value === 'mi' ? 'mi' : 'km')) })
 
-const {
-  printBounds, printSnapEnabled, isDownloadingPdf, isAutoTitling,
-  printPaper, printOrientation, printAspectRatio, overlayCorner,
-  selectPrintPreset, resnapPrintArea, fitToPrintArea, fitPrintAreaToPins, handleBoundsSet, downloadPdf,
-  cleanupPrintExport,
-} = usePrintExport({ leafletMap, mapStyle, mapTitle, pins, hiddenPinIds, showNotification, printSettings })
+const linkedPinIds = computed(() => new Set(routes.value.flatMap((r) => r.points.map((p) => p.pinId).filter((id): id is number => id !== undefined))))
+
+const { printBounds, printSnapEnabled, isDownloadingPdf, isAutoArea, printPaper, printOrientation, printAspectRatio, overlayCorner, selectPrintPreset, resnapPrintArea, fitToPrintArea, fitPrintAreaToPins, handleBoundsSet, downloadPdf } = usePrintExport({ leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, showNotification, printSettings })
 
 const { scheduleUrlUpdate, copyShareLink, cleanupShareClipboard } = useShareClipboard({
-  pins, mapStyle, mapTitle, leafletMap, showNotification,
+  pins,
+  mapStyle,
+  mapTitle: mapName,
+  leafletMap,
+  showNotification
 })
 
 const { mapMaxZoom, applyTileLayer, applyLabelsLayer, flyToIpLocation } = useMapLayers({
-  leafletMap, mapStyle, isDark, showLabels,
+  leafletMap,
+  mapStyle,
+  isDark,
+  showLabels
 })
 
-const liveScaleUnit = computed<'km' | 'mi'>(() => printSettings.scale.value === 'mi' ? 'mi' : 'km')
-function clearPrintBounds() { printBounds.value = null }
+const liveScaleUnit = computed<'km' | 'mi'>(() => (printSettings.scale.value === 'mi' ? 'mi' : 'km'))
 
-// ── Persistence ───────────────────────────────────────────────────────────────
+// ── Map management ────────────────────────────────────────────────────────────
 
-function saveState() {
-  const state: Record<string, unknown> = {
-    pins: pins.value,
-    routes: routes.value,
-    mapStyle: mapStyle.value,
-    mapTitle: mapTitle.value,
-    showLabels: showLabels.value,
-    showClusters: showClusters.value,
-    pinDotSize: pinDotSize.value,
-  }
-  if (leafletMap.value) {
-    const c = leafletMap.value.getCenter()
-    state.center = [c.lat, c.lng]
-    state.zoom = leafletMap.value.getZoom()
-  }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+const { showMapsPanel, saveState, doSwitchMap, doCreateMap, doDeleteMap, doDuplicateMap, handleMapImportFile } = useMapManager({
+  activeId,
+  activeMap,
+  updateActiveMap,
+  createMap,
+  switchMap,
+  deleteMap,
+  duplicateMap,
+  importMapFromData,
+  leafletMap,
+  mapStyle,
+  showLabels,
+  showClusters,
+  pinDotSize,
+  mapArea,
+  pins,
+  routes,
+  showNotification,
+  mapImportFileRef,
+  resetPins,
+  resetRoutes
+})
+
+// ── Route helpers ─────────────────────────────────────────────────────────────
+
+function handleExtendFrom(routeId: number, pointIndex: number) {
+  const route = routes.value.find((r) => r.id === routeId)
+  if (!route) return
+  const n = route.points.length
+  const insertAfter = pointIndex === 0 ? -1 : pointIndex === n - 1 ? null : pointIndex
+  continueDrawing(routeId, insertAfter)
 }
 
-watch([pins, routes, mapStyle, mapTitle, showLabels, showClusters, pinDotSize], saveState, { deep: true })
-watch([pins, mapStyle, mapTitle], scheduleUrlUpdate, { deep: true })
-watch(searchLocation, (loc) => { if (!loc) searchClearTrigger.value++ })
+function handleMovePoint(routeId: number, pointIndex: number, lat: number, lng: number, pinId?: number) {
+  const existingPinId = routes.value.find((r) => r.id === routeId)?.points[pointIndex]?.pinId
+  const linkedPinId = pinId ?? existingPinId
+  movePoint(routeId, pointIndex, lat, lng, pinId)
+  if (linkedPinId) handlePinMove(linkedPinId, lat, lng)
+}
+
+function handleMoveRoute(routeId: number, points: Array<{ lat: number; lng: number }>) {
+  const oldPoints = routes.value.find((r) => r.id === routeId)?.points ?? []
+  oldPoints.forEach((oldPt, i) => {
+    if (oldPt.pinId && points[i]) handlePinMove(oldPt.pinId, points[i]!.lat, points[i]!.lng)
+  })
+  moveRoute(routeId, points)
+}
+
+const { handleClickRoute, handleWaypointTap } = useRoutePopup({
+  routes,
+  pins,
+  leafletMap,
+  distanceUnit: liveScaleUnit,
+  isDrawingRoute,
+  onEditRoute: openEditRoute,
+  onContinueDrawing: continueDrawing,
+  onToggleVisibility: toggleRouteVisibility,
+  onDeleteRoute: deleteRoute,
+  onExtendFrom: handleExtendFrom,
+  onRemoveWaypoint: removePoint,
+  onBreakLink: breakWaypointLink
+})
+
+function clearPrintBounds() {
+  printBounds.value = null
+}
+function reorderPins(newPins: Pin[]) {
+  pins.value = newPins
+}
+function reorderRoutes(newRoutes: Route[]) {
+  routes.value = newRoutes
+}
+
+// ── URL sync ──────────────────────────────────────────────────────────────────
+
+watch([pins, mapStyle, mapName], scheduleUrlUpdate, { deep: true })
 
 // ── Search ────────────────────────────────────────────────────────────────────
 
@@ -195,9 +199,8 @@ function clearSearchLocation() {
 }
 
 watch(searchLocation, (loc) => {
-  if (loc && leafletMap.value) {
-    leafletMap.value.setView([loc.lat, loc.lng], 14, { animate: true, duration: 1 })
-  }
+  if (!loc) searchClearTrigger.value++
+  else if (leafletMap.value) leafletMap.value.setView([loc.lat, loc.lng], 15, { animate: true, duration: 1 })
 })
 
 // ── My location ───────────────────────────────────────────────────────────────
@@ -207,27 +210,27 @@ function goToMyLocation() {
   isLocating.value = true
   navigator.geolocation.getCurrentPosition(
     (pos) => {
-      leafletMap.value?.setView([pos.coords.latitude, pos.coords.longitude], 15, { animate: true, duration: 1 })
       isLocating.value = false
-      showNotification('Navigated to your location')
+      searchLocation.value = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'Your location' }
     },
     (err) => {
       isLocating.value = false
-      showNotification(
-        err.code === err.PERMISSION_DENIED
-          ? 'Location blocked — enable it in browser settings'
-          : 'Could not get your location',
-        'error',
-      )
+      showNotification(err.code === err.PERMISSION_DENIED ? 'Location blocked — enable it in browser settings' : 'Could not get your location', 'error')
     },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
   )
 }
 
 // ── FAB / panel / sheet ───────────────────────────────────────────────────────
 
+function toggleMapsPanel() {
+  showMapsPanel.value = !showMapsPanel.value
+  if (showMapsPanel.value) activeFab.value = null
+}
+
 function toggleFab(fab: 'style' | 'export' | 'pins' | 'routes') {
   if (isPlacingPin.value) isPlacingPin.value = false
+  showMapsPanel.value = false
   activeFab.value = activeFab.value === fab ? null : fab
 }
 
@@ -267,7 +270,10 @@ function handlePinSave(updated: Pin, newEmoji: string, newColor: string) {
 
 function handlePinDelete() {
   if (!editingPin.value) return
-  if (pendingPin.value?.id !== editingPin.value.id) handleDeletePin(editingPin.value.id)
+  if (pendingPin.value?.id !== editingPin.value.id) {
+    cleanupOrphanedLinks(editingPin.value.id)
+    handleDeletePin(editingPin.value.id)
+  }
   closeSheet()
 }
 
@@ -281,12 +287,12 @@ function handlePinPlace(latlng: L.LatLng) {
     emoji: stickyEmoji.value,
     color: stickyColor.value,
     lat: latlng.lat,
-    lng: latlng.lng,
+    lng: latlng.lng
   }
   pendingPin.value = pin
   isPlacingPin.value = false
   openEditPin(pin)
-  fetchPinAddress(latlng.lat, latlng.lng).then(address => {
+  fetchPinAddress(latlng.lat, latlng.lng).then((address) => {
     if (editingPin.value?.id === pin.id) editingPin.value = { ...editingPin.value, address }
     if (pendingPin.value?.id === pin.id) pendingPin.value = { ...pendingPin.value, address }
   })
@@ -310,11 +316,11 @@ function placeAtCenter() {
     emoji: stickyEmoji.value,
     color: stickyColor.value,
     lat: latlng.lat,
-    lng: latlng.lng,
+    lng: latlng.lng
   }
   pendingPin.value = pin
   openEditPin(pin)
-  fetchPinAddress(latlng.lat, latlng.lng).then(address => {
+  fetchPinAddress(latlng.lat, latlng.lng).then((address) => {
     if (editingPin.value?.id === pin.id) editingPin.value = { ...editingPin.value, address }
     if (pendingPin.value?.id === pin.id) pendingPin.value = { ...pendingPin.value, address }
   })
@@ -323,7 +329,7 @@ function placeAtCenter() {
 function handlePendingPinMove(_id: number, lat: number, lng: number) {
   if (pendingPin.value) pendingPin.value = { ...pendingPin.value, lat, lng }
   if (editingPin.value) editingPin.value = { ...editingPin.value, lat, lng }
-  fetchPinAddress(lat, lng).then(address => {
+  fetchPinAddress(lat, lng).then((address) => {
     if (pendingPin.value) pendingPin.value = { ...pendingPin.value, address }
     if (editingPin.value) editingPin.value = { ...editingPin.value, address }
   })
@@ -336,7 +342,7 @@ function onMapReady(map: L.Map) {
     disableClusteringAtZoom: 17,
     showCoverageOnHover: false,
     maxClusterRadius: 60,
-    spiderfyOnMaxZoom: true,
+    spiderfyOnMaxZoom: true
   }).addTo(map)
 
   leafletMap.value = map
@@ -348,114 +354,199 @@ function onMapReady(map: L.Map) {
   if (!hasExplicitLocation) flyToIpLocation(map)
 
   if (loadedFromUrl) {
-    const missing = pins.value.filter(p => !p.address)
+    const missing = pins.value.filter((p) => !p.address)
     if (missing.length > 0) resolveAddressesFromUrl(missing)
   }
 
-  const updateCenter = () => { const c = map.getCenter(); mapCenterCoords.value = { lat: c.lat, lng: c.lng } }
+  const updateCenter = () => {
+    const c = map.getCenter()
+    mapCenterCoords.value = { lat: c.lat, lng: c.lng }
+  }
   updateCenter()
   map.on('move', updateCenter)
-  map.on('mousemove', (e: L.LeafletMouseEvent) => { pointerCoords.value = { lat: e.latlng.lat, lng: e.latlng.lng } })
-  map.on('mouseout', () => { pointerCoords.value = null })
+  map.on('mousemove', (e: L.LeafletMouseEvent) => {
+    pointerCoords.value = { lat: e.latlng.lat, lng: e.latlng.lng }
+    const anchorIdx = drawingAnchorIndex.value
+    const anchorPt = anchorIdx !== null ? drawingRoute.value?.points[anchorIdx] : undefined
+    if (isDrawingRoute.value && anchorPt && map.dragging.enabled()) {
+      const fromPx = map.latLngToContainerPoint([anchorPt.lat, anchorPt.lng])
+      const toPxRaw = map.latLngToContainerPoint(e.latlng)
+      const dx = toPxRaw.x - fromPx.x
+      const dy = toPxRaw.y - fromPx.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      let x2 = toPxRaw.x
+      let y2 = toPxRaw.y
+      // Pin snap preview (magnet)
+      if (routeSnapEnabled.value) {
+        const SNAP_PX = 28
+        for (const pin of pins.value) {
+          if (hiddenPinIds.value.has(pin.id) || linkedPinIds.value.has(pin.id)) continue
+          const pinPx = map.latLngToContainerPoint([pin.lat, pin.lng])
+          if (Math.hypot(toPxRaw.x - pinPx.x, toPxRaw.y - pinPx.y) < SNAP_PX) {
+            x2 = pinPx.x
+            y2 = pinPx.y
+            break
+          }
+        }
+      }
+      // Angle snap preview (shift-only, skip if already pin-snapped)
+      if (x2 === toPxRaw.x && y2 === toPxRaw.y && e.originalEvent.shiftKey && dist > 0) {
+        const snappedAngle = Math.round(Math.atan2(dy, dx) / (Math.PI / 12)) * (Math.PI / 12)
+        x2 = fromPx.x + dist * Math.cos(snappedAngle)
+        y2 = fromPx.y + dist * Math.sin(snappedAngle)
+      }
+      drawingPreviewLine.value = { x1: fromPx.x, y1: fromPx.y, x2, y2 }
+    } else {
+      drawingPreviewLine.value = null
+    }
+  })
+  map.on('mouseout', () => {
+    pointerCoords.value = null
+    drawingPreviewLine.value = null
+  })
 
   cleanupLongPress = useLongPress(map, {
-    isBlocked: () => !!(bottomSheet.value || activeFab.value),
-    onPlace: handlePinPlace,
+    isBlocked: () => !!(bottomSheet.value || activeFab.value || showMapsPanel.value),
+    onPlace: handlePinPlace
   })
 
   if (loadedFromUrl && pins.value.length > 0) {
     requestAnimationFrame(() => {
-      map.fitBounds(pins.value.map(p => [p.lat, p.lng] as [number, number]), { padding: [60, 60], animate: false })
+      map.fitBounds(
+        pins.value.map((p) => [p.lat, p.lng] as [number, number]),
+        { padding: [60, 60], animate: false }
+      )
     })
   }
 }
 
 function handleMapClick(e: L.LeafletMouseEvent) {
   if (isPlacingPin.value) handlePinPlace(e.latlng)
-  else if (isDrawingRoute.value) addPoint(e.latlng.lat, e.latlng.lng)
-}
+  else if (isDrawingRoute.value) {
+    let { lat, lng } = e.latlng
+    const map = leafletMap.value!
+    const shiftHeld = e.originalEvent.shiftKey
+    let snappedPinId: number | undefined
 
-// ── Keyboard ──────────────────────────────────────────────────────────────────
-
-function handleGlobalKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    if (showInfo.value) { closeInfo(); return }
-    if (editingRouteRef.value) { closeEditRoute(); return }
-    if (bottomSheet.value) { closeSheet(); return }
-    if (activeFab.value) { activeFab.value = null; return }
-    if (showSearch.value) { showSearch.value = false; return }
-    if (isPlacingPin.value) { isPlacingPin.value = false; return }
-    if (isDrawingRoute.value) { stopDrawing(); return }
-    return
-  }
-  if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey && isDrawingRoute.value) {
-    const target = e.target as HTMLElement
-    if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && !target.isContentEditable) {
-      e.preventDefault()
-      undoLastPoint()
-      return
+    // Pin snap (magnet): snap to nearest visible, unlinked pin within threshold
+    if (routeSnapEnabled.value) {
+      const SNAP_PX = 28
+      const toPx = map.latLngToContainerPoint([lat, lng])
+      for (const pin of pins.value) {
+        if (hiddenPinIds.value.has(pin.id) || linkedPinIds.value.has(pin.id)) continue
+        const pinPx = map.latLngToContainerPoint([pin.lat, pin.lng])
+        if (Math.hypot(toPx.x - pinPx.x, toPx.y - pinPx.y) < SNAP_PX) {
+          lat = pin.lat
+          lng = pin.lng
+          snappedPinId = pin.id
+          break
+        }
+      }
     }
+
+    // Angle snap (shift-only, skip when already pin-snapped)
+    if (!snappedPinId && shiftHeld) {
+      const snapAnchorIdx = drawingAnchorIndex.value
+      const lastPt = snapAnchorIdx !== null ? drawingRoute.value?.points[snapAnchorIdx] : undefined
+      if (lastPt) {
+        const fromPx = map.latLngToContainerPoint([lastPt.lat, lastPt.lng])
+        const toPx = map.latLngToContainerPoint([lat, lng])
+        const dx = toPx.x - fromPx.x
+        const dy = toPx.y - fromPx.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        const snappedAngle = Math.round(Math.atan2(dy, dx) / (Math.PI / 12)) * (Math.PI / 12)
+        const snappedLatLng = map.containerPointToLatLng(L.point(fromPx.x + dist * Math.cos(snappedAngle), fromPx.y + dist * Math.sin(snappedAngle)))
+        lat = snappedLatLng.lat
+        lng = snappedLatLng.lng
+      }
+    }
+
+    addPoint(lat, lng, snappedPinId)
   }
-  if (!((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey)) return
-  const target = e.target as HTMLElement
-  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
-  e.preventDefault()
-  undo()
 }
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+
+useKeyboardShortcuts({
+  showInfo,
+  closeInfo,
+  editingRoute: editingRouteRef,
+  closeEditRoute,
+  bottomSheet,
+  closeSheet,
+  showMapsPanel,
+  activeFab,
+  showSearch,
+  isPlacingPin,
+  isDrawingRoute,
+  stopDrawing,
+  undoLastPoint,
+  undo
+})
 
 // ── Watchers ──────────────────────────────────────────────────────────────────
 
 watch([isPlacingPin, isDrawingRoute, leafletMap], ([placing, drawing, map]) => {
-  if (map) map.getContainer().style.cursor = (placing || drawing) ? 'crosshair' : ''
+  if (map) map.getContainer().style.cursor = placing || drawing ? 'crosshair' : ''
 })
 
-watch(isDark, (dark) => {
-  const meta = document.querySelector('meta[name="theme-color"]')
-  if (meta) meta.setAttribute('content', dark ? '#18181b' : '#ffffff')
-}, { immediate: true })
+watch(
+  isDark,
+  (dark) => {
+    const meta = document.querySelector('meta[name="theme-color"]')
+    if (meta) meta.setAttribute('content', dark ? '#18181b' : '#ffffff')
+  },
+  { immediate: true }
+)
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
-
-onMounted(() => document.addEventListener('keydown', handleGlobalKeyDown))
 
 onUnmounted(() => {
   cleanupNotification()
   cleanupShareClipboard()
-  cleanupPrintExport()
-  document.removeEventListener('keydown', handleGlobalKeyDown)
   cleanupLongPress?.()
 })
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
 
-const panelClass ='absolute right-16 top-4 z-1000 w-80 max-w-[calc(100vw-80px)] bg-white dark:bg-zinc-900 rounded-xl shadow-xl border border-gray-200 dark:border-zinc-800 overflow-hidden flex flex-col max-h-[80vh] no-print'
+const panelClass = 'absolute right-16 top-4 z-1000 w-80 max-w-[calc(100vw-80px)] bg-white dark:bg-zinc-900 rounded-xl shadow-xl border border-gray-200 dark:border-zinc-800 overflow-hidden flex flex-col max-h-[80vh] no-print'
 </script>
 
 <template>
   <div class="fixed inset-0 flex flex-col bg-gray-50 dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 font-sans transition-colors duration-200">
-
     <!-- ── Header ─────────────────────────────────────────────────────────── -->
     <AppHeader
-      :color-mode="colorMode"
       :show-search="showSearch"
       :search-clear-trigger="searchClearTrigger"
-      @cycle-color-mode="cycleColorMode"
+      :active-map-name="activeMap.name"
+      :is-locating="isLocating"
       @update:show-search="showSearch = $event"
-      @location-select="(loc) => { searchLocation = loc; showNotification(`Navigated to ${loc.label}`) }"
+      @location-select="
+        (loc) => {
+          searchLocation = loc
+          showNotification(`Navigated to ${loc.label}`)
+        }
+      "
       @clear-search="clearSearchLocation"
       @open-info="showInfo = true"
+      @open-maps="toggleMapsPanel"
+      @share="copyShareLink"
+      @locate="goToMyLocation"
     />
 
     <!-- ── Mobile search panel ──────────────────────────────────────────── -->
     <Transition name="mf-search-bar">
-      <div
-        v-if="showSearch"
-        class="sm:hidden bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 px-3 py-2.5 shrink-0 z-900 no-print"
-      >
+      <div v-if="showSearch" class="sm:hidden bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 px-3 py-2.5 shrink-0 z-900 no-print">
         <MapSearch
           :auto-focus="true"
           :clear-trigger="searchClearTrigger"
-          @location-select="(loc) => { searchLocation = loc; showNotification(`Navigated to ${loc.label}`); showSearch = false }"
+          @location-select="
+            (loc) => {
+              searchLocation = loc
+              showNotification(`Navigated to ${loc.label}`)
+              showSearch = false
+            }
+          "
           @clear="clearSearchLocation"
         />
       </div>
@@ -463,78 +554,28 @@ const panelClass ='absolute right-16 top-4 z-1000 w-80 max-w-[calc(100vw-80px)] 
 
     <!-- ── Map ──────────────────────────────────────────────────────────── -->
     <div class="flex-1 min-h-0 relative map-print-container">
-      <div v-if="mapTitle" class="print-map-title">{{ mapTitle }}</div>
+      <div class="print-map-title">{{ mapName }}</div>
+      <div v-if="mapArea" class="print-map-area">{{ mapArea }}</div>
 
-      <LMap
-        :zoom="initialZoom"
-        :center="initialCenter"
-        :use-global-leaflet="false"
-        :max-zoom="mapMaxZoom"
-        style="height: 100%; width: 100%;"
-        @ready="onMapReady"
-        @click="handleMapClick"
-      />
+      <LMap :zoom="initialZoom" :center="initialCenter" :use-global-leaflet="false" :max-zoom="mapMaxZoom" style="height: 100%; width: 100%" @ready="onMapReady" @click="handleMapClick" />
+
+      <svg v-if="drawingPreviewLine" class="absolute inset-0 w-full h-full pointer-events-none no-print" style="z-index: 500; overflow: visible">
+        <line :x1="drawingPreviewLine.x1" :y1="drawingPreviewLine.y1" :x2="drawingPreviewLine.x2" :y2="drawingPreviewLine.y2" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="5,4" stroke-linecap="round" />
+      </svg>
 
       <template v-if="leafletMap && clusterGroup">
-        <PrintAreaDrawer
-          :map="leafletMap"
-          :print-bounds="printBounds"
-          :aspect-ratio="printAspectRatio"
-          :snap-enabled="printSnapEnabled"
-          :grid-cols="Number(printSettings.grid.value.split('x')[0]) || 1"
-          :grid-rows="Number(printSettings.grid.value.split('x')[1]) || 1"
-          :overlay-corner="overlayCorner"
-          @bounds-set="handleBoundsSet"
-        />
-        <PinMarker
-          v-for="pin in pins"
-          :key="pin.id"
-          :pin="pin"
-          :map="leafletMap"
-          :layer="showClusters ? clusterGroup : undefined"
-          :hidden="hiddenPinIds.has(pin.id)"
-          :dot-size="pinDotSize"
-          @delete="handleDeletePin"
-          @move="handlePinMove"
-          @edit="openEditPin"
-          @copy="coords => showNotification(`Copied: ${coords}`)"
-        />
-        <PinMarker
-          v-if="pendingPin"
-          :key="`pending-${pendingPin.id}`"
-          :pin="pendingPin"
-          :map="leafletMap"
-          :pending="true"
-          :dot-size="pinDotSize"
-          @move="handlePendingPinMove"
-        />
-        <SearchMarker
-          v-if="searchLocation"
-          :key="`${searchLocation.lat}-${searchLocation.lng}`"
-          ref="searchMarkerRef"
-          :lat="searchLocation.lat"
-          :lng="searchLocation.lng"
-          :map="leafletMap"
-          @pin="handleSearchMarkerPin"
-          @dismiss="searchLocation = null"
-        />
-        <RouteLayer
-          v-if="routes.length > 0"
-          :routes="routes"
-          :map="leafletMap"
-          :drawing-route-id="isDrawingRoute ? drawingRoute?.id ?? null : null"
-          @remove-point="removePoint"
-        />
+        <PrintAreaDrawer :map="leafletMap" :print-bounds="printBounds" :aspect-ratio="printAspectRatio" :snap-enabled="printSnapEnabled" :grid-cols="Number(printSettings.grid.value.split('x')[0]) || 1" :grid-rows="Number(printSettings.grid.value.split('x')[1]) || 1" :overlay-corner="overlayCorner" @bounds-set="handleBoundsSet" />
+        <PinMarker v-for="pin in pins" :key="pin.id" :pin="pin" :map="leafletMap" :layer="showClusters ? clusterGroup : undefined" :hidden="hiddenPinIds.has(pin.id)" :dot-size="pinDotSize" :locked="linkedPinIds.has(pin.id)" @delete="handleDeletePin" @hide="togglePinVisibility" @move="handlePinMove" @edit="openEditPin" @copy="(coords) => showNotification(`Copied: ${coords}`)" />
+        <PinMarker v-if="pendingPin" :key="`pending-${pendingPin.id}`" :pin="pendingPin" :map="leafletMap" :pending="true" :dot-size="pinDotSize" @move="handlePendingPinMove" />
+        <SearchMarker v-if="searchLocation" :key="`${searchLocation.lat}-${searchLocation.lng}`" ref="searchMarkerRef" :lat="searchLocation.lat" :lng="searchLocation.lng" :map="leafletMap" @pin="handleSearchMarkerPin" @dismiss="searchLocation = null" />
+        <RouteLayer v-if="routes.length > 0" :routes="routes" :hidden-route-ids="hiddenRouteIds" :map="leafletMap" :drawing-route-id="isDrawingRoute ? (drawingRoute?.id ?? null) : null" :drawing-anchor-index="isDrawingRoute ? drawingAnchorIndex : null" :pins="pins" @remove-point="removePoint" @move-point="handleMovePoint" @move-route="handleMoveRoute" @click-route="handleClickRoute" @tap-waypoint="handleWaypointTap" />
       </template>
 
-      <PrintLegend :title="mapTitle" :pins="pins" />
+      <PrintLegend :title="mapName" :area="mapArea" :pins="pins" />
 
       <!-- Placing indicator -->
       <Transition name="mf-fade">
-        <div
-          v-if="isPlacingPin"
-          class="absolute top-4 left-1/2 -translate-x-1/2 z-1000 flex items-center gap-2 bg-amber-400/95 text-gray-900 text-sm font-semibold px-4 py-2.5 rounded-full shadow-lg no-print pointer-events-auto"
-        >
+        <div v-if="isPlacingPin" class="absolute top-4 left-1/2 -translate-x-1/2 z-1000 flex items-center gap-2 bg-amber-400/95 text-gray-900 text-sm font-semibold px-4 py-2.5 rounded-full shadow-lg no-print pointer-events-auto">
           Tap map to place pin
           <button class="ml-1 hover:opacity-70 transition-opacity" @click.stop="isPlacingPin = false">✕</button>
         </div>
@@ -542,14 +583,16 @@ const panelClass ='absolute right-16 top-4 z-1000 w-80 max-w-[calc(100vw-80px)] 
 
       <!-- Drawing route indicator -->
       <Transition name="mf-fade">
-        <div
-          v-if="isDrawingRoute && drawingRoute"
-          class="absolute top-4 left-1/2 -translate-x-1/2 z-1000 flex items-center gap-2 bg-cyan-500/95 text-white text-sm font-semibold px-4 py-2.5 rounded-full shadow-lg no-print pointer-events-auto"
-        >
-          <span class="w-3 h-3 rounded-full shrink-0 ring-2 ring-white/50" :style="{ background: drawingRoute.color }" />
-          {{ drawingRoute.name }}
-          <span v-if="drawingDistance" class="font-normal opacity-80">· {{ drawingDistance }}</span>
-          <button class="ml-1 font-normal opacity-80 hover:opacity-100 transition-opacity" @click.stop="stopDrawing">Done</button>
+        <DrawingRouteIndicator v-if="isDrawingRoute && drawingRoute" :route="drawingRoute" :distance="drawingDistance" :snap-enabled="routeSnapEnabled" @update:snap-enabled="routeSnapEnabled = $event" @undo="undoLastPoint" @done="stopDrawing" />
+      </Transition>
+
+      <!-- Maps panel backdrop -->
+      <div v-if="showMapsPanel" class="absolute inset-0 z-800 no-print" @click="showMapsPanel = false" />
+
+      <!-- Maps panel -->
+      <Transition name="mf-panel">
+        <div v-if="showMapsPanel" class="absolute left-4 top-4 z-1000 w-80 max-w-[calc(100vw-80px)] bg-white dark:bg-zinc-900 rounded-xl shadow-xl border border-gray-200 dark:border-zinc-800 overflow-hidden flex flex-col max-h-[80vh] no-print">
+          <MapsPanel :maps="maps" :active-id="activeId" @switch="doSwitchMap" @create="doCreateMap" @rename="(id, name) => renameMap(id, name)" @duplicate="doDuplicateMap" @delete="doDeleteMap" @export="exportMap" @export-geojson="exportMapAsGeoJson" @export-all="exportAllMaps" @import="mapImportFileRef?.click()" @close="showMapsPanel = false" />
         </div>
       </Transition>
 
@@ -560,16 +603,7 @@ const panelClass ='absolute right-16 top-4 z-1000 w-80 max-w-[calc(100vw-80px)] 
       <Transition name="mf-panel">
         <div v-if="activeFab === 'style'" :class="panelClass">
           <div class="p-4 overflow-y-auto">
-            <MapOptions
-              :map-style="mapStyle"
-              :show-labels="showLabels"
-              :show-clusters="showClusters"
-              :pin-dot-size="pinDotSize"
-              @style-change="mapStyle = $event"
-              @labels-change="showLabels = $event"
-              @clusters-change="showClusters = $event"
-              @dot-size-change="pinDotSize = $event"
-            />
+            <MapOptions :map-style="mapStyle" :show-labels="showLabels" :show-clusters="showClusters" @style-change="mapStyle = $event" @labels-change="showLabels = $event" @clusters-change="showClusters = $event" />
           </div>
         </div>
       </Transition>
@@ -577,29 +611,7 @@ const panelClass ='absolute right-16 top-4 z-1000 w-80 max-w-[calc(100vw-80px)] 
       <!-- Print & Export panel -->
       <Transition name="mf-panel">
         <div v-if="activeFab === 'export'" :class="panelClass">
-          <PrintExportPanel
-            v-model:map-title="mapTitle"
-            v-model:auto-title="printSettings.autoTitle.value"
-            v-model:print-paper="printPaper"
-            v-model:print-orientation="printOrientation"
-            v-model:print-grid="printSettings.grid.value"
-            v-model:print-snap-enabled="printSnapEnabled"
-            v-model:include-legend="printSettings.legend.value"
-            v-model:include-compass="printSettings.compass.value"
-            v-model:scale-unit="printSettings.scale.value"
-            v-model:enhance-contrast="printSettings.contrast.value"
-            :is-auto-titling="isAutoTitling"
-            :print-bounds="printBounds"
-            :print-aspect-ratio="printAspectRatio"
-            :is-downloading-pdf="isDownloadingPdf"
-            :map-style="mapStyle"
-            @select-preset="selectPrintPreset"
-            @resnap-print-area="resnapPrintArea"
-            @fit-to-print-area="fitToPrintArea"
-            @fit-to-pins="fitPrintAreaToPins"
-            @clear-print-bounds="clearPrintBounds"
-            @download-pdf="downloadPdf"
-          />
+          <PrintExportPanel v-model:map-name="mapName" v-model:map-area="mapArea" v-model:print-paper="printPaper" v-model:print-orientation="printOrientation" v-model:print-grid="printSettings.grid.value" v-model:print-snap-enabled="printSnapEnabled" v-model:include-legend="printSettings.legend.value" v-model:include-compass="printSettings.compass.value" v-model:scale-unit="printSettings.scale.value" v-model:enhance-contrast="printSettings.contrast.value" :is-auto-area="isAutoArea" :print-bounds="printBounds" :print-aspect-ratio="printAspectRatio" :is-downloading-pdf="isDownloadingPdf" :map-style="mapStyle" @select-preset="selectPrintPreset" @resnap-print-area="resnapPrintArea" @fit-to-print-area="fitToPrintArea" @fit-to-pins="fitPrintAreaToPins" @clear-print-bounds="clearPrintBounds" @download-pdf="downloadPdf" />
         </div>
       </Transition>
 
@@ -608,12 +620,32 @@ const panelClass ='absolute right-16 top-4 z-1000 w-80 max-w-[calc(100vw-80px)] 
         <div v-if="activeFab === 'routes'" :class="panelClass">
           <RoutesPanel
             :routes="routes"
+            :hidden-route-ids="hiddenRouteIds"
+            :all-routes-hidden="allRoutesHidden"
             :drawing-route-id="isDrawingRoute ? (drawingRoute?.id ?? null) : null"
-            :distance-unit="printSettings.scale.value === 'mi' ? 'mi' : 'km'"
-            @new-route="() => { startNewRoute(); activeFab = null }"
-            @fit-to-route="fitToRoute"
+            :distance-unit="liveScaleUnit"
+            @new-route="
+              () => {
+                startNewRoute()
+                activeFab = null
+              }
+            "
+            @continue-drawing="
+              (id) => {
+                continueDrawing(id)
+                activeFab = null
+              }
+            "
+            @fit-to-all="fitToAllRoutes"
             @edit-route="openEditRoute"
             @delete-route="deleteRoute"
+            @toggle-visibility="toggleRouteVisibility"
+            @toggle-all-visibility="toggleAllRouteVisibility"
+            @clear-all="clearAllRoutes"
+            @reorder="reorderRoutes"
+            @export-json="exportRoutesJson"
+            @export-geojson="exportRoutesGeoJson"
+            @import="triggerRouteImport"
           />
         </div>
       </Transition>
@@ -621,87 +653,45 @@ const panelClass ='absolute right-16 top-4 z-1000 w-80 max-w-[calc(100vw-80px)] 
       <!-- Pins panel -->
       <Transition name="mf-panel">
         <div v-if="activeFab === 'pins'" :class="panelClass">
-          <PinsPanel
-            v-model:pin-search="pinSearch"
-            :pins="pins"
-            :filtered-pins="filteredPins"
-            :hidden-pin-ids="hiddenPinIds"
-            :can-undo="canUndo"
-            :all-pins-hidden="allPinsHidden"
-            :resolving-pin-id="resolvingPinId"
-            @place-at-center="placeAtCenter"
-            @fit-to-pins="fitToPins"
-            @undo="undo"
-            @toggle-all-visibility="toggleAllPinVisibility"
-            @clear-all="clearAllPins"
-            @delete-pin="handleDeletePin"
-            @edit-pin="openEditPin"
-            @zoom-to-pin="zoomToPin"
-            @toggle-visibility="togglePinVisibility"
-            @export-json="exportPinsJson"
-            @export-geojson="exportGeoJson"
-            @import="triggerImport"
-          />
+          <PinsPanel v-model:pin-search="pinSearch" :pins="pins" :filtered-pins="filteredPins" :hidden-pin-ids="hiddenPinIds" :can-undo="canUndo" :all-pins-hidden="allPinsHidden" :resolving-pin-id="resolvingPinId" :pin-dot-size="pinDotSize" @place-at-center="placeAtCenter" @fit-to-pins="fitToPins" @undo="undo" @toggle-all-visibility="toggleAllPinVisibility" @clear-all="clearAllPins" @delete-pin="handleDeletePin" @edit-pin="openEditPin" @zoom-to-pin="zoomToPin" @toggle-visibility="togglePinVisibility" @reorder="reorderPins" @export-json="exportPinsJson" @export-geojson="exportGeoJson" @import="triggerImport" @dot-size-change="pinDotSize = $event" />
         </div>
       </Transition>
 
       <!-- Scale bar + coordinate display -->
       <div class="absolute left-2 z-500 no-print pointer-events-none flex flex-col items-start gap-1" style="bottom: calc(0.75rem + env(safe-area-inset-bottom))">
-        <div v-if="displayCoords" class="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm text-xs font-mono text-gray-500 dark:text-zinc-400 px-2 py-1 rounded shadow-sm border border-gray-200/60 dark:border-zinc-700/60 tabular-nums">
-          {{ displayCoords.lat.toFixed(5) }}, {{ displayCoords.lng.toFixed(5) }}
-        </div>
+        <div v-if="displayCoords" class="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm text-xs font-mono text-gray-500 dark:text-zinc-400 px-2 py-1 rounded shadow-sm border border-gray-200/60 dark:border-zinc-700/60 tabular-nums">{{ displayCoords.lat.toFixed(5) }}, {{ displayCoords.lng.toFixed(5) }}</div>
         <ScaleBar v-if="printSettings.scale.value !== 'off' && leafletMap" :map="leafletMap" :unit="liveScaleUnit" />
       </div>
 
       <!-- FAB stack -->
-      <MapFabStack
-        :active-fab="activeFab"
-        :pin-count="pins.length"
-        :route-count="routes.length"
-        :is-locating="isLocating"
-        @toggle="toggleFab"
-        @locate="goToMyLocation"
-        @share="copyShareLink"
-      />
+      <MapFabStack :active-fab="activeFab" :pin-count="pins.length" :route-count="routes.length" @toggle="toggleFab" />
     </div>
 
     <!-- ── Bottom sheet backdrop ─────────────────────────────────────────── -->
     <Transition name="mf-fade">
-      <div
-        v-if="bottomSheet"
-        class="fixed inset-0 z-1700 bg-black/30 no-print"
-        @click="closeSheet"
-      />
+      <div v-if="bottomSheet" class="fixed inset-0 z-1700 bg-black/30 no-print" @click="closeSheet" />
     </Transition>
 
     <!-- ── Edit Pin sheet ─────────────────────────────────────────────────── -->
     <Transition name="mf-sheet">
-      <PinEditSheet
-        :show="bottomSheet"
-        :editing-pin="editingPin"
-        :pending-pin="pendingPin"
-        :pin-dot-size="pinDotSize"
-        @save="handlePinSave"
-        @delete="handlePinDelete"
-        @close="closeSheet"
-      />
+      <PinEditSheet :show="bottomSheet" :editing-pin="editingPin" :pending-pin="pendingPin" :pin-dot-size="pinDotSize" @save="handlePinSave" @delete="handlePinDelete" @close="closeSheet" />
     </Transition>
 
     <!-- ── Edit Route sheet ─────────────────────────────────────────────────── -->
     <Transition name="mf-fade">
-      <div
-        v-if="editingRouteRef"
-        class="fixed inset-0 z-1700 bg-black/30 no-print"
-        @click="closeEditRoute"
-      />
+      <div v-if="editingRouteRef" class="fixed inset-0 z-1700 bg-black/30 no-print" @click="closeEditRoute" />
     </Transition>
     <Transition name="mf-sheet">
       <RouteEditSheet
         :show="!!editingRouteRef"
         :editing-route="editingRouteRef"
-        :distance-unit="printSettings.scale.value === 'mi' ? 'mi' : 'km'"
+        :distance-unit="liveScaleUnit"
         @save="saveEditRoute"
-        @delete="() => { if (editingRouteRef) deleteRoute(editingRouteRef.id) }"
+        @delete="
+          () => {
+            if (editingRouteRef) deleteRoute(editingRouteRef.id)
+          }
+        "
         @close="closeEditRoute"
       />
     </Transition>
@@ -709,69 +699,69 @@ const panelClass ='absolute right-16 top-4 z-1000 w-80 max-w-[calc(100vw-80px)] 
     <!-- ── Welcome modal ──────────────────────────────────────────────────── -->
     <WelcomeModal :show="showInfo" @close="closeInfo" />
 
-    <!-- ── Address resolve toast ─────────────────────────────────────────── -->
-    <Transition name="mf-toast">
-      <div
-        v-if="addressResolveProg"
-        class="fixed top-16 left-1/2 -translate-x-1/2 bg-cyan-500 text-white text-sm px-4 pt-2.5 pb-2 rounded shadow-lg z-1999 no-print min-w-52"
-      >
-        <div class="whitespace-nowrap mb-1.5">Resolving addresses {{ addressResolveProg.done }} / {{ addressResolveProg.total }}</div>
-        <div class="h-1 bg-cyan-400/50 rounded-full overflow-hidden">
-          <div
-            class="h-full bg-white/80 rounded-full transition-[width] duration-500"
-            :style="{ width: `${(addressResolveProg.done / addressResolveProg.total) * 100}%` }"
-          />
-        </div>
-      </div>
-    </Transition>
+    <!-- ── Toasts ─────────────────────────────────────────────────────────── -->
+    <AppToasts :notification="notification" :address-resolve-prog="addressResolveProg" />
 
-    <!-- ── Notification toast ─────────────────────────────────────────────── -->
-    <div
-      v-if="notification"
-      :class="[
-        'fixed top-16 left-1/2 -translate-x-1/2 text-white text-sm px-4 py-2.5 rounded shadow-lg z-2000 animate-[slideIn_0.25s_ease] no-print whitespace-nowrap',
-        notification.type === 'error' ? 'bg-rose-500' : notification.type === 'info' ? 'bg-cyan-500' : 'bg-emerald-500'
-      ]"
-    >
-      {{ notification.message }}
-    </div>
-
-    <!-- Hidden file input -->
-    <input
-      ref="importFileRef"
-      type="file"
-      accept=".json,.geojson"
-      class="hidden"
-      @change="handleImportFile"
-    />
+    <!-- Hidden file inputs -->
+    <input ref="importFileRef" type="file" accept=".json,.geojson" class="hidden" @change="handleImportFile" />
+    <input ref="routeImportFileRef" type="file" accept=".json,.geojson" class="hidden" @change="handleRouteImportFile" />
+    <input ref="mapImportFileRef" type="file" accept=".json" class="hidden" @change="handleMapImportFile" />
   </div>
 </template>
 
 <style>
-.mf-toast-enter-active,
-.mf-toast-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
-.mf-toast-enter-from,
-.mf-toast-leave-to { opacity: 0; transform: translateX(-50%) translateY(-6px); }
-.mf-toast-enter-to,
-.mf-toast-leave-from { transform: translateX(-50%) translateY(0); }
-
 .mf-panel-enter-active,
-.mf-panel-leave-active { transition: opacity 0.15s ease, transform 0.15s ease; }
+.mf-panel-leave-active {
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
 .mf-panel-enter-from,
-.mf-panel-leave-to { opacity: 0; transform: scale(0.96) translateY(6px); }
+.mf-panel-leave-to {
+  opacity: 0;
+  transform: scale(0.96) translateY(6px);
+}
 
 .mf-sheet-enter-active,
-.mf-sheet-leave-active { transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
+.mf-sheet-leave-active {
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
 .mf-sheet-enter-from,
-.mf-sheet-leave-to { transform: translateY(100%); }
+.mf-sheet-leave-to {
+  transform: translateY(100%);
+}
 
 .mf-fade-enter-active,
-.mf-fade-leave-active { transition: opacity 0.2s ease; }
+.mf-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
 .mf-fade-enter-from,
-.mf-fade-leave-to { opacity: 0; }
+.mf-fade-leave-to {
+  opacity: 0;
+}
 
 .mf-search-bar-enter-active,
-.mf-search-bar-leave-active { transition: opacity 0.15s ease, transform 0.15s ease; }
+.mf-search-bar-leave-active {
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
 .mf-search-bar-enter-from,
-.mf-search-bar-leave-to { opacity: 0; transform: translateY(-6px); }
+.mf-search-bar-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.leaflet-marker-pane,
+.leaflet-overlay-pane,
+.leaflet-shadow-pane {
+  transition: opacity 0.2s ease;
+}
+
+.leaflet-zoom-anim .leaflet-marker-pane,
+.leaflet-zoom-anim .leaflet-overlay-pane,
+.leaflet-zoom-anim .leaflet-shadow-pane {
+  opacity: 0;
+  transition: none;
+}
 </style>

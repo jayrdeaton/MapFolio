@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { Pin } from '../types'
+import type { Pin } from '../types'
 
-defineProps<{ title: string; pins: Pin[] }>()
+defineProps<{ title: string; area?: string; pins: Pin[] }>()
 </script>
 
 <template>
   <div v-if="title || pins.length > 0" class="print-legend">
     <div v-if="title" class="print-legend-title">{{ title }}</div>
+    <div v-if="area" class="print-legend-area">{{ area }}</div>
     <template v-if="pins.length > 0">
       <div class="print-legend-header">Legend</div>
       <div class="print-legend-items">
-        <div v-for="pin in pins.filter(p => p.name)" :key="pin.id" class="print-legend-item">
+        <div v-for="pin in pins.filter((p) => p.name)" :key="pin.id" class="print-legend-item">
           <span class="print-legend-emoji">{{ pin.emoji }}</span>
           <div class="print-legend-text">
             <div class="print-legend-name">{{ pin.name }}</div>

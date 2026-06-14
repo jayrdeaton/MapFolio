@@ -16,7 +16,7 @@ function latToTileFrac(lat: number, zoom: number): number {
 function tileUrl(config: MapStyleConfig, isDark: boolean, z: number, x: number, y: number): string {
   const template = isDark && config.darkUrl ? config.darkUrl : config.url
   const subdomains = config.subdomains ?? 'abc'
-  const s = subdomains[Math.abs(x + y) % subdomains.length]
+  const s = subdomains[Math.abs(x + y) % subdomains.length]!
   return template
     .replace('{s}', s)
     .replace('{z}', String(z))
@@ -74,7 +74,7 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<number>, geoToOut: (lat: number, lng: number) => [number, number], paperW: number, paperH: number) {
-  // Scale pins relative to page width (same reference as drawLegend/drawCompass).
+  // Scale pins relative to page width (same reference as drawInfoBox).
   const S = paperW / 612
   const emojiSize = Math.round(28 * S)
   const dotR = Math.round(4 * S)
@@ -123,15 +123,10 @@ function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<
 // 0=TL 1=TR 2=BR 3=BL
 type OverlayCorner = 0 | 1 | 2 | 3
 
-function bestCorner(
-  pinsInArea: Pin[],
-  geoToOutputPx: (lat: number, lng: number) => [number, number],
-  paperW: number,
-  paperH: number,
-): OverlayCorner {
+function bestCorner(pinsInArea: Pin[], geoToOutputPx: (lat: number, lng: number) => [number, number], paperW: number, paperH: number): OverlayCorner {
   const zoneX = paperW * 0.35
   const zoneY = paperH * 0.35
-  const counts = [0, 0, 0, 0] // TL, TR, BR, BL
+  const counts: [number, number, number, number] = [0, 0, 0, 0] // TL, TR, BR, BL
   for (const pin of pinsInArea) {
     const [ox, oy] = geoToOutputPx(pin.lat, pin.lng)
     if (ox < zoneX && oy < zoneY) counts[0]++
@@ -141,51 +136,84 @@ function bestCorner(
   }
   let best: OverlayCorner = 2
   let min = Infinity
-  for (let i = 0; i < 4; i++) {
-    if (counts[i] < min) { min = counts[i]; best = i as OverlayCorner }
+  for (const i of [2, 3, 1, 0] as const) {
+    if (counts[i] < min) {
+      min = counts[i]
+      best = i
+    }
   }
   return best
 }
 
-function drawLegend(ctx: CanvasRenderingContext2D, title: string, pins: Pin[], paperW: number, paperH: number, corner: OverlayCorner) {
+function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string, pins: Pin[], angle: number, corners: [number, number][], scaleUnit: 'km' | 'mi', includeLegend: boolean, includeCompass: boolean, includeScale: boolean, paperW: number, paperH: number, corner: OverlayCorner) {
   const namedPins = pins.filter((p) => p.name)
-  if (!title && namedPins.length === 0) return
+  const hasTitle = includeLegend && !!title
+  const hasArea = includeLegend && !!area
+  const hasLegend = includeLegend && namedPins.length > 0
+  const hasHeader = hasTitle || hasArea || includeCompass
+  if (!hasHeader && !hasLegend && !includeScale) return
 
-  // Scale relative to letter page width at EXPORT_DPI (1632px = 612pt)
   const S = paperW / 612
-
   const pad = Math.round(12 * S)
+  const margin = Math.round(16 * S)
+  const borderR = Math.round(8 * S)
+  const legendW = Math.round(200 * S)
+  const divGapBefore = Math.round(4 * S)
+  const divGapAfter = Math.round(6 * S)
+  const divW = Math.max(1, Math.round(S))
   const titleSize = Math.round(13 * S)
+  const areaSize = Math.round(10 * S)
+  const areaGap = Math.round(3 * S)
   const headerSize = Math.round(9 * S)
   const nameSize = Math.round(12 * S)
   const descSize = Math.round(10 * S)
   const emojiColW = Math.round(20 * S)
   const rowGap = Math.round(5 * S)
-  const legendW = Math.round(200 * S)
-  const margin = Math.round(16 * S)
-  const borderR = Math.round(8 * S)
 
-  // Measure content height
-  let contentH = 0
-  if (title) {
-    contentH += titleSize + Math.round(8 * S) // title text + separator gap
-  }
-  if (namedPins.length > 0) {
-    contentH += headerSize + Math.round(6 * S) // "LEGEND" header
+  // Compass — small, inline with title row
+  const compCircleR = Math.round(10 * S)
+  const compDiam = compCircleR * 2
+  const compTipR = compCircleR
+  const compTailR = compCircleR
+  const compWingR = Math.round(2 * S)
+
+  const titleRowH = hasTitle ? titleSize : 0
+  const areaRowH = hasArea ? areaSize + areaGap : 0
+
+  const headerRowH = hasHeader ? Math.max(titleRowH + areaRowH, includeCompass ? compDiam : 0) : 0
+
+  let legendSectionH = 0
+  if (hasLegend) {
+    legendSectionH += headerSize + Math.round(6 * S)
     for (const pin of namedPins) {
       const rowH = pin.description ? nameSize + Math.round(2 * S) + descSize : nameSize
-      contentH += Math.max(emojiColW, rowH) + rowGap
+      legendSectionH += Math.max(emojiColW, rowH) + rowGap
     }
-    contentH -= rowGap // no gap after last row
+    legendSectionH -= rowGap
   }
 
+  // Compact scale footer
+  const scaleBarH = Math.round(5 * S)
+  const scaleFontSize = Math.round(8 * S)
+  const scaleFooterH = includeScale ? Math.round(4 * S) + scaleBarH + Math.round(3 * S) + scaleFontSize + Math.round(4 * S) : 0
+
+  let contentH = 0
+  if (hasHeader) {
+    contentH += headerRowH + divGapBefore
+    if (hasLegend || includeScale) contentH += divW + divGapAfter
+  }
+  if (hasLegend) {
+    contentH += legendSectionH
+    if (includeScale) contentH += divGapBefore + divW + divGapAfter
+  }
+  if (includeScale) contentH += scaleFooterH
   const boxH = contentH + pad * 2
+
   const isRight = corner === 1 || corner === 2
   const isTop = corner === 0 || corner === 1
   const boxX = isRight ? paperW - legendW - margin : margin
   const boxY = isTop ? margin : paperH - boxH - margin
 
-  // Shadow + background
   ctx.save()
   ctx.shadowColor = 'rgba(0,0,0,0.12)'
   ctx.shadowBlur = Math.round(10 * S)
@@ -194,7 +222,6 @@ function drawLegend(ctx: CanvasRenderingContext2D, title: string, pins: Pin[], p
   roundRect(ctx, boxX, boxY, legendW, boxH, borderR)
   ctx.fill()
   ctx.restore()
-
   ctx.strokeStyle = '#d1d5db'
   ctx.lineWidth = Math.max(1, Math.round(S))
   roundRect(ctx, boxX, boxY, legendW, boxH, borderR)
@@ -202,26 +229,101 @@ function drawLegend(ctx: CanvasRenderingContext2D, title: string, pins: Pin[], p
 
   let y = boxY + pad
 
-  if (title) {
-    ctx.save()
-    ctx.fillStyle = '#111827'
-    ctx.font = `700 ${titleSize}px system-ui,sans-serif`
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'top'
-    ctx.fillText(title, boxX + pad, y, legendW - pad * 2)
-    ctx.restore()
-    y += titleSize + Math.round(4 * S)
+  // Header row: title left, small compass right
+  if (hasHeader) {
+    const headerCenterY = y + headerRowH / 2
 
-    ctx.strokeStyle = '#e5e7eb'
-    ctx.lineWidth = Math.max(1, Math.round(S))
-    ctx.beginPath()
-    ctx.moveTo(boxX + pad, y)
-    ctx.lineTo(boxX + legendW - pad, y)
-    ctx.stroke()
-    y += Math.round(6 * S)
+    const textMaxW = includeCompass ? legendW - pad * 2 - compDiam - Math.round(6 * S) : legendW - pad * 2
+
+    if (hasTitle) {
+      const titleY = hasArea ? boxY + pad + titleSize / 2 : headerCenterY
+      ctx.save()
+      ctx.fillStyle = '#111827'
+      ctx.font = `700 ${titleSize}px system-ui,sans-serif`
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(title, boxX + pad, titleY, textMaxW)
+      ctx.restore()
+    }
+
+    if (hasArea) {
+      const areaY = boxY + pad + titleRowH + areaGap + areaSize / 2
+      ctx.save()
+      ctx.fillStyle = '#6b7280'
+      ctx.font = `${areaSize}px system-ui,sans-serif`
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(area, boxX + pad, areaY, textMaxW)
+      ctx.restore()
+    }
+
+    if (includeCompass) {
+      const nx = -Math.sin(angle)
+      const ny = -Math.cos(angle)
+      const ex = -ny
+      const ey = nx
+      const cx = boxX + legendW - pad - compCircleR
+      const cy = headerCenterY
+      const northX = cx + nx * compTipR,
+        northY = cy + ny * compTipR
+      const southX = cx - nx * compTailR,
+        southY = cy - ny * compTailR
+      const leftX = cx + ex * compWingR,
+        leftY = cy + ey * compWingR
+      const rightX = cx - ex * compWingR,
+        rightY = cy - ey * compWingR
+
+      ctx.strokeStyle = '#d1d5db'
+      ctx.lineWidth = Math.max(1, S)
+      ctx.beginPath()
+      ctx.arc(cx, cy, compCircleR, 0, Math.PI * 2)
+      ctx.stroke()
+
+      ctx.fillStyle = '#1f2937'
+      ctx.beginPath()
+      ctx.moveTo(northX, northY)
+      ctx.lineTo(leftX, leftY)
+      ctx.lineTo(rightX, rightY)
+      ctx.closePath()
+      ctx.fill()
+
+      ctx.fillStyle = '#e5e7eb'
+      ctx.beginPath()
+      ctx.moveTo(southX, southY)
+      ctx.lineTo(leftX, leftY)
+      ctx.lineTo(rightX, rightY)
+      ctx.closePath()
+      ctx.fill()
+
+      ctx.strokeStyle = '#9ca3af'
+      ctx.lineWidth = Math.max(1, S * 0.75)
+      ctx.beginPath()
+      ctx.moveTo(northX, northY)
+      ctx.lineTo(leftX, leftY)
+      ctx.lineTo(southX, southY)
+      ctx.lineTo(rightX, rightY)
+      ctx.closePath()
+      ctx.stroke()
+
+      ctx.fillStyle = '#9ca3af'
+      ctx.beginPath()
+      ctx.arc(cx, cy, Math.round(1.5 * S), 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    y += headerRowH + divGapBefore
+    if (hasLegend || includeScale) {
+      ctx.strokeStyle = '#e5e7eb'
+      ctx.lineWidth = divW
+      ctx.beginPath()
+      ctx.moveTo(boxX + pad, y)
+      ctx.lineTo(boxX + legendW - pad, y)
+      ctx.stroke()
+      y += divW + divGapAfter
+    }
   }
 
-  if (namedPins.length > 0) {
+  if (hasLegend) {
     ctx.save()
     ctx.fillStyle = '#9ca3af'
     ctx.font = `700 ${headerSize}px system-ui,sans-serif`
@@ -236,7 +338,6 @@ function drawLegend(ctx: CanvasRenderingContext2D, title: string, pins: Pin[], p
       const textX = boxX + pad + emojiColW + Math.round(7 * S)
       const textMaxW = legendW - pad * 2 - emojiColW - Math.round(7 * S)
 
-      // Emoji
       ctx.save()
       ctx.font = `${Math.round(15 * S)}px serif`
       ctx.textAlign = 'left'
@@ -244,7 +345,6 @@ function drawLegend(ctx: CanvasRenderingContext2D, title: string, pins: Pin[], p
       ctx.fillText(pin.emoji, boxX + pad, y)
       ctx.restore()
 
-      // Name
       ctx.save()
       ctx.fillStyle = '#1f2937'
       ctx.font = `600 ${nameSize}px system-ui,sans-serif`
@@ -253,7 +353,6 @@ function drawLegend(ctx: CanvasRenderingContext2D, title: string, pins: Pin[], p
       ctx.fillText(pin.name, textX, y, textMaxW)
       ctx.restore()
 
-      // Description
       if (pin.description) {
         ctx.save()
         ctx.fillStyle = '#6b7280'
@@ -267,6 +366,83 @@ function drawLegend(ctx: CanvasRenderingContext2D, title: string, pins: Pin[], p
       const rowH = pin.description ? nameSize + Math.round(2 * S) + descSize : nameSize
       y += Math.max(emojiColW, rowH) + rowGap
     }
+
+    if (includeScale) {
+      y += divGapBefore
+      ctx.strokeStyle = '#e5e7eb'
+      ctx.lineWidth = divW
+      ctx.beginPath()
+      ctx.moveTo(boxX + pad, y)
+      ctx.lineTo(boxX + legendW - pad, y)
+      ctx.stroke()
+      y += divW + divGapAfter
+    }
+  }
+
+  // Scale footer — compact, full width
+  if (includeScale) {
+    const [nw, ne] = corners as [[number, number], [number, number]]
+    const widthKm = haversineKm(nw[0], nw[1], ne[0], ne[1])
+    const scaleAvailW = legendW - pad * 2
+    const targetPx = scaleAvailW * 0.85
+
+    let barWidthPx: number
+    let label: string
+
+    if (scaleUnit === 'mi') {
+      const widthMi = widthKm * 0.621371
+      const targetMi = targetPx / (paperW / widthMi)
+      if (targetMi >= 0.25) {
+        const niceMi = niceValue(targetMi, [0.25, 0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000])
+        barWidthPx = niceMi * (paperW / widthMi)
+        label = `${niceMi} mi`
+      } else {
+        const widthFt = widthMi * 5280
+        const targetFt = targetPx / (paperW / widthFt)
+        const niceFt = niceValue(targetFt, [50, 100, 200, 300, 400, 500, 1000, 2000])
+        barWidthPx = niceFt * (paperW / widthFt)
+        label = `${niceFt} ft`
+      }
+    } else {
+      const targetKm = targetPx / (paperW / widthKm)
+      if (targetKm >= 1) {
+        const niceKm = niceValue(targetKm, [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000])
+        barWidthPx = niceKm * (paperW / widthKm)
+        label = `${niceKm} km`
+      } else {
+        const widthM = widthKm * 1000
+        const targetM = targetPx / (paperW / widthM)
+        const niceM = niceValue(targetM, [50, 100, 200, 500, 1000])
+        barWidthPx = niceM * (paperW / widthM)
+        label = `${niceM} m`
+      }
+    }
+
+    if (barWidthPx >= 10) {
+      const barTopY = y + Math.round(4 * S)
+      const barX = boxX + pad + Math.round((scaleAvailW - barWidthPx) / 2)
+
+      ctx.fillStyle = '#1f2937'
+      ctx.fillRect(barX, barTopY, barWidthPx / 2, scaleBarH)
+      ctx.fillStyle = '#e5e7eb'
+      ctx.fillRect(barX + barWidthPx / 2, barTopY, barWidthPx / 2, scaleBarH)
+      ctx.strokeStyle = '#1f2937'
+      ctx.lineWidth = Math.max(1, S)
+      ctx.strokeRect(barX, barTopY, barWidthPx, scaleBarH)
+      ctx.beginPath()
+      ctx.moveTo(barX + barWidthPx / 2, barTopY)
+      ctx.lineTo(barX + barWidthPx / 2, barTopY + scaleBarH)
+      ctx.stroke()
+
+      const labelY = barTopY + scaleBarH + Math.round(3 * S)
+      ctx.fillStyle = '#374151'
+      ctx.font = `${scaleFontSize}px system-ui,sans-serif`
+      ctx.textBaseline = 'top'
+      ctx.textAlign = 'left'
+      ctx.fillText('0', barX, labelY)
+      ctx.textAlign = 'right'
+      ctx.fillText(label, barX + barWidthPx, labelY)
+    }
   }
 }
 
@@ -279,198 +455,12 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 }
 
 function niceValue(value: number, steps: number[]): number {
-  return steps.reduce((best, s) => (s <= value ? s : best), steps[0])
-}
-
-function drawScaleBar(ctx: CanvasRenderingContext2D, corners: [number, number][], unit: 'km' | 'mi', paperW: number, paperH: number, corner: OverlayCorner) {
-  const S = paperW / 612
-  const [nw, ne] = corners
-  const widthKm = haversineKm(nw[0], nw[1], ne[0], ne[1])
-  const targetPx = paperW * 0.22
-
-  let barWidthPx: number
-  let label: string
-
-  if (unit === 'mi') {
-    const widthMi = widthKm * 0.621371
-    const targetMi = targetPx / (paperW / widthMi)
-    if (targetMi >= 0.25) {
-      const niceMi = niceValue(targetMi, [0.25, 0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000])
-      barWidthPx = niceMi * (paperW / widthMi)
-      label = `${niceMi} mi`
-    } else {
-      const widthFt = widthMi * 5280
-      const targetFt = targetPx / (paperW / widthFt)
-      const niceFt = niceValue(targetFt, [50, 100, 200, 300, 400, 500, 1000, 2000])
-      barWidthPx = niceFt * (paperW / widthFt)
-      label = `${niceFt} ft`
-    }
-  } else {
-    const targetKm = targetPx / (paperW / widthKm)
-    if (targetKm >= 1) {
-      const niceKm = niceValue(targetKm, [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000])
-      barWidthPx = niceKm * (paperW / widthKm)
-      label = `${niceKm} km`
-    } else {
-      const widthM = widthKm * 1000
-      const targetM = targetPx / (paperW / widthM)
-      const niceM = niceValue(targetM, [50, 100, 200, 500, 1000])
-      barWidthPx = niceM * (paperW / widthM)
-      label = `${niceM} m`
-    }
-  }
-
-  if (barWidthPx < 20) return
-
-  const margin = Math.round(16 * S)
-  const barH = Math.round(5 * S)
-  const fontSize = Math.round(9 * S)
-  const isRight = corner === 1 || corner === 2
-  const isTop = corner === 0 || corner === 1
-  const barX = isRight ? paperW - barWidthPx - margin : margin
-  const barY = isTop ? margin : paperH - margin - fontSize - Math.round(5 * S) - barH
-
-  const bgPad = Math.round(8 * S)
-  const bgX = barX - bgPad
-  const bgY = barY - bgPad
-  const bgW = barWidthPx + bgPad * 2
-  const bgH = barH + fontSize + Math.round(5 * S) + bgPad * 2
-  const bgR = Math.round(6 * S)
-
-  ctx.save()
-  ctx.shadowColor = 'rgba(0,0,0,0.15)'
-  ctx.shadowBlur = Math.round(8 * S)
-  ctx.shadowOffsetY = Math.round(2 * S)
-  ctx.fillStyle = 'rgba(255,255,255,0.95)'
-  roundRect(ctx, bgX, bgY, bgW, bgH, bgR)
-  ctx.fill()
-  ctx.restore()
-  ctx.strokeStyle = '#d1d5db'
-  ctx.lineWidth = Math.max(1, S)
-  roundRect(ctx, bgX, bgY, bgW, bgH, bgR)
-  ctx.stroke()
-
-  // Left half: dark fill; right half: white fill
-  ctx.fillStyle = '#1f2937'
-  ctx.fillRect(barX, barY, barWidthPx / 2, barH)
-  ctx.fillStyle = 'white'
-  ctx.fillRect(barX + barWidthPx / 2, barY, barWidthPx / 2, barH)
-
-  // Bar outline + center divider
-  ctx.strokeStyle = '#1f2937'
-  ctx.lineWidth = Math.max(1, S)
-  ctx.strokeRect(barX, barY, barWidthPx, barH)
-  ctx.beginPath()
-  ctx.moveTo(barX + barWidthPx / 2, barY)
-  ctx.lineTo(barX + barWidthPx / 2, barY + barH)
-  ctx.stroke()
-
-  // Labels
-  const labelY = barY + barH + Math.round(4 * S)
-  ctx.fillStyle = '#111827'
-  ctx.font = `${fontSize}px system-ui,sans-serif`
-  ctx.textBaseline = 'top'
-  ctx.textAlign = 'left'
-  ctx.fillText('0', barX, labelY)
-  ctx.textAlign = 'right'
-  ctx.fillText(label, barX + barWidthPx, labelY)
-}
-
-function drawCompass(ctx: CanvasRenderingContext2D, angle: number, paperW: number, paperH: number, corner: OverlayCorner) {
-  const S = paperW / 612
-
-  const circleR = Math.round(20 * S)
-  const tipR = Math.round(15 * S) // center → north tip
-  const tailR = Math.round(10 * S) // center → south tip
-  const wingR = Math.round(5 * S) // half-width at center
-  const labelR = Math.round(25 * S) // center → N label
-  const fontSize = Math.round(11 * S)
-
-  // North direction in the output canvas.
-  // Stitch canvas has north = (0,-1). After rotate(-angle) the transform maps
-  // (0,-1) → (-sin(angle), -cos(angle)).  east = rotate(north, +90°) = (-ny, nx).
-  const nx = -Math.sin(angle),
-    ny = -Math.cos(angle)
-  const ex = -ny,
-    ey = nx // east (90° CW from north)
-
-  const pad = labelR + fontSize + Math.round(8 * S)
-  const isRight = corner === 1 || corner === 2
-  const isTop = corner === 0 || corner === 1
-  const cx = isRight ? paperW - pad : pad
-  const cy = isTop ? pad : paperH - pad
-
-  const northX = cx + nx * tipR,
-    northY = cy + ny * tipR
-  const southX = cx - nx * tailR,
-    southY = cy - ny * tailR
-  const leftX = cx + ex * wingR,
-    leftY = cy + ey * wingR
-  const rightX = cx - ex * wingR,
-    rightY = cy - ey * wingR
-
-  // Background circle
-  ctx.save()
-  ctx.shadowColor = 'rgba(0,0,0,0.15)'
-  ctx.shadowBlur = Math.round(8 * S)
-  ctx.shadowOffsetY = Math.round(2 * S)
-  ctx.fillStyle = 'rgba(255,255,255,0.95)'
-  ctx.beginPath()
-  ctx.arc(cx, cy, circleR, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.restore()
-  ctx.strokeStyle = '#d1d5db'
-  ctx.lineWidth = Math.max(1, S)
-  ctx.beginPath()
-  ctx.arc(cx, cy, circleR, 0, Math.PI * 2)
-  ctx.stroke()
-
-  // North half (dark)
-  ctx.fillStyle = '#1f2937'
-  ctx.beginPath()
-  ctx.moveTo(northX, northY)
-  ctx.lineTo(leftX, leftY)
-  ctx.lineTo(rightX, rightY)
-  ctx.closePath()
-  ctx.fill()
-
-  // South half (white)
-  ctx.fillStyle = 'white'
-  ctx.beginPath()
-  ctx.moveTo(southX, southY)
-  ctx.lineTo(leftX, leftY)
-  ctx.lineTo(rightX, rightY)
-  ctx.closePath()
-  ctx.fill()
-
-  // Diamond outline
-  ctx.strokeStyle = '#9ca3af'
-  ctx.lineWidth = Math.max(1, S * 0.75)
-  ctx.beginPath()
-  ctx.moveTo(northX, northY)
-  ctx.lineTo(leftX, leftY)
-  ctx.lineTo(southX, southY)
-  ctx.lineTo(rightX, rightY)
-  ctx.closePath()
-  ctx.stroke()
-
-  // Center dot
-  ctx.fillStyle = '#9ca3af'
-  ctx.beginPath()
-  ctx.arc(cx, cy, Math.round(2 * S), 0, Math.PI * 2)
-  ctx.fill()
-
-  // N label
-  ctx.fillStyle = '#111827'
-  ctx.font = `700 ${fontSize}px system-ui,sans-serif`
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('N', cx + nx * labelR, cy + ny * labelR)
+  return steps.reduce((best, s) => (s <= value ? s : best), steps[0] ?? 0)
 }
 
 // Split a 4-corner rect [NW,NE,SE,SW] into a grid cell. Returns [NW,NE,SE,SW] for cell (ci,rj).
 function subCornersForCell(corners: [number, number][], ci: number, rj: number, cols: number, rows: number): [number, number][] {
-  const [nw, ne, , sw] = corners
+  const [nw, ne, , sw] = corners as [[number, number], [number, number], [number, number], [number, number]]
   const rLat = (ne[0] - nw[0]) / cols,
     rLng = (ne[1] - nw[1]) / cols
   const dLat = (sw[0] - nw[0]) / rows,
@@ -487,6 +477,7 @@ export interface ExportOptions {
   angle: number // rectangle rotation in radians
   mapStyle: MapStyle
   mapTitle: string
+  mapArea?: string
   pins: Pin[]
   hiddenPinIds: Set<number>
   includeLegend: boolean
@@ -505,7 +496,7 @@ const TILE_SIZE = 256 // px per tile at 1x (used for grid/zoom math regardless o
 const MAX_OUTPUT_PX = 7200 // cap longest side — gives ~217 DPI at A0, ~800+ DPI at A4
 const TILE_CONCURRENCY = 24 // max simultaneous tile requests (6 connections × 4 CartoDB subdomains)
 
-async function renderPageToPng(corners: [number, number][], angle: number, config: MapStyleConfig, pins: Pin[], hiddenPinIds: Set<number>, includeLegend: boolean, includeCompass: boolean, includeScale: boolean, scaleUnit: 'km' | 'mi', enhanceContrast: boolean, mapTitle: string, onProgress?: (msg: string) => void): Promise<Uint8Array> {
+async function renderPageToPng(corners: [number, number][], angle: number, config: MapStyleConfig, pins: Pin[], hiddenPinIds: Set<number>, includeLegend: boolean, includeCompass: boolean, includeScale: boolean, scaleUnit: 'km' | 'mi', enhanceContrast: boolean, mapTitle: string, mapArea: string, legendPins?: Pin[], onProgress?: (msg: string) => void): Promise<Uint8Array> {
   // --- 1. Compute the AABB of the 4 corners in lat/lng space ---
   const lats = corners.map((c) => c[0])
   const lngs = corners.map((c) => c[1])
@@ -573,9 +564,9 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
     const imgData = stitchCtx.getImageData(0, 0, stitchCanvas.width, stitchCanvas.height)
     const d = imgData.data
     for (let i = 0; i < d.length; i += 4) {
-      d[i] = Math.round(Math.max(0, ((d[i] - lo) / range) * 255))
-      d[i + 1] = Math.round(Math.max(0, ((d[i + 1] - lo) / range) * 255))
-      d[i + 2] = Math.round(Math.max(0, ((d[i + 2] - lo) / range) * 255))
+      d[i] = Math.round(Math.max(0, (((d[i] ?? 0) - lo) / range) * 255))
+      d[i + 1] = Math.round(Math.max(0, (((d[i + 1] ?? 0) - lo) / range) * 255))
+      d[i + 2] = Math.round(Math.max(0, (((d[i + 2] ?? 0) - lo) / range) * 255))
     }
     stitchCtx.putImageData(imgData, 0, 0)
   }
@@ -640,13 +631,9 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
     return ox >= 0 && ox <= paperWidthPx && oy >= 0 && oy <= paperHeightPx
   })
 
-  const overlayCorner = (includeLegend || includeCompass || includeScale)
-    ? bestCorner(pinsInArea, geoToOutputPx, paperWidthPx, paperHeightPx)
-    : 2
+  const overlayCorner = includeLegend || includeCompass || includeScale ? bestCorner(pinsInArea, geoToOutputPx, paperWidthPx, paperHeightPx) : 2
   drawPins(outCtx, pins, hiddenPinIds, geoToOutputPx, paperWidthPx, paperHeightPx)
-  if (includeLegend) drawLegend(outCtx, mapTitle, pinsInArea, paperWidthPx, paperHeightPx, overlayCorner)
-  if (includeCompass) drawCompass(outCtx, angle, paperWidthPx, paperHeightPx, overlayCorner)
-  if (includeScale) drawScaleBar(outCtx, corners, scaleUnit, paperWidthPx, paperHeightPx, overlayCorner)
+  drawInfoBox(outCtx, mapTitle, mapArea, legendPins ?? pinsInArea, angle, corners, scaleUnit, includeLegend, includeCompass, includeScale, paperWidthPx, paperHeightPx, overlayCorner)
 
   // --- 8. Return PNG bytes ---
   return new Promise<Uint8Array>((resolve, reject) => {
@@ -664,7 +651,7 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
 }
 
 export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
-  const { corners, angle, mapStyle, mapTitle, pins, hiddenPinIds, includeLegend, includeCompass, includeScale, scaleUnit, enhanceContrast, paperWidthPt, paperHeightPt, gridCols = 1, gridRows = 1, onProgress } = opts
+  const { corners, angle, mapStyle, mapTitle, mapArea = '', pins, hiddenPinIds, includeLegend, includeCompass, includeScale, scaleUnit, enhanceContrast, paperWidthPt, paperHeightPt, gridCols = 1, gridRows = 1, onProgress } = opts
 
   const config = MAP_STYLE_CONFIGS[mapStyle]
   const totalPages = gridCols * gridRows
@@ -672,20 +659,32 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
   pdfDoc.setTitle(mapTitle || 'MapFolio')
   pdfDoc.setCreator('MapFolio')
 
+  // For grid exports, pre-compute pins within the full area so the legend
+  // on the legend page shows all pins across every cell, not just that cell's.
+  let fullAreaLegendPins: Pin[] | undefined
+  if (totalPages > 1 && includeLegend) {
+    const lats = corners.map((c) => c[0])
+    const lngs = corners.map((c) => c[1])
+    const minLat = Math.min(...lats),
+      maxLat = Math.max(...lats)
+    const minLng = Math.min(...lngs),
+      maxLng = Math.max(...lngs)
+    fullAreaLegendPins = pins.filter((p) => !hiddenPinIds.has(p.id) && p.lat >= minLat && p.lat <= maxLat && p.lng >= minLng && p.lng <= maxLng)
+  }
+
   for (let rj = 0; rj < gridRows; rj++) {
     for (let ci = 0; ci < gridCols; ci++) {
       const pageNum = rj * gridCols + ci + 1
       const cellCorners = totalPages === 1 ? corners : subCornersForCell(corners, ci, rj, gridCols, gridRows)
 
-      // Compass: top-right cell (col cols-1, row 0)
-      // Legend:  bottom-right cell (col cols-1, row rows-1)
-      // Scale:   bottom-left cell (col 0, row rows-1)
-      const cellCompass = includeCompass && ci === gridCols - 1 && rj === 0
-      const cellLegend = includeLegend && ci === gridCols - 1 && rj === gridRows - 1
-      const cellScale = includeScale && ci === 0 && rj === gridRows - 1
+      // All overlay elements go together on the bottom-right cell as a single combined box.
+      const isInfoCell = ci === gridCols - 1 && rj === gridRows - 1
+      const cellCompass = includeCompass && isInfoCell
+      const cellLegend = includeLegend && isInfoCell
+      const cellScale = includeScale && isInfoCell
 
       const prefix = totalPages > 1 ? `Page ${pageNum} of ${totalPages} — ` : ''
-      const pngBytes = await renderPageToPng(cellCorners, angle, config, pins, hiddenPinIds, cellLegend, cellCompass, cellScale, scaleUnit, enhanceContrast, mapTitle, (msg) => onProgress?.(`${prefix}${msg}`))
+      const pngBytes = await renderPageToPng(cellCorners, angle, config, pins, hiddenPinIds, cellLegend, cellCompass, cellScale, scaleUnit, enhanceContrast, mapTitle, mapArea, cellLegend ? fullAreaLegendPins : undefined, (msg) => onProgress?.(`${prefix}${msg}`))
 
       const pdfImage = await pdfDoc.embedPng(pngBytes)
       const page = pdfDoc.addPage([paperWidthPt, paperHeightPt])

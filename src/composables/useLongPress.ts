@@ -23,7 +23,7 @@ export function useLongPress(
 
   const onTouchStart = (e: TouchEvent) => {
     if (e.touches.length !== 1 || isBlocked()) return
-    const t = e.touches[0]
+    const t = e.touches[0]!
     lpStart = { x: t.clientX, y: t.clientY }
     longPressFired = false
     longPressTimer = setTimeout(() => {
@@ -40,7 +40,7 @@ export function useLongPress(
 
   const onTouchMove = (e: TouchEvent) => {
     if (!lpStart || !longPressTimer) return
-    const t = e.touches[0]
+    const t = e.touches[0]!
     if (Math.hypot(t.clientX - lpStart.x, t.clientY - lpStart.y) > 10) {
       clearTimeout(longPressTimer)
       longPressTimer = null
@@ -57,7 +57,10 @@ export function useLongPress(
       document.addEventListener('click', swallow, { capture: true, once: true })
       setTimeout(() => document.removeEventListener('click', swallow, { capture: true }), 300)
     }
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null }
+    if (longPressTimer) {
+      clearTimeout(longPressTimer)
+      longPressTimer = null
+    }
     lpStart = null
   }
 

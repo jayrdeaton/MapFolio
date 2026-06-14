@@ -1,12 +1,20 @@
 export interface RoutePoint {
   lat: number
   lng: number
+  pinId?: number
 }
+
+export type RouteLineStyle = 'solid' | 'dashed' | 'dotted' | 'long-dash' | 'dash-dot' | 'arrow' | 'double' | 'none'
+export type RouteWaypointStyle = 'number' | 'circle' | 'square' | 'none'
+export type RouteWaypointSize = 's' | 'm' | 'l'
 
 export interface Route {
   id: number
   name: string
   color: string
+  lineStyle?: RouteLineStyle
+  waypointStyle?: RouteWaypointStyle
+  waypointSize?: RouteWaypointSize
   points: RoutePoint[]
 }
 
@@ -19,6 +27,20 @@ export interface Pin {
   lat: number
   lng: number
   address?: string
+}
+
+export interface MapData {
+  id: string
+  name: string
+  area: string
+  pins: Pin[]
+  routes: Route[]
+  mapStyle: MapStyle
+  showLabels: boolean
+  showClusters: boolean
+  pinDotSize: PinDotSize
+  center?: [number, number]
+  zoom?: number
 }
 
 export type MapStyle = 'clean' | 'minimal' | 'standard' | 'satellite' | 'terrain'

@@ -1,4 +1,4 @@
-import { MapStyle, Pin } from './types'
+import type { MapStyle, Pin, Route, RoutePoint } from './types'
 
 const EMOJI_NAMES: Record<string, string> = {
   '📍': 'Pin',
@@ -176,6 +176,56 @@ export function parseGeoJsonImport(json: string): { pins: Pin[] } | null {
         }
       })
     return pins.length > 0 ? { pins } : null
+  } catch {
+    return null
+  }
+}
+
+export function routesToGeoJson(routes: Route[]) {
+  return {
+    type: 'FeatureCollection' as const,
+    features: routes.map((r) => ({
+      type: 'Feature' as const,
+      properties: { name: r.name, color: r.color, lineStyle: r.lineStyle ?? 'solid' },
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: r.points.map((p: RoutePoint) => [p.lng, p.lat])
+      }
+    }))
+  }
+}
+
+export function parseRouteImport(json: string): { routes: Route[]; mapTitle?: string } | null {
+  try {
+    const data = JSON.parse(json)
+    if (!Array.isArray(data.routes)) return null
+    return { routes: data.routes as Route[], mapTitle: data.mapTitle as string | undefined }
+  } catch {
+    return null
+  }
+}
+
+export function parseGeoJsonRouteImport(json: string): { routes: Route[] } | null {
+  try {
+    const data = JSON.parse(json)
+    if (data.type !== 'FeatureCollection' || !Array.isArray(data.features)) return null
+    const routes: Route[] = data.features
+      .filter((f: Record<string, unknown>) => {
+        const geo = f.geometry as Record<string, unknown> | null
+        return f.type === 'Feature' && geo?.type === 'LineString'
+      })
+      .map((f: Record<string, unknown>, i: number) => {
+        const props = (f.properties ?? {}) as Record<string, unknown>
+        const geo = f.geometry as { coordinates: [number, number][] }
+        return {
+          id: Date.now() + i,
+          name: (props.name ?? `Route ${i + 1}`) as string,
+          color: (props.color ?? '#06b6d4') as string,
+          lineStyle: (props.lineStyle ?? 'solid') as Route['lineStyle'],
+          points: geo.coordinates.map(([lng, lat]) => ({ lat, lng }))
+        }
+      })
+    return routes.length > 0 ? { routes } : null
   } catch {
     return null
   }

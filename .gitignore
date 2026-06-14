@@ -1,1 +1,24 @@
+# Nuxt
+.nuxt
+.output
+.data
+.nitro
+.cache
+
+# Build
+dist
+
+# Node
 node_modules
+
+# Env
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+.vercel
+
+# Input / Output
+*.txt

@@ -18,18 +18,18 @@ describe('pinsToGeoJson', () => {
     const gj = pinsToGeoJson([pin])
     expect(gj.type).toBe('FeatureCollection')
     expect(gj.features).toHaveLength(1)
-    expect(gj.features[0].type).toBe('Feature')
-    expect(gj.features[0].geometry.type).toBe('Point')
+    expect(gj.features[0]!.type).toBe('Feature')
+    expect(gj.features[0]!.geometry.type).toBe('Point')
   })
 
   it('puts longitude before latitude per GeoJSON spec', () => {
-    const [lng, lat] = pinsToGeoJson([pin]).features[0].geometry.coordinates
+    const [lng, lat] = pinsToGeoJson([pin]).features[0]!.geometry.coordinates
     expect(lng).toBe(pin.lng)
     expect(lat).toBe(pin.lat)
   })
 
   it('includes all properties', () => {
-    const props = pinsToGeoJson([pin]).features[0].properties
+    const props = pinsToGeoJson([pin]).features[0]!.properties
     expect(props.name).toBe('Test Pin')
     expect(props.description).toBe('A test location')
     expect(props.emoji).toBe('📍')
@@ -45,9 +45,9 @@ describe('encodeShareState / decodeShareState', () => {
   it('roundtrips basic state accurately', () => {
     const state = { pins: [pin], mapStyle: 'clean' as const, mapTitle: 'My Map' }
     const decoded = decodeShareState(encodeShareState(state))
-    expect(decoded?.pins[0].name).toBe('Test Pin')
-    expect(decoded?.pins[0].lat).toBeCloseTo(40.7128, 4)
-    expect(decoded?.pins[0].lng).toBeCloseTo(-74.006, 4)
+    expect(decoded?.pins[0]!.name).toBe('Test Pin')
+    expect(decoded?.pins[0]!.lat).toBeCloseTo(40.7128, 4)
+    expect(decoded?.pins[0]!.lng).toBeCloseTo(-74.006, 4)
     expect(decoded?.mapStyle).toBe('clean')
     expect(decoded?.mapTitle).toBe('My Map')
   })
@@ -55,8 +55,8 @@ describe('encodeShareState / decodeShareState', () => {
   it('handles emoji in pin name and icon field', () => {
     const emojiPin = { ...pin, name: 'Swimming 🏊 Hole', emoji: '💧' }
     const decoded = decodeShareState(encodeShareState({ pins: [emojiPin], mapStyle: 'clean' as const, mapTitle: '' }))
-    expect(decoded?.pins[0].name).toBe('Swimming 🏊 Hole')
-    expect(decoded?.pins[0].emoji).toBe('💧')
+    expect(decoded?.pins[0]!.name).toBe('Swimming 🏊 Hole')
+    expect(decoded?.pins[0]!.emoji).toBe('💧')
   })
 
   it('roundtrips an empty pin list', () => {
@@ -92,22 +92,22 @@ describe('parseGeoJsonImport', () => {
   it('parses a valid FeatureCollection with all properties', () => {
     const result = parseGeoJsonImport(geojson([pointFeature([-74.006, 40.7128], { name: 'A', description: 'Desc', emoji: '⭐', color: '#ff0000' })]))
     expect(result?.pins).toHaveLength(1)
-    expect(result?.pins[0].name).toBe('A')
-    expect(result?.pins[0].lat).toBeCloseTo(40.7128, 4)
-    expect(result?.pins[0].lng).toBeCloseTo(-74.006, 4)
-    expect(result?.pins[0].emoji).toBe('⭐')
-    expect(result?.pins[0].color).toBe('#ff0000')
+    expect(result?.pins[0]!.name).toBe('A')
+    expect(result?.pins[0]!.lat).toBeCloseTo(40.7128, 4)
+    expect(result?.pins[0]!.lng).toBeCloseTo(-74.006, 4)
+    expect(result?.pins[0]!.emoji).toBe('⭐')
+    expect(result?.pins[0]!.color).toBe('#ff0000')
   })
 
   it('uses "title" as fallback name and "desc" as fallback description', () => {
     const result = parseGeoJsonImport(geojson([pointFeature([0, 0], { title: 'Fallback', desc: 'Alt desc' })]))
-    expect(result?.pins[0].name).toBe('Fallback')
-    expect(result?.pins[0].description).toBe('Alt desc')
+    expect(result?.pins[0]!.name).toBe('Fallback')
+    expect(result?.pins[0]!.description).toBe('Alt desc')
   })
 
   it('falls back to "Pin N" when no name property exists', () => {
     const result = parseGeoJsonImport(geojson([pointFeature([0, 0])]))
-    expect(result?.pins[0].name).toBe('Pin 1')
+    expect(result?.pins[0]!.name).toBe('Pin 1')
   })
 
   it('ignores non-Point geometry types', () => {
@@ -128,7 +128,7 @@ describe('parseGeoJsonImport', () => {
       ])
     )
     expect(result?.pins).toHaveLength(1)
-    expect(result?.pins[0].name).toBe('Keep me')
+    expect(result?.pins[0]!.name).toBe('Keep me')
   })
 
   it('returns null for a non-FeatureCollection input', () => {
@@ -145,7 +145,7 @@ describe('parsePinImport', () => {
   it('parses valid export format', () => {
     const result = parsePinImport(JSON.stringify({ pins: [pin], mapTitle: 'Imported' }))
     expect(result?.pins).toHaveLength(1)
-    expect(result?.pins[0].name).toBe('Test Pin')
+    expect(result?.pins[0]!.name).toBe('Test Pin')
     expect(result?.mapTitle).toBe('Imported')
   })
 
