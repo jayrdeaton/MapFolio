@@ -26,6 +26,11 @@ const newPinColor = ref('#06b6d4')
 const customEmoji = ref('')
 const showAllEmojis = ref(false)
 
+function selectEmoji(emoji: string) {
+  newPinEmoji.value = emoji
+  customEmoji.value = ''
+}
+
 const activeEmoji = computed(() => customEmoji.value.trim() || newPinEmoji.value)
 
 watch(
@@ -94,12 +99,7 @@ const btnBase = 'px-3 py-2 rounded text-sm font-medium transition-colors flex it
         <div>
           <label :class="sectionLabelClass">Icon</label>
           <div class="flex flex-wrap gap-0.5 mb-2">
-            <button
-              v-for="emoji in showAllEmojis ? DEFAULT_EMOJIS : DEFAULT_EMOJIS.slice(0, 11)"
-              :key="emoji"
-              :class="['w-8 h-8 text-base rounded cursor-pointer transition-all flex items-center justify-center', newPinEmoji === emoji && !customEmoji.trim() ? 'ring-2 ring-cyan-500 bg-cyan-50 dark:bg-cyan-950/30' : 'hover:bg-gray-100 dark:hover:bg-zinc-800']"
-              @click="newPinEmoji = emoji; customEmoji = ''"
-            >
+            <button v-for="emoji in showAllEmojis ? DEFAULT_EMOJIS : DEFAULT_EMOJIS.slice(0, 11)" :key="emoji" :class="['w-8 h-8 text-base rounded cursor-pointer transition-all flex items-center justify-center', newPinEmoji === emoji && !customEmoji.trim() ? 'ring-2 ring-cyan-500 bg-cyan-50 dark:bg-cyan-950/30' : 'hover:bg-gray-100 dark:hover:bg-zinc-800']" @click="selectEmoji(emoji)">
               {{ emoji }}
             </button>
             <button class="w-8 h-8 text-xs rounded cursor-pointer flex items-center justify-center font-medium text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-800" @click="showAllEmojis = !showAllEmojis">{{ showAllEmojis ? '−' : '···' }}</button>

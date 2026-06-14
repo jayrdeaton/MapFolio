@@ -338,14 +338,27 @@ function handlePendingPinMove(_id: number, lat: number, lng: number) {
 // ── Map initialization ────────────────────────────────────────────────────────
 
 function onMapReady(map: L.Map) {
-  clusterGroup.value = L.markerClusterGroup({
+  console.log('[App] onMapReady — creating clusterGroup')
+  const cg = L.markerClusterGroup({
     disableClusteringAtZoom: 17,
     showCoverageOnHover: false,
     maxClusterRadius: 60,
     spiderfyOnMaxZoom: true
-  }).addTo(map)
-
+  })
+  cg.on('clusterclick', (e: L.LeafletEvent) => {
+    try {
+      const cluster = (e as any).layer as L.MarkerCluster
+      const bounds = cluster.getBounds()
+      if (bounds.getNorth() === bounds.getSouth() && bounds.getEast() === bounds.getWest()) {
+        cluster.spiderfy()
+        ;(e as any).originalEvent?.stopPropagation()
+      }
+    } catch {}
+  })
+  cg.addTo(map)
+  clusterGroup.value = cg
   leafletMap.value = map
+  console.log('[App] map ready — clusterGroup and leafletMap initialized')
   applyTileLayer(map)
   applyLabelsLayer(map)
   map.on('moveend', saveState)

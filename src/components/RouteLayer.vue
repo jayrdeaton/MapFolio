@@ -27,7 +27,34 @@ const emit = defineEmits<{
 }>()
 
 type PixelPos = [number, number]
-const positions = ref<Map<number, PixelPos[]>>(new Map())
+
+// Increment to force positions recomputation after any map state change (zoom, resize, etc.)
+const positionsKey = ref(0)
+
+// Computed positions: auto-recomputes when routes change (deep-tracked) or positionsKey bumps.
+// Using computed instead of manual ref assignment ensures Vue's dependency tracking sees
+// both the trigger (positionsKey) and the route data in the same reactive graph.
+const positions = computed<Map<number, PixelPos[]>>(() => {
+  void positionsKey.value
+  const result = new Map<number, PixelPos[]>()
+  for (const route of props.routes) {
+    result.set(
+      route.id,
+      route.points
+        .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+        .map((p) => {
+          const pt = props.map.latLngToLayerPoint([p.lat, p.lng])
+          return [pt.x, pt.y] as PixelPos
+        })
+    )
+  }
+  return result
+})
+
+function triggerUpdate() {
+  positionsKey.value++
+}
+
 const isZooming = ref(false)
 const routePane = ref<HTMLElement | null>(null)
 
@@ -51,9 +78,11 @@ function getRouteDisplayPoints(routeId: number): PixelPos[] {
   const pts = positions.value.get(routeId) ?? []
   if (!dragState.value || dragState.value.routeId !== routeId) return pts
   if (dragState.value.mode === 'route') {
+    if (!dragState.value.hasMoved) return pts
     const [mx, my] = dragState.value.pixel
     return dragState.value.offsets.map(([ox, oy]) => [mx + ox, my + oy] as PixelPos)
   }
+  if (!dragState.value.hasMoved) return pts
   const { pointIndex, pixel } = dragState.value
   return pts.map((p, i) => (i === pointIndex ? pixel : p))
 }
@@ -147,8 +176,11 @@ function onPointerUp(e: PointerEvent) {
   if (!dragState.value) return
   if (dragState.value.mode === 'waypoint') {
     if (dragState.value.hasMoved) {
+      const { routeId, pointIndex } = dragState.value
       const latlng = props.map.layerPointToLatLng(L.point(dragState.value.pixel[0], dragState.value.pixel[1]))
-      emit('move-point', dragState.value.routeId, dragState.value.pointIndex, latlng.lat, latlng.lng)
+      // Suppress the synthetic click that fires after a drag ends
+      pendingTapWaypoint = { routeId, pointIndex }
+      emit('move-point', routeId, pointIndex, latlng.lat, latlng.lng)
     } else {
       // Tap — emit directly and suppress the subsequent native click
       const { routeId, pointIndex } = dragState.value
@@ -189,24 +221,10 @@ function stopDocumentDrag() {
   document.removeEventListener('pointercancel', cleanupDrag, { capture: true })
 }
 
-function updatePositions() {
-  const map = props.map
-  const next = new Map<number, PixelPos[]>()
-  for (const route of props.routes) {
-    next.set(
-      route.id,
-      route.points.map((p) => {
-        const pt = map.latLngToLayerPoint([p.lat, p.lng])
-        return [pt.x, pt.y] as PixelPos
-      })
-    )
-  }
-  positions.value = next
-}
-
 let panesObserver: MutationObserver | null = null
 
 onMounted(() => {
+  console.log('[RouteLayer] onMounted — map:', props.map, 'routes:', props.routes.length)
   // Render inside a custom Leaflet pane (z-index 450) so routes sit below popup-pane (700).
   // The external-div approach used latLngToContainerPoint + move listener, but the map pane's
   // CSS transform creates a stacking context that trapped popups below any external z-index.
@@ -214,12 +232,15 @@ onMounted(() => {
   pane.style.zIndex = '450'
   routePane.value = pane
 
-  updatePositions()
-  props.map.on('resize', updatePositions)
-  // zoomend fires after Leaflet updates _pixelOrigin (inside _move), so layer-point
-  // positions are correct. The MutationObserver handles isZooming separately using the
-  // leaflet-zoom-anim class on mapPane, which brackets the CSS transition precisely.
-  props.map.on('zoomend', updatePositions)
+  // 'zoom' fires once after each animated zoom (including after _onZoomTransitionEnd).
+  // 'viewreset' fires from _resetView (non-animated setView/fitBounds).
+  // 'zoomend' and 'moveend' are belt-and-suspenders fallbacks.
+  // All just bump positionsKey so the computed recomputes on next render.
+  props.map.on('zoom', triggerUpdate)
+  props.map.on('zoomend', triggerUpdate)
+  props.map.on('viewreset', triggerUpdate)
+  props.map.on('moveend', triggerUpdate)
+  props.map.on('resize', triggerUpdate)
 
   const mapPane = props.map.getPane('mapPane') as HTMLElement | undefined
   if (mapPane) {
@@ -231,18 +252,15 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  props.map.off('resize', updatePositions)
-  props.map.off('zoomend', updatePositions)
+  props.map.off('zoom', triggerUpdate)
+  props.map.off('zoomend', triggerUpdate)
+  props.map.off('viewreset', triggerUpdate)
+  props.map.off('moveend', triggerUpdate)
+  props.map.off('resize', triggerUpdate)
   panesObserver?.disconnect()
   props.map.getPane('mfRoutePane')?.remove()
   stopDocumentDrag()
 })
-
-watch(
-  () => props.routes,
-  () => nextTick(updatePositions),
-  { deep: true }
-)
 </script>
 
 <template>
@@ -351,7 +369,7 @@ watch(
           :style="{
             pointerEvents: 'stroke',
             touchAction: 'none',
-            cursor: dragState?.routeId === route.id && dragState?.mode === 'route' && dragState.hasMoved ? 'grabbing' : 'grab'
+            cursor: dragState?.routeId === route.id && dragState?.mode === 'route' && dragState.hasMoved ? 'grabbing' : 'pointer'
           }"
           @pointerdown.stop="onLinePointerDown($event, route.id)"
           @click.stop="onLineClick($event, route.id)"
@@ -366,7 +384,7 @@ watch(
               ? {
                   pointerEvents: 'auto',
                   touchAction: 'none',
-                  cursor: dragState?.routeId === route.id && dragState?.mode === 'waypoint' && dragState.pointIndex === i && dragState.hasMoved ? 'grabbing' : 'grab'
+                  cursor: dragState?.routeId === route.id && dragState?.mode === 'waypoint' && dragState.pointIndex === i && dragState.hasMoved ? 'grabbing' : 'pointer'
                 }
               : { pointerEvents: 'none' }
           "

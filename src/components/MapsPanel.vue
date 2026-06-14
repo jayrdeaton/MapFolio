@@ -28,6 +28,21 @@ const showNewInput = ref(false)
 const confirmDeleteId = ref<string | null>(null)
 const showExportPicker = ref(false)
 
+function exportAll() {
+  emit('export-all')
+  showExportPicker.value = false
+}
+
+function exportMap(id: string) {
+  emit('export', id)
+  showExportPicker.value = false
+}
+
+function exportGeoJson(id: string) {
+  emit('export-geojson', id)
+  showExportPicker.value = false
+}
+
 function startRename(map: MapData) {
   renamingId.value = map.id
   renameValue.value = map.name
@@ -162,11 +177,7 @@ const sectionLabelClass = 'block text-gray-500 dark:text-zinc-400 font-semibold 
             <FileDown :size="13" class="text-gray-400 dark:text-zinc-500 shrink-0" />
             <span class="flex-1 text-sm text-gray-800 dark:text-zinc-200">All Maps</span>
             <div class="flex gap-1 shrink-0">
-              <button
-                class="w-7 h-7 flex items-center justify-center rounded border border-gray-300 dark:border-zinc-700 text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-700 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer transition-colors"
-                title="Export all as JSON"
-                @click="emit('export-all'); showExportPicker = false"
-              >
+              <button class="w-7 h-7 flex items-center justify-center rounded border border-gray-300 dark:border-zinc-700 text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-700 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer transition-colors" title="Export all as JSON" @click="exportAll()">
                 <FileDown :size="13" />
               </button>
             </div>
@@ -175,18 +186,10 @@ const sectionLabelClass = 'block text-gray-500 dark:text-zinc-400 font-semibold 
             <Map :size="13" class="text-gray-400 dark:text-zinc-500 shrink-0" />
             <span class="flex-1 text-sm text-gray-800 dark:text-zinc-200 truncate">{{ map.name }}</span>
             <div class="flex gap-1 shrink-0">
-              <button
-                class="w-7 h-7 flex items-center justify-center rounded border border-gray-300 dark:border-zinc-700 text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-700 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer transition-colors"
-                title="Export as JSON"
-                @click="emit('export', map.id); showExportPicker = false"
-              >
+              <button class="w-7 h-7 flex items-center justify-center rounded border border-gray-300 dark:border-zinc-700 text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-700 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer transition-colors" title="Export as JSON" @click="exportMap(map.id)">
                 <FileDown :size="13" />
               </button>
-              <button
-                class="w-7 h-7 flex items-center justify-center rounded border border-gray-300 dark:border-zinc-700 text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-700 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer transition-colors"
-                title="Export as GeoJSON"
-                @click="emit('export-geojson', map.id); showExportPicker = false"
-              >
+              <button class="w-7 h-7 flex items-center justify-center rounded border border-gray-300 dark:border-zinc-700 text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-700 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer transition-colors" title="Export as GeoJSON" @click="exportGeoJson(map.id)">
                 <Globe :size="13" />
               </button>
             </div>
