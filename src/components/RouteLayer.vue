@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import L from 'leaflet'
 
-import type { Pin, Route, RouteWaypointSize } from '../types'
+import type { Pin, Route, RouteWaypointSize } from '@/types'
 
 const WP_SIZE: Record<RouteWaypointSize, { r: number; sqHalf: number; fontSize: number; hitR: number }> = {
   s: { r: 6, sqHalf: 6, fontSize: 7, hitR: 10 },

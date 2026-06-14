@@ -2,9 +2,9 @@
 import { Magnet, Maximize2, Printer, RectangleHorizontal, RectangleVertical, ScanSearch } from '@lucide/vue'
 import type L from 'leaflet'
 
-import { GRID_PRESETS, type Orientation, PAPER_LABELS, PAPERS, type PaperSize } from '../composables/usePrintExport'
-import type { MapStyle } from '../types'
-import { MAP_STYLE_CONFIGS } from '../types'
+import { GRID_PRESETS, type Orientation, PAPER_LABELS, PAPERS, type PaperSize } from '@/composables/usePrintExport'
+import type { MapStyle } from '@/types'
+import { MAP_STYLE_CONFIGS } from '@/types'
 
 defineProps<{
   isAutoArea: boolean

@@ -1,7 +1,7 @@
 import L from 'leaflet'
 
-import type { MapStyle } from '../types'
-import { MAP_STYLE_CONFIGS } from '../types'
+import type { MapStyle } from '@/types'
+import { MAP_STYLE_CONFIGS } from '@/types'
 
 const LABEL_STYLES = new Set<MapStyle>(['clean', 'satellite'])
 

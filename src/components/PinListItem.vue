@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Eye, EyeOff, Pencil, Trash2 } from '@lucide/vue'
 
-import type { Pin } from '../types'
+import type { Pin } from '@/types'
 
 defineProps<{ pin: Pin; hidden?: boolean; resolving?: boolean }>()
 const emit = defineEmits<{

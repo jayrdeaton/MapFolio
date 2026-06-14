@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { LTileLayer } from '@vue-leaflet/vue-leaflet'
 
-import type { MapStyle } from '../types'
-import { MAP_STYLE_CONFIGS } from '../types'
+import type { MapStyle } from '@/types'
+import { MAP_STYLE_CONFIGS } from '@/types'
 
 const props = defineProps<{ style: MapStyle; isDark: boolean }>()
 const config = computed(() => MAP_STYLE_CONFIGS[props.style])

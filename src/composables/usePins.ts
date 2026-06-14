@@ -1,8 +1,8 @@
 import type L from 'leaflet'
 import type { ShallowRef } from 'vue'
 
-import type { Pin } from '../types'
-import { parseGeoJsonImport, parsePinImport, pinsToGeoJson } from '../utils'
+import type { Pin } from '@/types'
+import { parseGeoJsonImport, parsePinImport, pinsToGeoJson } from '@/utils'
 
 export function usePins(options: { initialPins: Pin[]; mapTitle: Ref<string>; leafletMap: ShallowRef<L.Map | null>; importFileRef: Ref<HTMLInputElement | null>; showNotification: (message: string, type?: 'success' | 'error' | 'info') => void }) {
   const { initialPins, mapTitle, leafletMap, importFileRef, showNotification } = options

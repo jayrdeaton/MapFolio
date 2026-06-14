@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Eye, EyeOff, FileDown, FileUp, Globe, Maximize2, Plus, Trash2, Undo2 } from '@lucide/vue'
 
-import type { Pin, PinDotSize } from '../types'
-import PinListItem from './PinListItem.vue'
+import type { Pin, PinDotSize } from '@/types'
+import PinListItem from '@/components/PinListItem.vue'
 
 defineProps<{
   pins: Pin[]

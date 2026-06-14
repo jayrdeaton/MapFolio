@@ -1,4 +1,4 @@
-import type { Route } from '../types'
+import type { Route } from '@/types'
 
 export function useKeyboardShortcuts(options: { showInfo: Ref<boolean>; closeInfo: () => void; editingRoute: Ref<Route | null>; closeEditRoute: () => void; bottomSheet: Ref<boolean>; closeSheet: () => void; showMapsPanel: Ref<boolean>; activeFab: Ref<string | null>; showSearch: Ref<boolean>; isPlacingPin: Ref<boolean>; isDrawingRoute: Ref<boolean>; stopDrawing: () => void; undoLastPoint: () => void; undo: () => void }) {
   function handleKeyDown(e: KeyboardEvent) {

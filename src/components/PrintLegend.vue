@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Pin } from '../types'
+import type { Pin } from '@/types'
 
 defineProps<{ title: string; area?: string; pins: Pin[] }>()
 </script>

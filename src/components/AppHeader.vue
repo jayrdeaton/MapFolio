@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ChevronDown, Crosshair, Info, Link, Search } from '@lucide/vue'
 
-import type { SearchLocation } from './MapSearch.vue'
-import MapSearch from './MapSearch.vue'
+import type { SearchLocation } from '@/components/MapSearch.vue'
+import MapSearch from '@/components/MapSearch.vue'
 
 defineProps<{
   showSearch: boolean

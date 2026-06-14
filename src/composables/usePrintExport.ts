@@ -1,8 +1,8 @@
 import L from 'leaflet'
 import type { ShallowRef } from 'vue'
 
-import type { PrintAreaInfo } from '../components/PrintAreaDrawer.vue'
-import type { MapStyle, Pin } from '../types'
+import type { PrintAreaInfo } from '@/components/PrintAreaDrawer.vue'
+import type { MapStyle, Pin } from '@/types'
 import { exportMapToPdf } from './useMapExport'
 import type { PrintOrientation, PrintPaperSize } from './usePrintSettings'
 

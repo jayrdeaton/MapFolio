@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Eye, EyeOff, FileDown, FileUp, Globe, Maximize2, Pencil, Plus, Trash2, Waypoints } from '@lucide/vue'
 
-import { formatDistance, routeDistanceM } from '../composables/useRoutes'
-import type { Route as RouteType } from '../types'
+import { formatDistance, routeDistanceM } from '@/composables/useRoutes'
+import type { Route as RouteType } from '@/types'
 
 const props = defineProps<{
   routes: RouteType[]

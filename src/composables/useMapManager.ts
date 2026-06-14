@@ -1,7 +1,7 @@
 import type L from 'leaflet'
 import type { ShallowRef } from 'vue'
 
-import type { MapData, MapStyle, Pin, PinDotSize, Route } from '../types'
+import type { MapData, MapStyle, Pin, PinDotSize, Route } from '@/types'
 
 export function useMapManager(options: { activeId: Ref<string>; activeMap: ComputedRef<MapData>; updateActiveMap: (patch: Partial<MapData>) => void; createMap: (name: string) => MapData; switchMap: (id: string) => void; deleteMap: (id: string) => void; duplicateMap: (id: string) => MapData; importMapFromData: (data: unknown) => MapData | null; leafletMap: ShallowRef<L.Map | null>; mapStyle: Ref<MapStyle>; showLabels: Ref<boolean>; showClusters: Ref<boolean>; pinDotSize: Ref<PinDotSize>; mapArea: Ref<string>; pins: Ref<Pin[]>; routes: Ref<Route[]>; mapImportFileRef: Ref<HTMLInputElement | null>; showNotification: (msg: string, type?: 'success' | 'error' | 'info') => void; resetPins: (pins: Pin[]) => void; resetRoutes: (routes: Route[]) => void }) {
   const showMapsPanel = ref(false)

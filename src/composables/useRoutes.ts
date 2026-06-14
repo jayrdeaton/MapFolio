@@ -1,8 +1,8 @@
 import type L from 'leaflet'
 import type { ShallowRef } from 'vue'
 
-import type { Route, RoutePoint } from '../types'
-import { parseGeoJsonRouteImport, parseRouteImport, routesToGeoJson } from '../utils'
+import type { Route, RoutePoint } from '@/types'
+import { parseGeoJsonRouteImport, parseRouteImport, routesToGeoJson } from '@/utils'
 
 function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000

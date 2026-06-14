@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Check, Copy, FileDown, FileUp, Globe, Map, Pencil, Plus, Trash2, X } from '@lucide/vue'
 
-import type { MapData } from '../types'
+import type { MapData } from '@/types'
 
 defineProps<{
   maps: MapData[]

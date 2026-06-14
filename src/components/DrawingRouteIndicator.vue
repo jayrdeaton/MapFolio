@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Magnet, SquareCheck, Undo2 } from '@lucide/vue'
 
-import type { Route } from '../types'
+import type { Route } from '@/types'
 
 defineProps<{
   route: Route

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Layers } from '@lucide/vue'
 
-import type { MapStyle } from '../types'
-import { MAP_STYLE_CONFIGS } from '../types'
+import type { MapStyle } from '@/types'
+import { MAP_STYLE_CONFIGS } from '@/types'
 
 const props = defineProps<{
   mapStyle: MapStyle

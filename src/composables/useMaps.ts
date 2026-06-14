@@ -1,4 +1,4 @@
-import type { MapData, MapStyle, PinDotSize } from '../types'
+import type { MapData, MapStyle, PinDotSize } from '@/types'
 
 const STORAGE_KEY = 'mapfolio_v1'
 const LEGACY_KEY = 'custommap_v1'

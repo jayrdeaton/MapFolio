@@ -1,7 +1,7 @@
 import { PDFDocument } from 'pdf-lib'
 
-import type { MapStyle, MapStyleConfig, Pin } from '../types'
-import { MAP_STYLE_CONFIGS } from '../types'
+import type { MapStyle, MapStyleConfig, Pin } from '@/types'
+import { MAP_STYLE_CONFIGS } from '@/types'
 
 // Standard Web Mercator tile math
 function lngToTileFrac(lng: number, zoom: number): number {

@@ -1,8 +1,8 @@
 import type L from 'leaflet'
 import type { ShallowRef } from 'vue'
 
-import type { MapStyle, Pin } from '../types'
-import { encodeShareState } from '../utils'
+import type { MapStyle, Pin } from '@/types'
+import { encodeShareState } from '@/utils'
 
 export function useShareClipboard(options: { pins: Ref<Pin[]>; mapStyle: Ref<MapStyle>; mapTitle: Ref<string>; leafletMap: ShallowRef<L.Map | null>; showNotification: (message: string, type?: 'success' | 'error' | 'info') => void }) {
   const { pins, mapStyle, mapTitle, leafletMap, showNotification } = options

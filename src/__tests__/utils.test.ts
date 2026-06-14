@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Pin } from '../types'
-import { decodeShareState, encodeShareState, parseGeoJsonImport, parsePinImport, pinsToGeoJson } from '../utils'
+import type { Pin } from '@/types'
+import { decodeShareState, encodeShareState, parseGeoJsonImport, parsePinImport, pinsToGeoJson } from '@/utils'
 
 const pin: Pin = {
   id: 1,
