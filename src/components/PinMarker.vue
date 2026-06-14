@@ -199,34 +199,50 @@ function createMarker() {
     bindPopupEvents()
   }
 
-  marker.on('dragstart', () => props.map.dragging.disable())
+  marker.on('dragstart', () => {
+    props.map.dragging.disable()
+  })
 
   marker.on('dragend', () => {
-    props.map.dragging.enable()
     const { lat, lng } = marker!.getLatLng()
+    props.map.dragging.enable()
     emit('move', props.pin.id, lat, lng)
   })
 }
 
 onMounted(createMarker)
 
+// setIcon only when the icon's visual output actually changes — address/name/description don't
+// affect icon HTML, so excluding them avoids a spurious _moveChild cycle on every address resolve.
 watch(
-  () => [props.pin.emoji, props.pin.color, props.pin.name, props.pin.description, props.dotSize, props.pin.address, props.locked] as const,
+  () => [props.pin.emoji, props.pin.color, props.dotSize, props.locked] as const,
   () => {
     if (!marker) return
     marker.setIcon(buildIcon())
     if (props.locked) marker.dragging?.disable()
-    if (!props.pending) {
-      marker.setPopupContent(buildPopupContent())
-      marker.off('popupopen')
-      bindPopupEvents()
-    }
+  }
+)
+
+// Popup content — no setIcon, no _moveChild side effect from address/name/description changes.
+// emoji is included because the popup header shows it.
+watch(
+  () => [props.pin.emoji, props.pin.name, props.pin.description, props.pin.address] as const,
+  () => {
+    if (!marker || props.pending) return
+    marker.setPopupContent(buildPopupContent())
+    marker.off('popupopen')
+    bindPopupEvents()
   }
 )
 
 watch(
   () => [props.pin.lat, props.pin.lng] as const,
-  ([lat, lng]) => marker?.setLatLng([lat, lng])
+  ([lat, lng]) => {
+    if (!marker) return
+    const cur = marker.getLatLng()
+    if (cur.lat === lat && cur.lng === lng) return
+    marker.setLatLng([lat, lng])
+  }
 )
 
 watch(

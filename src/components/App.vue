@@ -54,6 +54,7 @@ const clusterGroup = shallowRef<L.MarkerClusterGroup | null>(null)
 
 const showSearch = ref(false)
 const isPlacingPin = ref(false)
+const placingPinCount = ref(0)
 const isLocating = ref(false)
 const importFileRef = ref<HTMLInputElement | null>(null)
 const routeImportFileRef = ref<HTMLInputElement | null>(null)
@@ -77,7 +78,6 @@ const initialZoom: number = urlState?.zoom ?? (!loadedFromUrl && activeMap.value
 const activeFab = ref<'style' | 'export' | 'pins' | 'routes' | null>(null)
 const bottomSheet = ref(false)
 const editingPin = ref<Pin | null>(null)
-const pendingPin = ref<Pin | null>(null)
 const stickyEmoji = ref('📍')
 const stickyColor = ref('#06b6d4')
 
@@ -237,7 +237,6 @@ function toggleFab(fab: 'style' | 'export' | 'pins' | 'routes') {
 function closeSheet() {
   bottomSheet.value = false
   editingPin.value = null
-  pendingPin.value = null
 }
 
 function panMapForPin(pin: Pin) {
@@ -259,21 +258,14 @@ function openEditPin(pin: Pin) {
 function handlePinSave(updated: Pin, newEmoji: string, newColor: string) {
   stickyEmoji.value = newEmoji
   stickyColor.value = newColor
-  if (pendingPin.value?.id === updated.id) {
-    pushUndo()
-    pins.value = [...pins.value, updated]
-  } else {
-    handleUpdatePin(updated)
-  }
+  handleUpdatePin(updated)
   closeSheet()
 }
 
 function handlePinDelete() {
   if (!editingPin.value) return
-  if (pendingPin.value?.id !== editingPin.value.id) {
-    cleanupOrphanedLinks(editingPin.value.id)
-    handleDeletePin(editingPin.value.id)
-  }
+  cleanupOrphanedLinks(editingPin.value.id)
+  handleDeletePin(editingPin.value.id)
   closeSheet()
 }
 
@@ -289,12 +281,12 @@ function handlePinPlace(latlng: L.LatLng) {
     lat: latlng.lat,
     lng: latlng.lng
   }
-  pendingPin.value = pin
-  isPlacingPin.value = false
-  openEditPin(pin)
+  pushUndo()
+  pins.value = [...pins.value, pin]
+  isPlacingPin.value = true
+  placingPinCount.value++
   fetchPinAddress(latlng.lat, latlng.lng).then((address) => {
-    if (editingPin.value?.id === pin.id) editingPin.value = { ...editingPin.value, address }
-    if (pendingPin.value?.id === pin.id) pendingPin.value = { ...pendingPin.value, address }
+    pins.value = pins.value.map((p) => (p.id === pin.id ? { ...p, address } : p))
   })
 }
 
@@ -304,41 +296,18 @@ function handleSearchMarkerPin(lat: number, lng: number) {
 }
 
 function placeAtCenter() {
-  if (!leafletMap.value) return
   activeFab.value = null
-  const map = leafletMap.value
-  const { clientWidth: w, clientHeight: h } = map.getContainer()
-  const latlng = map.containerPointToLatLng(L.point(w / 2, h * 0.5))
-  const pin: Pin = {
-    id: Date.now(),
-    name: '',
-    description: '',
-    emoji: stickyEmoji.value,
-    color: stickyColor.value,
-    lat: latlng.lat,
-    lng: latlng.lng
-  }
-  pendingPin.value = pin
-  openEditPin(pin)
-  fetchPinAddress(latlng.lat, latlng.lng).then((address) => {
-    if (editingPin.value?.id === pin.id) editingPin.value = { ...editingPin.value, address }
-    if (pendingPin.value?.id === pin.id) pendingPin.value = { ...pendingPin.value, address }
-  })
+  isPlacingPin.value = true
 }
 
-function handlePendingPinMove(_id: number, lat: number, lng: number) {
-  if (pendingPin.value) pendingPin.value = { ...pendingPin.value, lat, lng }
-  if (editingPin.value) editingPin.value = { ...editingPin.value, lat, lng }
-  fetchPinAddress(lat, lng).then((address) => {
-    if (pendingPin.value) pendingPin.value = { ...pendingPin.value, address }
-    if (editingPin.value) editingPin.value = { ...editingPin.value, address }
-  })
+function stopPlacing() {
+  isPlacingPin.value = false
+  placingPinCount.value = 0
 }
 
 // ── Map initialization ────────────────────────────────────────────────────────
 
 function onMapReady(map: L.Map) {
-  console.log('[App] onMapReady — creating clusterGroup')
   const cg = L.markerClusterGroup({
     disableClusteringAtZoom: 17,
     showCoverageOnHover: false,
@@ -356,9 +325,46 @@ function onMapReady(map: L.Map) {
     } catch {}
   })
   cg.addTo(map)
+
+  // markercluster 1.5.3 bug: _recursively calls boundsToApplyTo.intersects(c._bounds) where
+  // c._bounds._northEast can be undefined (empty cluster, _recalculateBounds never called).
+  // Patching L.LatLngBounds.prototype doesn't intercept the call — the prototype lookup is
+  // bypassed for reasons unclear (possibly two Leaflet instances, or Vite ESM transforms).
+  // Setting intersects as an OWN PROPERTY on the boundsToApplyTo instance always wins.
+  const topCluster = (cg as any)._topClusterLevel
+  if (topCluster) {
+    const mcProto = Object.getPrototypeOf(topCluster) as any
+    if (mcProto && typeof mcProto._recursively === 'function' && !mcProto._recursivelyPatched) {
+      const _origRecursively = mcProto._recursively
+      mcProto._recursively = function (this: any, boundsToApplyTo: any, ...args: any[]) {
+        const alreadySafe = boundsToApplyTo?._mcSafe
+        const origIntersects = boundsToApplyTo?.intersects
+        if (!alreadySafe && origIntersects) {
+          boundsToApplyTo._mcSafe = true
+          boundsToApplyTo.intersects = function (other: any) {
+            if (!other || (typeof other.isValid === 'function' && !other.isValid())) return false
+            try {
+              return origIntersects.call(boundsToApplyTo, other)
+            } catch {
+              return false
+            }
+          }
+        }
+        try {
+          return _origRecursively.apply(this, [boundsToApplyTo, ...args])
+        } finally {
+          if (!alreadySafe && origIntersects) {
+            delete boundsToApplyTo._mcSafe
+            boundsToApplyTo.intersects = origIntersects
+          }
+        }
+      }
+      mcProto._recursivelyPatched = true
+    }
+  }
+
   clusterGroup.value = cg
   leafletMap.value = map
-  console.log('[App] map ready — clusterGroup and leafletMap initialized')
   applyTileLayer(map)
   applyLabelsLayer(map)
   map.on('moveend', saveState)
@@ -579,7 +585,6 @@ const panelClass = 'absolute right-16 top-4 z-1000 w-80 max-w-[calc(100vw-80px)]
       <template v-if="leafletMap && clusterGroup">
         <PrintAreaDrawer :map="leafletMap" :print-bounds="printBounds" :aspect-ratio="printAspectRatio" :snap-enabled="printSnapEnabled" :grid-cols="Number(printSettings.grid.value.split('x')[0]) || 1" :grid-rows="Number(printSettings.grid.value.split('x')[1]) || 1" :overlay-corner="overlayCorner" @bounds-set="handleBoundsSet" />
         <PinMarker v-for="pin in pins" :key="pin.id" :pin="pin" :map="leafletMap" :layer="showClusters ? clusterGroup : undefined" :hidden="hiddenPinIds.has(pin.id)" :dot-size="pinDotSize" :locked="linkedPinIds.has(pin.id)" @delete="handleDeletePin" @hide="togglePinVisibility" @move="handlePinMove" @edit="openEditPin" @copy="(coords) => showNotification(`Copied: ${coords}`)" />
-        <PinMarker v-if="pendingPin" :key="`pending-${pendingPin.id}`" :pin="pendingPin" :map="leafletMap" :pending="true" :dot-size="pinDotSize" @move="handlePendingPinMove" />
         <SearchMarker v-if="searchLocation" :key="`${searchLocation.lat}-${searchLocation.lng}`" ref="searchMarkerRef" :lat="searchLocation.lat" :lng="searchLocation.lng" :map="leafletMap" @pin="handleSearchMarkerPin" @dismiss="searchLocation = null" />
         <RouteLayer v-if="routes.length > 0" :routes="routes" :hidden-route-ids="hiddenRouteIds" :map="leafletMap" :drawing-route-id="isDrawingRoute ? (drawingRoute?.id ?? null) : null" :drawing-anchor-index="isDrawingRoute ? drawingAnchorIndex : null" :pins="pins" @remove-point="removePoint" @move-point="handleMovePoint" @move-route="handleMoveRoute" @click-route="handleClickRoute" @tap-waypoint="handleWaypointTap" />
       </template>
@@ -588,10 +593,7 @@ const panelClass = 'absolute right-16 top-4 z-1000 w-80 max-w-[calc(100vw-80px)]
 
       <!-- Placing indicator -->
       <Transition name="mf-fade">
-        <div v-if="isPlacingPin" class="absolute top-4 left-1/2 -translate-x-1/2 z-1000 flex items-center gap-2 bg-amber-400/95 text-gray-900 text-sm font-semibold px-4 py-2.5 rounded-full shadow-lg no-print pointer-events-auto">
-          Tap map to place pin
-          <button class="ml-1 hover:opacity-70 transition-opacity" @click.stop="isPlacingPin = false">✕</button>
-        </div>
+        <PlacingPinIndicator v-if="isPlacingPin" :emoji="stickyEmoji" :count="placingPinCount" :can-undo="canUndo" @undo="undo" @done="stopPlacing" />
       </Transition>
 
       <!-- Drawing route indicator -->
@@ -687,7 +689,7 @@ const panelClass = 'absolute right-16 top-4 z-1000 w-80 max-w-[calc(100vw-80px)]
 
     <!-- ── Edit Pin sheet ─────────────────────────────────────────────────── -->
     <Transition name="mf-sheet">
-      <PinEditSheet :show="bottomSheet" :editing-pin="editingPin" :pending-pin="pendingPin" :pin-dot-size="pinDotSize" @save="handlePinSave" @delete="handlePinDelete" @close="closeSheet" />
+      <PinEditSheet :show="bottomSheet" :editing-pin="editingPin" :pin-dot-size="pinDotSize" @save="handlePinSave" @delete="handlePinDelete" @close="closeSheet" />
     </Transition>
 
     <!-- ── Edit Route sheet ─────────────────────────────────────────────────── -->

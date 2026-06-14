@@ -224,7 +224,6 @@ function stopDocumentDrag() {
 let panesObserver: MutationObserver | null = null
 
 onMounted(() => {
-  console.log('[RouteLayer] onMounted — map:', props.map, 'routes:', props.routes.length)
   // Render inside a custom Leaflet pane (z-index 450) so routes sit below popup-pane (700).
   // The external-div approach used latLngToContainerPoint + move listener, but the map pane's
   // CSS transform creates a stacking context that trapped popups below any external z-index.

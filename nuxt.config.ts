@@ -22,6 +22,7 @@ export default defineNuxtConfig({
     port: 3000
   },
   pwa: {
+    devOptions: { enabled: false },
     registerType: 'autoUpdate',
     manifest: {
       name: pkg.displayName,
