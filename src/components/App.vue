@@ -4,9 +4,9 @@ import 'leaflet.markercluster'
 import { LMap } from '@vue-leaflet/vue-leaflet'
 import L from 'leaflet'
 
+import type { SearchLocation } from '@/components/MapSearch.vue'
 import type { MapStyle, Pin, PinDotSize, Route } from '@/types'
 import { decodeShareState } from '@/utils'
-import type { SearchLocation } from '@/components/MapSearch.vue'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')

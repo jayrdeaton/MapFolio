@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { Trash2, X } from '@lucide/vue'
 
+import ColorPicker from '@/components/ColorPicker.vue'
 import { formatDistance, routeDistanceM } from '@/composables/useRoutes'
 import type { Route, RouteLineStyle, RouteWaypointSize, RouteWaypointStyle } from '@/types'
-import ColorPicker from '@/components/ColorPicker.vue'
 
 const props = defineProps<{
   show: boolean

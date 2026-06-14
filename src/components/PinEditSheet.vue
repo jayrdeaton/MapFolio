@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { Trash2, X } from '@lucide/vue'
 
+import ColorPicker from '@/components/ColorPicker.vue'
 import type { Pin, PinDotSize } from '@/types'
 import { DEFAULT_EMOJIS } from '@/types'
 import { emojiToName } from '@/utils'
-import ColorPicker from '@/components/ColorPicker.vue'
 
 const props = defineProps<{
   show: boolean
