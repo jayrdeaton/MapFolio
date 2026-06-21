@@ -1,15 +1,15 @@
 # MapFolio — Project Context
 
-Vue 3 + Vite + TypeScript + Tailwind CSS v4 interactive mapping app. Renamed from "Custom Map" on 2026-06-11.
+Vue 3 + Nuxt 4 + TypeScript + Tailwind CSS v4 interactive mapping app. Renamed from "Custom Map" on 2026-06-11.
 
 ## Tech stack
 
-- Vue 3 `<script setup lang="ts">`, Vite 8
-- Tailwind CSS v4 (`@import "tailwindcss"` + `@custom-variant` for class-based dark mode)
+- Vue 3 `<script setup lang="ts">`, Nuxt 4 (`srcDir: 'src'`, SSR disabled)
+- Tailwind CSS v4 via `@tailwindcss/vite` plugin in `nuxt.config.ts`
 - Leaflet via `@vue-leaflet/vue-leaflet`, `leaflet.markercluster`, `leaflet-geosearch`
 - Lucide icons via `@lucide/vue`
 - `pdf-lib` for PDF export (PNG export not supported — CSS-positioned print area is incompatible with canvas capture; users can convert PDF → PNG if needed)
-- `vite-plugin-pwa` for installable / offline PWA
+- `@vite-pwa/nuxt` for installable / offline PWA
 - Vitest for tests
 
 ## Accent color
@@ -18,9 +18,8 @@ Cyan — `cyan-500` (`#06b6d4`) as primary. Derived from the icon.svg gradient m
 
 ## Dark mode
 
-- Tailwind v4 `@custom-variant dark (&:where(.dark, .dark *));` in `src/index.css` — the IDE shows an "Unknown at rule" warning, which is cosmetic; it builds correctly.
-- Early inline script in `index.html` applies `dark` class to `<html>` before Vue mounts to prevent flash.
-- Composable: `src/composables/useColorMode.ts` — reactive `preference` ref (`'light' | 'dark' | 'system'`) + `cycle()` fn, stored in `localStorage` key `mapfolio_color_mode`.
+- `@nuxtjs/color-mode` with `classSuffix: ''` and `storageKey: 'mapfolio_color_mode'` — same setup as the other related apps.
+- Use the auto-imported `useColorMode()` composable from Nuxt (not a custom composable).
 - Cycle order (same as other apps): system → away-from-system → opposite → system.
 
 ## Storage
@@ -40,7 +39,7 @@ Theme toggle icons: monitor (system) → sun (light) → moon (dark), same SVGs 
 
 ## Related apps (for consistency reference)
 
-Jay's other similar web apps all use Nuxt + `@nuxtjs/color-mode`. MapFolio replicates the same UX pattern without Nuxt.
+Jay's other similar web apps all use Nuxt + `@nuxtjs/color-mode`. MapFolio now uses the same stack.
 
 - `/Users/jay/Developer/GraPDF-Web` — emerald accent
 - `/Users/jay/Developer/TrimBox` — no npm link, just GitHub
