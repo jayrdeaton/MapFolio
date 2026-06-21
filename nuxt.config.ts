@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs'
 
 import tailwindcss from '@tailwindcss/vite'
+
+import type {} from './.nuxt/nuxt.node.d.ts'
 const pkg: { displayName: string; description: string } = JSON.parse(readFileSync('./package.json', 'utf-8'))
 export default defineNuxtConfig({
   compatibilityDate: '2025-11-01',
   srcDir: 'src',
   ssr: false,
-  devtools: { enabled: false },
+  devtools: { enabled: true },
   modules: ['@nuxtjs/color-mode', '@vite-pwa/nuxt'],
   colorMode: {
     classSuffix: '',
@@ -17,9 +19,6 @@ export default defineNuxtConfig({
     resolve: {
       dedupe: ['leaflet']
     }
-  },
-  devServer: {
-    port: 3000
   },
   pwa: {
     devOptions: { enabled: false },
@@ -37,7 +36,19 @@ export default defineNuxtConfig({
         { src: '/icon-180.png', sizes: '180x180', type: 'image/png' },
         { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
         { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
-      ]
+      ],
+      // Installed PWA opens .json / .geojson map files directly (Chromium); the
+      // launchQueue consumer in App.vue reads them and imports as a new map.
+      file_handlers: [
+        {
+          action: '/',
+          accept: {
+            'application/json': ['.json'],
+            'application/geo+json': ['.geojson']
+          }
+        }
+      ],
+      launch_handler: { client_mode: 'focus-existing' }
     },
     workbox: {
       globPatterns: ['**/*.{js,css,html,svg,ico,woff2}'],

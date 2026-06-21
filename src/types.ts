@@ -5,8 +5,8 @@ export interface RoutePoint {
 }
 
 export type RouteLineStyle = 'solid' | 'dashed' | 'dotted' | 'long-dash' | 'dash-dot' | 'arrow' | 'double' | 'none'
-export type RouteWaypointStyle = 'number' | 'circle' | 'square' | 'none'
-export type RouteWaypointSize = 's' | 'm' | 'l'
+export type RouteWaypointStyle = 'circle' | 'square' | 'diamond' | 'none'
+export type RouteWaypointSize = 'xs' | 's' | 'm' | 'l' | 'xl'
 
 export interface Route {
   id: number
@@ -14,8 +14,10 @@ export interface Route {
   color: string
   lineStyle?: RouteLineStyle
   waypointStyle?: RouteWaypointStyle
+  waypointShowNumber?: boolean
   waypointSize?: RouteWaypointSize
   points: RoutePoint[]
+  hidden?: boolean
 }
 
 export interface Pin {
@@ -27,6 +29,24 @@ export interface Pin {
   lat: number
   lng: number
   address?: string
+  hidden?: boolean
+  dotSize?: PinDotSize
+  dotShape?: PinDotShape
+  showNumber?: boolean
+}
+
+export type CaptionSize = 'xs' | 's' | 'm' | 'l' | 'xl'
+
+export interface Caption {
+  id: number
+  text: string
+  lat: number
+  lng: number
+  color: string
+  size: CaptionSize
+  background?: boolean // white pill behind the text for legibility on busy/satellite tiles
+  rotation?: number // degrees, clockwise; set via the on-map rotate handle
+  hidden?: boolean
 }
 
 export interface MapData {
@@ -35,17 +55,26 @@ export interface MapData {
   area: string
   pins: Pin[]
   routes: Route[]
+  captions?: Caption[] // optional: older stored maps predate captions
   mapStyle: MapStyle
   showLabels: boolean
   showClusters: boolean
-  pinDotSize: PinDotSize
+  pinDotSize?: PinDotSize
   center?: [number, number]
   zoom?: number
 }
 
-export type MapStyle = 'clean' | 'minimal' | 'standard' | 'satellite' | 'terrain'
+// Font size in PDF points (reference page width 612pt), scaled by S = paperW/612 in the
+// export. Keep roughly proportional to CAPTION_PX (the on-screen sizes).
+export const CAPTION_PT: Record<CaptionSize, number> = { xs: 9, s: 11, m: 14, l: 18, xl: 24 }
 
-export type PinDotSize = 'none' | 's' | 'm' | 'l'
+// On-screen font sizes (px) for the live map — shared by CaptionMarker (label) and
+// CaptionRotateHandle (to offset the handle clear of the text).
+export const CAPTION_PX: Record<CaptionSize, number> = { xs: 11, s: 13, m: 16, l: 20, xl: 26 }
+
+export type MapStyle = 'clean' | 'minimal' | 'standard' | 'satellite' | 'terrain'
+export type PinDotSize = 'none' | 'xs' | 's' | 'm' | 'l' | 'xl'
+export type PinDotShape = 'circle' | 'square' | 'diamond'
 
 export interface MapStyleConfig {
   name: string
@@ -67,7 +96,7 @@ export interface MapStyleConfig {
 export const MAP_STYLE_CONFIGS: Record<MapStyle, MapStyleConfig> = {
   clean: {
     name: 'Clean',
-    description: 'No labels — perfect for activity maps',
+    description: 'No labels, perfect for activity maps',
     url: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
     darkUrl: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CartoDB</a>',
@@ -120,6 +149,7 @@ export const DEFAULT_EMOJIS = [
   '⭐',
   '❤️',
   '⚠️',
+  '📷',
   // Structures
   '🏠',
   '🏥',
@@ -131,13 +161,60 @@ export const DEFAULT_EMOJIS = [
   '🏰',
   '🎭',
   '⛪',
+  '⛩️',
+  '🛕',
   '🅿️',
   '⛽',
+  // Activities
+  '🎣',
+  '🥾',
+  '🎒',
+  '⛳',
+  '🚴',
+  '⛷',
+  '🏊',
+  '🏄',
+  '🛶',
+  '🧗',
+  '🤿',
+  '⛺',
+  '⛱️',
+  // Parks & play
+  '🎈',
+  '🛝',
+  '🎠',
+  '🎡',
+  '🎢',
+  '🎪',
+  '⛲',
+  // Food & drink
+  '☕',
+  '🍺',
+  '🧋',
+  '🍕',
+  '🌮',
+  '🍜',
+  '🍚',
+  '🍗',
+  '🍛',
+  '🍲',
+  '🌶️',
+  '🥭',
+  '🍌',
+  '🥥',
+  '🍦',
+  '🍧',
+  '🍩',
+  '🍰',
+  '🍭',
+  // Transport
+  '🚗',
+  '✈️',
+  '⛵',
+  '🚂',
   // Nature & outdoors
-  '🏕',
-  '🏔',
-  '🏖',
-  '🏜',
+  '🌋',
+  '🗻',
   '🌳',
   '🌲',
   '🌺',
@@ -148,36 +225,37 @@ export const DEFAULT_EMOJIS = [
   // Wildlife
   '🦌',
   '🦁',
+  '🐅',
   '🐻',
   '🐺',
   '🦅',
   '🐟',
-  // Activities
-  '🎣',
-  '🥾',
-  '⛳',
-  '🚴',
-  '⛷',
-  '🏊',
-  '🏄',
-  '🧗',
-  '🤿',
-  // Food & drink
-  '☕',
-  '🍺',
-  '🍕',
-  '🌮',
-  // Transport
-  '🚗',
-  '✈️',
-  '⛵',
-  '🚂',
-  // Colors
-  '🔴',
-  '🟠',
-  '🟡',
-  '🟢',
-  '🔵',
-  '🟣',
-  '⚫'
+  // Birds
+  '🐦',
+  '🕊️',
+  '🦆',
+  '🦉',
+  '🐧',
+  '🦜',
+  '🦢',
+  '🦩',
+  '🦚',
+  '🐤',
+  // Cute animals
+  '🐘',
+  '🐵',
+  '🐼',
+  '🐨',
+  '🐰',
+  '🦊',
+  '🐶',
+  '🐱',
+  '🐸',
+  '🐢',
+  '🦋',
+  '🐝',
+  '🦎',
+  '🐬',
+  '🐠',
+  '🦖'
 ]

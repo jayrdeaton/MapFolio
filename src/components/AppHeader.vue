@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, Crosshair, Info, Link, Search } from '@lucide/vue'
+import { ChevronDown, Info, Search } from '@lucide/vue'
 
 import type { SearchLocation } from '@/components/MapSearch.vue'
 import MapSearch from '@/components/MapSearch.vue'
@@ -8,7 +8,6 @@ defineProps<{
   showSearch: boolean
   searchClearTrigger: number
   activeMapName: string
-  isLocating: boolean
 }>()
 
 const emit = defineEmits<{
@@ -17,8 +16,6 @@ const emit = defineEmits<{
   'clear-search': []
   'open-info': []
   'open-maps': []
-  share: []
-  locate: []
 }>()
 
 const colorMode = useColorMode()
@@ -42,26 +39,10 @@ function cycleColorMode() {
     </div>
 
     <div class="hidden sm:flex flex-2 items-center justify-center gap-2">
-      <button aria-label="Go to my location" :disabled="isLocating" class="p-1.5 rounded-lg text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer shrink-0 disabled:opacity-50" @click="emit('locate')">
-        <Crosshair :size="18" :class="isLocating ? 'animate-spin' : ''" />
-      </button>
       <MapSearch :clear-trigger="searchClearTrigger" @location-select="emit('location-select', $event)" @clear="emit('clear-search')" />
-      <button aria-label="Copy share link" class="p-1.5 rounded-lg text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer shrink-0" @click="emit('share')">
-        <Link :size="18" />
-      </button>
     </div>
 
     <div class="flex-1 flex items-center gap-1 justify-end">
-      <!-- Locate (mobile only — desktop lives next to search bar) -->
-      <button aria-label="Go to my location" :disabled="isLocating" class="sm:hidden p-1.5 rounded-lg text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer disabled:opacity-50" @click="emit('locate')">
-        <Crosshair :size="18" :class="isLocating ? 'animate-spin' : ''" />
-      </button>
-
-      <!-- Share link (mobile only — desktop lives next to search bar) -->
-      <button aria-label="Copy share link" class="sm:hidden p-1.5 rounded-lg text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer" @click="emit('share')">
-        <Link :size="18" />
-      </button>
-
       <!-- Mobile search toggle -->
       <button class="sm:hidden p-1.5 rounded-lg transition-colors cursor-pointer" :class="showSearch ? 'bg-cyan-500 text-white hover:bg-cyan-600' : 'text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800'" :aria-label="showSearch ? 'Close search' : 'Search'" @click="emit('update:showSearch', !showSearch)">
         <Search :size="18" />

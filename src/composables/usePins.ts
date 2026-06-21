@@ -2,14 +2,12 @@ import type L from 'leaflet'
 import type { ShallowRef } from 'vue'
 
 import type { Pin } from '@/types'
-import { parseGeoJsonImport, parsePinImport, pinsToGeoJson } from '@/utils'
 
-export function usePins(options: { initialPins: Pin[]; mapTitle: Ref<string>; leafletMap: ShallowRef<L.Map | null>; importFileRef: Ref<HTMLInputElement | null>; showNotification: (message: string, type?: 'success' | 'error' | 'info') => void }) {
-  const { initialPins, mapTitle, leafletMap, importFileRef, showNotification } = options
+export function usePins(options: { initialPins: Pin[]; leafletMap: ShallowRef<L.Map | null>; showNotification: (message: string, type?: 'success' | 'error' | 'info') => void; pushHistory: (label?: string) => void }) {
+  const { initialPins, leafletMap, showNotification } = options
 
   const pins = ref<Pin[]>(initialPins)
-  const hiddenPinIds = ref<Set<number>>(new Set())
-  const undoStack = ref<Pin[][]>([])
+  const hiddenPinIds = computed(() => new Set(pins.value.filter((p) => p.hidden).map((p) => p.id)))
   const resolvingPinId = ref<number | null>(null)
   const addressResolveProg = ref<{ done: number; total: number } | null>(null)
   const pinSearch = ref('')
@@ -20,8 +18,7 @@ export function usePins(options: { initialPins: Pin[]; mapTitle: Ref<string>; le
     return pins.value.filter((p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || p.emoji.includes(pinSearch.value.trim()) || (p.address?.toLowerCase().includes(q) ?? false))
   })
 
-  const canUndo = computed(() => undoStack.value.length > 0)
-  const allPinsHidden = computed(() => pins.value.length > 0 && pins.value.every((p) => hiddenPinIds.value.has(p.id)))
+  const allPinsHidden = computed(() => pins.value.length > 0 && pins.value.every((p) => p.hidden))
 
   async function fetchPinAddress(lat: number, lng: number): Promise<string> {
     try {
@@ -37,31 +34,20 @@ export function usePins(options: { initialPins: Pin[]; mapTitle: Ref<string>; le
     }
   }
 
-  function pushUndo() {
-    undoStack.value = [...undoStack.value.slice(-19), [...pins.value]]
-  }
-
-  function undo() {
-    if (undoStack.value.length === 0) return
-    pins.value = undoStack.value[undoStack.value.length - 1]!
-    undoStack.value = undoStack.value.slice(0, -1)
-    showNotification('Undone')
-  }
-
-  function handleDeletePin(id: number) {
-    pushUndo()
-    hiddenPinIds.value.delete(id)
+  // recordHistory=false lets a caller push its own snapshot first (e.g. to capture
+  // route-link cleanup in the same undo step) without a redundant second push.
+  function handleDeletePin(id: number, recordHistory = true) {
+    if (recordHistory) options.pushHistory('delete pin')
     pins.value = pins.value.filter((p) => p.id !== id)
     showNotification('Pin removed')
   }
 
   function handleUpdatePin(updated: Pin) {
-    pushUndo()
+    options.pushHistory('edit pin')
     pins.value = pins.value.map((p) => (p.id === updated.id ? updated : p))
   }
 
   function handlePinMove(id: number, lat: number, lng: number) {
-    pushUndo()
     pins.value = pins.value.map((p) => (p.id === id ? { ...p, lat, lng } : p))
     fetchPinAddress(lat, lng).then((address) => {
       pins.value = pins.value.map((p) => (p.id === id ? { ...p, address } : p))
@@ -69,22 +55,25 @@ export function usePins(options: { initialPins: Pin[]; mapTitle: Ref<string>; le
   }
 
   function togglePinVisibility(id: number) {
-    const next = new Set(hiddenPinIds.value)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    hiddenPinIds.value = next
+    const isHidden = pins.value.find((p) => p.id === id)?.hidden ?? false
+    options.pushHistory(isHidden ? 'show pin' : 'hide pin')
+    pins.value = pins.value.map((p) => (p.id === id ? { ...p, hidden: !p.hidden } : p))
   }
 
   function toggleAllPinVisibility() {
-    hiddenPinIds.value = allPinsHidden.value ? new Set() : new Set(pins.value.map((p) => p.id))
+    const hide = !allPinsHidden.value
+    options.pushHistory(hide ? 'hide all pins' : 'show all pins')
+    pins.value = pins.value.map((p) => ({ ...p, hidden: hide }))
   }
 
-  function clearAllPins() {
-    if (!window.confirm('Remove all pins?')) return
-    pushUndo()
-    hiddenPinIds.value = new Set()
+  function clearAllPins(): boolean {
+    const n = pins.value.length
+    if (n === 0) return false
+    if (!window.confirm(`Delete all ${n} pin${n === 1 ? '' : 's'}?\n\nThis is permanent and cannot be undone.`)) return false
+    options.pushHistory('clear pins')
     pins.value = []
     showNotification('All pins cleared')
+    return true
   }
 
   function fitToPins() {
@@ -105,67 +94,6 @@ export function usePins(options: { initialPins: Pin[]; mapTitle: Ref<string>; le
     leafletMap.value.setView([pin.lat, pin.lng], Math.max(leafletMap.value.getZoom(), 15), { animate: true, duration: 0.8 })
   }
 
-  function exportPinsJson() {
-    if (pins.value.length === 0) {
-      showNotification('No pins to export', 'error')
-      return
-    }
-    const data = JSON.stringify({ pins: pins.value, mapTitle: mapTitle.value }, null, 2)
-    const blob = new Blob([data], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${mapTitle.value || 'mapfolio'}-pins.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    showNotification(`Exported ${pins.value.length} pin${pins.value.length !== 1 ? 's' : ''}`)
-  }
-
-  function exportGeoJson() {
-    if (pins.value.length === 0) {
-      showNotification('No pins to export', 'error')
-      return
-    }
-    const blob = new Blob([JSON.stringify(pinsToGeoJson(pins.value), null, 2)], { type: 'application/geo+json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${mapTitle.value || 'mapfolio'}.geojson`
-    a.click()
-    URL.revokeObjectURL(url)
-    showNotification('GeoJSON exported!')
-  }
-
-  function triggerImport() {
-    importFileRef.value?.click()
-  }
-
-  function handleImportFile(e: Event) {
-    const file = (e.target as HTMLInputElement).files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string
-      const result = parsePinImport(text) ?? parseGeoJsonImport(text)
-      if (result) {
-        pushUndo()
-        pins.value = [...pins.value, ...result.pins]
-        if ('mapTitle' in result && result.mapTitle && !mapTitle.value) {
-          mapTitle.value = result.mapTitle as string
-        }
-        showNotification(`Imported ${result.pins.length} pin${result.pins.length !== 1 ? 's' : ''}!`)
-        if (leafletMap.value && result.pins.length > 0) {
-          const bounds = result.pins.map((p) => [p.lat, p.lng] as [number, number])
-          requestAnimationFrame(() => leafletMap.value?.fitBounds(bounds, { padding: [60, 60], animate: true }))
-        }
-      } else {
-        showNotification('Invalid or unreadable pin file', 'error')
-      }
-      if (importFileRef.value) importFileRef.value.value = ''
-    }
-    reader.readAsText(file)
-  }
-
   async function resolveAddressesFromUrl(missing: Pin[]) {
     if (missing.length === 0) return
     addressResolveProg.value = { done: 0, total: missing.length }
@@ -184,23 +112,17 @@ export function usePins(options: { initialPins: Pin[]; mapTitle: Ref<string>; le
 
   function resetPins(newPins: Pin[]) {
     pins.value = newPins
-    hiddenPinIds.value = new Set()
-    undoStack.value = []
   }
 
   return {
     pins,
     hiddenPinIds,
-    undoStack,
     resolvingPinId,
     addressResolveProg,
     pinSearch,
     filteredPins,
-    canUndo,
     allPinsHidden,
     fetchPinAddress,
-    pushUndo,
-    undo,
     handleDeletePin,
     handleUpdatePin,
     handlePinMove,
@@ -209,10 +131,6 @@ export function usePins(options: { initialPins: Pin[]; mapTitle: Ref<string>; le
     clearAllPins,
     fitToPins,
     zoomToPin,
-    exportPinsJson,
-    exportGeoJson,
-    triggerImport,
-    handleImportFile,
     resolveAddressesFromUrl,
     resetPins
   }

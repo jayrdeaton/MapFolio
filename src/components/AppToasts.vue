@@ -6,17 +6,21 @@ defineProps<{
 </script>
 
 <template>
-  <Transition name="mf-toast">
-    <div v-if="addressResolveProg" class="fixed top-16 left-1/2 -translate-x-1/2 bg-cyan-500 text-white text-sm px-4 pt-2.5 pb-2 rounded shadow-lg z-1999 no-print min-w-52">
-      <div class="whitespace-nowrap mb-1.5">Resolving addresses {{ addressResolveProg.done }} / {{ addressResolveProg.total }}</div>
-      <div class="h-1 bg-cyan-400/50 rounded-full overflow-hidden">
-        <div class="h-full bg-white/80 rounded-full transition-[width] duration-500" :style="{ width: `${(addressResolveProg.done / addressResolveProg.total) * 100}%` }" />
+  <div class="fixed left-1/2 -translate-x-1/2 z-2000 flex flex-col items-center gap-2 no-print pointer-events-none max-w-[calc(100vw-2rem)]" style="bottom: calc(1.5rem + env(safe-area-inset-bottom))">
+    <Transition name="mf-toast">
+      <div v-if="addressResolveProg" class="bg-cyan-500 text-white text-sm px-4 pt-2.5 pb-2 rounded shadow-lg min-w-52">
+        <div class="whitespace-nowrap mb-1.5">Resolving addresses {{ addressResolveProg.done }} / {{ addressResolveProg.total }}</div>
+        <div class="h-1 bg-cyan-400/50 rounded-full overflow-hidden">
+          <div class="h-full bg-white/80 rounded-full transition-[width] duration-500" :style="{ width: `${(addressResolveProg.done / addressResolveProg.total) * 100}%` }" />
+        </div>
       </div>
-    </div>
-  </Transition>
+    </Transition>
 
-  <div v-if="notification" :class="['fixed top-16 left-1/2 -translate-x-1/2 text-white text-sm px-4 py-2.5 rounded shadow-lg z-2000 animate-[slideIn_0.25s_ease] no-print whitespace-nowrap', notification.type === 'error' ? 'bg-rose-500' : notification.type === 'info' ? 'bg-cyan-500' : 'bg-emerald-500']">
-    {{ notification.message }}
+    <Transition name="mf-toast">
+      <div v-if="notification" :class="['text-white text-sm px-4 py-2.5 rounded shadow-lg whitespace-nowrap', notification.type === 'error' ? 'bg-rose-500' : notification.type === 'info' ? 'bg-cyan-500' : 'bg-emerald-500']">
+        {{ notification.message }}
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -30,10 +34,10 @@ defineProps<{
 .mf-toast-enter-from,
 .mf-toast-leave-to {
   opacity: 0;
-  transform: translateX(-50%) translateY(-6px);
+  transform: translateY(8px);
 }
 .mf-toast-enter-to,
 .mf-toast-leave-from {
-  transform: translateX(-50%) translateY(0);
+  transform: translateY(0);
 }
 </style>

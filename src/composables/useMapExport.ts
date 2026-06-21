@@ -1,7 +1,9 @@
 import { PDFDocument } from 'pdf-lib'
 
-import type { MapStyle, MapStyleConfig, Pin } from '@/types'
-import { MAP_STYLE_CONFIGS } from '@/types'
+import type { Caption, MapStyle, MapStyleConfig, Pin, PinDotShape, PinDotSize, Route } from '@/types'
+import { CAPTION_PT, MAP_STYLE_CONFIGS } from '@/types'
+
+import { formatDistance, routeDistanceM } from './useRoutes'
 
 // Standard Web Mercator tile math
 function lngToTileFrac(lng: number, zoom: number): number {
@@ -25,27 +27,50 @@ function tileUrl(config: MapStyleConfig, isDark: boolean, z: number, x: number, 
     .replace('{r}', config.retina ? '@2x' : '')
 }
 
-async function fetchTile(url: string): Promise<HTMLImageElement | null> {
-  try {
-    const resp = await fetch(url, { mode: 'cors' })
-    if (!resp.ok) return null
-    const blob = await resp.blob()
-    const objectUrl = URL.createObjectURL(blob)
-    return new Promise((resolve) => {
-      const img = new Image()
-      img.onload = () => {
-        URL.revokeObjectURL(objectUrl)
-        resolve(img)
-      }
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl)
-        resolve(null)
-      }
-      img.src = objectUrl
-    })
-  } catch {
-    return null
+// Sample 8×8 pixels from a loaded tile and return true if they're all near-white.
+// Near-white uniform tiles are blank server responses, not real map content.
+function isTileBlank(img: HTMLImageElement): boolean {
+  const s = document.createElement('canvas')
+  s.width = 8
+  s.height = 8
+  const c = s.getContext('2d')
+  if (!c) return false
+  c.drawImage(img, 0, 0, 8, 8)
+  const { data: d } = c.getImageData(0, 0, 8, 8)
+  for (let i = 0; i < d.length; i += 4) {
+    if ((d[i] ?? 0) < 250 || (d[i + 1] ?? 0) < 250 || (d[i + 2] ?? 0) < 250) return false
   }
+  return true
+}
+
+async function fetchTile(url: string, retries = 2): Promise<HTMLImageElement | null> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) await new Promise<void>((r) => setTimeout(r, 400 * attempt))
+    try {
+      const resp = await fetch(url, { mode: 'cors' })
+      if (!resp.ok) continue
+      const blob = await resp.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const img = await new Promise<HTMLImageElement | null>((resolve) => {
+        const i = new Image()
+        i.onload = () => {
+          URL.revokeObjectURL(objectUrl)
+          resolve(i)
+        }
+        i.onerror = () => {
+          URL.revokeObjectURL(objectUrl)
+          resolve(null)
+        }
+        i.src = objectUrl
+      })
+      if (!img) continue
+      if (isTileBlank(img)) continue
+      return img
+    } catch {
+      // swallow and retry
+    }
+  }
+  return null
 }
 
 async function fetchTilesConcurrent(jobs: (() => Promise<void>)[], limit: number): Promise<void> {
@@ -73,12 +98,22 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath()
 }
 
+// Inner dot diameter (px) per size — matches the on-map `.pin-dot--*` CSS rules.
+const DOT_CONTENT_PX: Record<PinDotSize, number> = { none: 0, xs: 8, s: 12, m: 17, l: 22, xl: 28 }
+// Number is only legible (and shown) on m/l/xl dots, mirroring the map marker.
+const DOT_NUM_PX: Partial<Record<PinDotSize, number>> = { m: 8, l: 10, xl: 13 }
+
 function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<number>, geoToOut: (lat: number, lng: number) => [number, number], paperW: number, paperH: number) {
   // Scale pins relative to page width (same reference as drawInfoBox).
   const S = paperW / 612
   const emojiSize = Math.round(28 * S)
-  const dotR = Math.round(4 * S)
-  const gap = Math.round(3 * S) // margin-top between emoji and dot
+
+  // Pre-compute sequence numbers for numbered pins (order within full list).
+  const pinSeqMap = new Map<number, number>()
+  let seq = 0
+  for (const pin of pins) {
+    if (pin.showNumber) pinSeqMap.set(pin.id, ++seq)
+  }
 
   for (const pin of pins) {
     if (hiddenPinIds.has(pin.id)) continue
@@ -87,36 +122,221 @@ function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<
     // Skip pins outside the canvas (with small margin for clipping)
     if (ox < -emojiSize || ox > paperW + emojiSize || oy < -emojiSize || oy > paperH + emojiSize) continue
 
-    // The anchor is center-bottom of the icon (bottom of the dot).
-    // Draw dot first so emoji shadow renders above it.
-    const dotCY = oy - dotR
+    const size = pin.dotSize ?? 'm'
+    const shape: PinDotShape = pin.dotShape ?? 'circle'
+    const hasDot = size !== 'none'
+    // Ringless: the dot is just its colored content size, matching the on-screen .pin-dot.
+    const r = hasDot ? (DOT_CONTENT_PX[size] / 2) * S : 0
 
-    ctx.save()
-    ctx.shadowColor = 'rgba(0,0,0,0.35)'
-    ctx.shadowBlur = dotR * 1.5
-    ctx.shadowOffsetY = dotR * 0.5
-    ctx.beginPath()
-    ctx.arc(ox, dotCY, dotR, 0, Math.PI * 2)
-    ctx.fillStyle = pin.color || '#06b6d4'
-    ctx.fill()
-    ctx.shadowColor = 'transparent'
-    ctx.strokeStyle = 'white'
-    ctx.lineWidth = dotR * 0.6
-    ctx.stroke()
-    ctx.restore()
+    // The geo point sits at the dot centre (emoji floats above); with no dot, at the emoji base.
+    if (hasDot) {
+      ctx.save()
+      ctx.translate(ox, oy)
+      ctx.shadowColor = 'rgba(0,0,0,0.35)'
+      ctx.shadowBlur = Math.round(3 * S)
+      ctx.shadowOffsetY = Math.round(1 * S)
+      ctx.fillStyle = pin.color || '#06b6d4'
+      if (shape === 'circle') {
+        ctx.beginPath()
+        ctx.arc(0, 0, r, 0, Math.PI * 2)
+        ctx.fill()
+      } else {
+        if (shape === 'diamond') ctx.rotate(Math.PI / 4)
+        roundRect(ctx, -r, -r, r * 2, r * 2, Math.max(1, Math.round(2 * S)))
+        ctx.fill()
+      }
+      ctx.shadowColor = 'transparent'
+      ctx.strokeStyle = 'white'
+      ctx.lineWidth = 2 * S
+      ctx.stroke()
+      ctx.restore()
 
-    // Emoji above dot
-    const emojiBottomY = dotCY - dotR - gap
+      // Number — drawn upright at the dot centre, only on sizes that can hold it.
+      const pinNum = pinSeqMap.get(pin.id)
+      const numPx = DOT_NUM_PX[size]
+      if (pinNum !== undefined && numPx !== undefined) {
+        ctx.save()
+        ctx.fillStyle = 'white'
+        ctx.font = `700 ${Math.round(numPx * S)}px system-ui,sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(String(pinNum), ox, oy)
+        ctx.restore()
+      }
+    }
 
-    ctx.save()
-    ctx.shadowColor = 'rgba(0,0,0,0.35)'
-    ctx.shadowBlur = Math.round(3 * S)
-    ctx.shadowOffsetY = Math.round(1 * S)
-    ctx.font = `${emojiSize}px serif`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'bottom'
-    ctx.fillText(pin.emoji, ox, emojiBottomY)
-    ctx.restore()
+    if (pin.emoji) {
+      ctx.save()
+      ctx.shadowColor = 'rgba(0,0,0,0.35)'
+      ctx.shadowBlur = Math.round(3 * S)
+      ctx.shadowOffsetY = Math.round(1 * S)
+      ctx.font = `${emojiSize}px serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'alphabetic'
+      // textBaseline='bottom' uses the em-box bottom which reserves unused descent space for emoji,
+      // making glyphs appear above the dot. Measure actual descent and compensate so the rendered
+      // glyph bottom aligns with the dot top (or geo point when there is no dot).
+      const descent = ctx.measureText(pin.emoji).actualBoundingBoxDescent
+      const emojiAlphaY = (hasDot ? oy - r : oy) - descent
+      ctx.fillText(pin.emoji, ox, emojiAlphaY)
+      ctx.restore()
+    }
+  }
+}
+
+const ROUTE_WP = {
+  xs: { r: 4, sqHalf: 4, fontSize: 5 },
+  s: { r: 6, sqHalf: 6, fontSize: 7 },
+  m: { r: 9, sqHalf: 9, fontSize: 10 },
+  l: { r: 13, sqHalf: 13, fontSize: 13 },
+  xl: { r: 17, sqHalf: 17, fontSize: 16 }
+} as const
+
+const ROUTE_DASH: Partial<Record<string, number[]>> = {
+  dashed: [12, 8],
+  dotted: [1, 9],
+  'long-dash': [22, 10],
+  'dash-dot': [14, 5, 2, 5]
+}
+
+function drawRoutes(ctx: CanvasRenderingContext2D, routes: Route[], hiddenRouteIds: Set<number>, geoToOut: (lat: number, lng: number) => [number, number], paperW: number, _paperH: number) {
+  const S = paperW / 612
+  for (const route of routes) {
+    if (hiddenRouteIds.has(route.id)) continue
+    const lineStyle = route.lineStyle ?? 'solid'
+    const rawWpStyle = route.waypointStyle as string | undefined
+    const wpStyle = rawWpStyle === 'number' ? 'circle' : (rawWpStyle ?? 'circle')
+    const wpShowNumber = rawWpStyle === 'number' ? true : (route.waypointShowNumber ?? false)
+    const wpSize = route.waypointSize ?? 'm'
+    const color = route.color
+    const wp = ROUTE_WP[wpSize]
+
+    const rawPoints = route.points.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+    const pts = rawPoints.map((p) => geoToOut(p.lat, p.lng))
+
+    if (pts.length < 1) continue
+
+    if (pts.length >= 2 && lineStyle !== 'none') {
+      if (lineStyle === 'double') {
+        ctx.save()
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+        ctx.strokeStyle = color
+        ctx.lineWidth = 8 * S
+        ctx.beginPath()
+        ctx.moveTo(pts[0]![0], pts[0]![1])
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]![0], pts[i]![1])
+        ctx.stroke()
+        ctx.strokeStyle = 'white'
+        ctx.lineWidth = 3 * S
+        ctx.beginPath()
+        ctx.moveTo(pts[0]![0], pts[0]![1])
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]![0], pts[i]![1])
+        ctx.stroke()
+        ctx.restore()
+      } else if (lineStyle === 'arrow') {
+        const arrowLen = 24 * S
+        const arrowHW = 8 * S
+        const wpR = wpStyle !== 'none' ? wp.r * S : 0
+        for (let i = 0; i + 1 < pts.length; i++) {
+          const [x1, y1] = pts[i]!
+          const [x2, y2] = pts[i + 1]!
+          const dx = x2 - x1,
+            dy = y2 - y1
+          const len = Math.hypot(dx, dy)
+          if (len < 1) continue
+          const ux = dx / len,
+            uy = dy / len
+          // Line body stops before arrowhead
+          const ex = x2 - ux * (wpR + arrowLen + 6 * S)
+          const ey = y2 - uy * (wpR + arrowLen + 6 * S)
+          ctx.save()
+          ctx.strokeStyle = color
+          ctx.lineWidth = 3.5 * S
+          ctx.lineCap = 'butt'
+          ctx.lineJoin = 'round'
+          ctx.beginPath()
+          ctx.moveTo(x1, y1)
+          ctx.lineTo(ex, ey)
+          ctx.stroke()
+          // Arrowhead
+          const tipX = x2 - ux * (wpR + 2 * S)
+          const tipY = y2 - uy * (wpR + 2 * S)
+          const bx = tipX - ux * arrowLen
+          const by = tipY - uy * arrowLen
+          ctx.fillStyle = color
+          ctx.strokeStyle = 'white'
+          ctx.lineWidth = 2 * S
+          ctx.lineJoin = 'round'
+          ctx.beginPath()
+          ctx.moveTo(tipX, tipY)
+          ctx.lineTo(bx + -uy * arrowHW, by + ux * arrowHW)
+          ctx.lineTo(bx - -uy * arrowHW, by - ux * arrowHW)
+          ctx.closePath()
+          ctx.fill()
+          ctx.stroke()
+          ctx.restore()
+        }
+      } else {
+        // Main line
+        ctx.save()
+        ctx.strokeStyle = color
+        ctx.lineWidth = (lineStyle === 'dotted' ? 4 : 3.5) * S
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+        const dash = ROUTE_DASH[lineStyle]
+        if (dash) ctx.setLineDash(dash.map((v) => v * S))
+        ctx.beginPath()
+        ctx.moveTo(pts[0]![0], pts[0]![1])
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]![0], pts[i]![1])
+        ctx.stroke()
+        ctx.restore()
+      }
+    }
+
+    if (wpStyle !== 'none') {
+      for (let i = 0; i < pts.length; i++) {
+        if (rawPoints[i]?.pinId !== undefined) continue
+        const [x, y] = pts[i]!
+        const r = wp.r * S
+        ctx.save()
+        ctx.fillStyle = color
+        if (wpStyle === 'circle') {
+          ctx.beginPath()
+          ctx.arc(x, y, r, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.strokeStyle = 'white'
+          ctx.lineWidth = 2 * S
+          ctx.stroke()
+        } else if (wpStyle === 'square') {
+          const half = wp.sqHalf * 0.75 * S
+          roundRect(ctx, x - half, y - half, half * 2, half * 2, 1.5 * S)
+          ctx.fill()
+          ctx.strokeStyle = 'white'
+          ctx.lineWidth = 2 * S
+          ctx.stroke()
+        } else if (wpStyle === 'diamond') {
+          const half = wp.sqHalf * 0.75 * S
+          ctx.save()
+          ctx.translate(x, y)
+          ctx.rotate(Math.PI / 4)
+          roundRect(ctx, -half, -half, half * 2, half * 2, 1.5 * S)
+          ctx.fill()
+          ctx.strokeStyle = 'white'
+          ctx.lineWidth = 2 * S
+          ctx.stroke()
+          ctx.restore()
+        }
+        if (wpShowNumber) {
+          ctx.fillStyle = 'white'
+          ctx.font = `bold ${Math.round(wp.fontSize * S)}px system-ui,sans-serif`
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(String(i + 1), x, y)
+        }
+        ctx.restore()
+      }
+    }
   }
 }
 
@@ -145,30 +365,262 @@ function bestCorner(pinsInArea: Pin[], geoToOutputPx: (lat: number, lng: number)
   return best
 }
 
-function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string, pins: Pin[], angle: number, corners: [number, number][], scaleUnit: 'km' | 'mi', includeLegend: boolean, includeCompass: boolean, includeScale: boolean, paperW: number, paperH: number, corner: OverlayCorner) {
-  const namedPins = pins.filter((p) => p.name)
+const LEGEND_WP = {
+  xs: { r: 3, sqHalf: 3, fontSize: 4 },
+  s: { r: 5, sqHalf: 4, fontSize: 5.5 },
+  m: { r: 7, sqHalf: 5, fontSize: 7 },
+  l: { r: 9, sqHalf: 7, fontSize: 9 },
+  xl: { r: 11, sqHalf: 9, fontSize: 11 }
+} as const
+
+const LEGEND_DASH: Partial<Record<string, number[]>> = {
+  dashed: [12, 8],
+  dotted: [1, 9],
+  'long-dash': [22, 10],
+  'dash-dot': [14, 5, 2, 5]
+}
+
+function drawRoutePreviewInLegend(ctx: CanvasRenderingContext2D, route: Route, ox: number, oy: number, S: number) {
+  const color = route.color
+  const lineStyle = route.lineStyle ?? 'solid'
+  const rawLWpStyle = route.waypointStyle as string | undefined
+  const wpStyle = rawLWpStyle === 'number' ? 'circle' : (rawLWpStyle ?? 'circle')
+  const wpShowNumberL = rawLWpStyle === 'number' ? true : (route.waypointShowNumber ?? false)
+  const wp = LEGEND_WP[route.waypointSize ?? 'm']
+  const cy = oy + 10 * S
+  const hasNodes = wpStyle !== 'none'
+  const nr = hasNodes ? (wpStyle === 'circle' ? wp.r : wp.sqHalf) : 0
+  const lx1 = ox + 8 * S
+  const lx2 = ox + 44 * S
+  const x1 = ox + (hasNodes ? (8 + nr) * S : 2 * S)
+  const x2 = ox + (hasNodes ? (44 - nr) * S : 50 * S)
+
+  ctx.save()
+
+  if (lineStyle === 'none') {
+    ctx.strokeStyle = '#d1d5db'
+    ctx.lineWidth = 1.5 * S
+    ctx.setLineDash([3 * S, 3 * S])
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(ox + 2 * S, cy)
+    ctx.lineTo(ox + 50 * S, cy)
+    ctx.stroke()
+  } else if (lineStyle === 'double') {
+    ctx.strokeStyle = color
+    ctx.lineWidth = 2 * S
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(x1, cy - 2 * S)
+    ctx.lineTo(x2, cy - 2 * S)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(x1, cy + 2 * S)
+    ctx.lineTo(x2, cy + 2 * S)
+    ctx.stroke()
+  } else if (lineStyle === 'arrow') {
+    const arrowLen = 12 * S
+    const arrowHW = 4 * S
+    ctx.strokeStyle = color
+    ctx.lineWidth = 2.5 * S
+    ctx.lineCap = 'butt'
+    ctx.beginPath()
+    ctx.moveTo(x1, cy)
+    ctx.lineTo(x2 - arrowLen, cy)
+    ctx.stroke()
+    ctx.fillStyle = color
+    ctx.strokeStyle = 'white'
+    ctx.lineWidth = 1.5 * S
+    ctx.lineJoin = 'round'
+    ctx.beginPath()
+    ctx.moveTo(x2, cy)
+    ctx.lineTo(x2 - arrowLen, cy + arrowHW)
+    ctx.lineTo(x2 - arrowLen, cy - arrowHW)
+    ctx.closePath()
+    ctx.fill()
+    ctx.stroke()
+  } else {
+    ctx.strokeStyle = color
+    ctx.lineWidth = (lineStyle === 'dotted' ? 4 : 2.5) * S
+    ctx.lineCap = 'round'
+    const dash = LEGEND_DASH[lineStyle]
+    if (dash) ctx.setLineDash(dash.map((v) => v * S))
+    ctx.beginPath()
+    ctx.moveTo(x1, cy)
+    ctx.lineTo(x2, cy)
+    ctx.stroke()
+  }
+
+  ctx.setLineDash([]) // clear any dotted/dashed pattern so node outlines stroke solid
+
+  if (hasNodes) {
+    for (const [wx, label] of [
+      [lx1, '1'],
+      [lx2, '2']
+    ] as [number, string][]) {
+      ctx.save()
+      ctx.fillStyle = color
+      ctx.strokeStyle = 'white'
+      ctx.lineWidth = 2 * S
+      if (wpStyle === 'circle') {
+        ctx.beginPath()
+        ctx.arc(wx, cy, wp.r * S, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+      } else if (wpStyle === 'square') {
+        const h = wp.sqHalf * S
+        roundRect(ctx, wx - h, cy - h, h * 2, h * 2, 1.5 * S)
+        ctx.fill()
+        roundRect(ctx, wx - h, cy - h, h * 2, h * 2, 1.5 * S)
+        ctx.stroke()
+      } else if (wpStyle === 'diamond') {
+        const h = wp.sqHalf * S
+        ctx.save()
+        ctx.translate(wx, cy)
+        ctx.rotate(Math.PI / 4)
+        roundRect(ctx, -h, -h, h * 2, h * 2, 1.5 * S)
+        ctx.fill()
+        roundRect(ctx, -h, -h, h * 2, h * 2, 1.5 * S)
+        ctx.stroke()
+        ctx.restore()
+      }
+      if (wpShowNumberL) {
+        ctx.fillStyle = 'white'
+        ctx.font = `bold ${Math.round(wp.fontSize * S)}px system-ui,sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(label, wx, cy)
+      }
+      ctx.restore()
+    }
+  }
+
+  ctx.restore()
+}
+
+/** What the info box will contain — enough to compute its footprint without drawing. */
+export interface LegendBoxContent {
+  hasTitle: boolean
+  hasArea: boolean
+  includeCompass: boolean
+  includeScale: boolean
+  /** Named pins (one entry each); `hasDescription` adds a second text line. */
+  pins: { hasDescription: boolean }[]
+  /** Number of named routes (each renders a name + distance line). */
+  routeCount: number
+}
+
+/**
+ * Footprint of the info box as fractions of paper WIDTH. Every dimension in
+ * `drawInfoBox` scales with `S = paperW/612`, so the box is a fixed fraction of
+ * the paper regardless of size — letting the on-screen print-area preview size a
+ * matching box. Mirrors the `S = 1` constants in `drawInfoBox`; keep them in sync.
+ * Returns null when nothing would be drawn.
+ */
+export function legendBoxFractions(c: LegendBoxContent): { wFrac: number; hFrac: number; mFrac: number } | null {
+  const hasLegend = c.pins.length > 0 || c.routeCount > 0
+  const hasHeader = c.hasTitle || c.hasArea || c.includeCompass
+  if (!hasHeader && !hasLegend && !c.includeScale) return null
+
+  const pad = 8
+  const margin = 16
+  const legendW = 190
+  const divGapBefore = 2
+  const divGapAfter = 3
+  const divW = 1
+  const titleSize = 11
+  const areaSize = 8
+  const areaGap = 2
+  const headerSize = 7
+  const nameSize = 10
+  const descSize = 8
+  const emojiColW = 16
+  const rowGap = 3
+  const previewH = 16
+  const compDiam = 20
+
+  const titleRowH = c.hasTitle ? titleSize : 0
+  const areaRowH = c.hasArea ? areaSize + areaGap : 0
+  const headerRowH = hasHeader ? Math.max(titleRowH + areaRowH, c.includeCompass ? compDiam : 0) : 0
+
+  let legendSectionH = 0
+  if (hasLegend) {
+    legendSectionH += headerSize + 6
+    for (const p of c.pins) {
+      const rowH = p.hasDescription ? nameSize + 2 + descSize : nameSize
+      legendSectionH += Math.max(emojiColW, rowH) + rowGap
+    }
+    for (let i = 0; i < c.routeCount; i++) {
+      legendSectionH += Math.max(previewH, nameSize + 2 + descSize) + rowGap
+    }
+    legendSectionH -= rowGap
+  }
+
+  const scaleFooterH = c.includeScale ? 4 + 5 + 3 + 8 + 4 : 0
+
+  let contentH = 0
+  if (hasHeader) {
+    contentH += headerRowH + divGapBefore
+    if (hasLegend || c.includeScale) contentH += divW + divGapAfter
+  }
+  if (hasLegend) {
+    contentH += legendSectionH
+    if (c.includeScale) contentH += divGapBefore + divW + divGapAfter
+  }
+  if (c.includeScale) contentH += scaleFooterH
+  const boxH = contentH + pad * 2
+
+  return { wFrac: legendW / 612, hFrac: boxH / 612, mFrac: margin / 612 }
+}
+
+/**
+ * Collapse legend entries that would render identically. Emoji pins with the same
+ * emoji + name fold into a single entry (first occurrence wins); numbered pins each
+ * carry a unique number, so they never merge.
+ */
+export function dedupeLegendPins<T extends { pin: Pin; index?: number }>(items: T[]): T[] {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    const key = item.index !== undefined ? `#${item.index}` : `${item.pin.emoji} ${item.pin.name}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string, pins: Pin[], routes: Route[], angle: number, corners: [number, number][], scaleUnit: 'km' | 'mi', includeLegend: boolean, includeCompass: boolean, includeScale: boolean, blankLabels: boolean, paperW: number, paperH: number, corner: OverlayCorner, allPins?: Pin[]) {
+  // Compute sequence numbers from the full ordered list so legend indices match the map.
+  const pinSeqMap = new Map<number, number>()
+  let seq = 0
+  for (const p of allPins ?? pins) {
+    if (p.showNumber) pinSeqMap.set(p.id, ++seq)
+  }
+  const namedPins = dedupeLegendPins(pins.map((p) => ({ pin: p, index: pinSeqMap.get(p.id) })).filter(({ pin }) => pin.name))
+  const namedRoutes = routes.filter((r) => r.name)
   const hasTitle = includeLegend && !!title
   const hasArea = includeLegend && !!area
-  const hasLegend = includeLegend && namedPins.length > 0
+  const hasLegend = includeLegend && (namedPins.length > 0 || namedRoutes.length > 0)
   const hasHeader = hasTitle || hasArea || includeCompass
   if (!hasHeader && !hasLegend && !includeScale) return
 
   const S = paperW / 612
-  const pad = Math.round(12 * S)
+  const pad = Math.round(8 * S)
   const margin = Math.round(16 * S)
-  const borderR = Math.round(8 * S)
-  const legendW = Math.round(200 * S)
-  const divGapBefore = Math.round(4 * S)
-  const divGapAfter = Math.round(6 * S)
+  const borderR = Math.round(7 * S)
+  const legendW = Math.round(190 * S)
+  const divGapBefore = Math.round(2 * S)
+  const divGapAfter = Math.round(3 * S)
   const divW = Math.max(1, Math.round(S))
-  const titleSize = Math.round(13 * S)
-  const areaSize = Math.round(10 * S)
-  const areaGap = Math.round(3 * S)
-  const headerSize = Math.round(9 * S)
-  const nameSize = Math.round(12 * S)
-  const descSize = Math.round(10 * S)
-  const emojiColW = Math.round(20 * S)
-  const rowGap = Math.round(5 * S)
+  const titleSize = Math.round(11 * S)
+  const areaSize = Math.round(8 * S)
+  const areaGap = Math.round(2 * S)
+  const headerSize = Math.round(7 * S)
+  const nameSize = Math.round(10 * S)
+  const descSize = Math.round(8 * S)
+  const emojiColW = Math.round(16 * S)
+  const rowGap = Math.round(3 * S)
+  const previewW = Math.round(44 * S)
+  const previewH = Math.round(16 * S)
 
   // Compass — small, inline with title row
   const compCircleR = Math.round(10 * S)
@@ -185,9 +637,12 @@ function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string,
   let legendSectionH = 0
   if (hasLegend) {
     legendSectionH += headerSize + Math.round(6 * S)
-    for (const pin of namedPins) {
+    for (const { pin } of namedPins) {
       const rowH = pin.description ? nameSize + Math.round(2 * S) + descSize : nameSize
       legendSectionH += Math.max(emojiColW, rowH) + rowGap
+    }
+    for (let i = 0; i < namedRoutes.length; i++) {
+      legendSectionH += Math.max(previewH, nameSize + Math.round(2 * S) + descSize) + rowGap
     }
     legendSectionH -= rowGap
   }
@@ -218,7 +673,7 @@ function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string,
   ctx.shadowColor = 'rgba(0,0,0,0.12)'
   ctx.shadowBlur = Math.round(10 * S)
   ctx.shadowOffsetY = Math.round(2 * S)
-  ctx.fillStyle = 'rgba(255,255,255,0.96)'
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'
   roundRect(ctx, boxX, boxY, legendW, boxH, borderR)
   ctx.fill()
   ctx.restore()
@@ -334,37 +789,111 @@ function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string,
     ctx.restore()
     y += headerSize + Math.round(6 * S)
 
-    for (const pin of namedPins) {
+    for (const { pin, index } of namedPins) {
       const textX = boxX + pad + emojiColW + Math.round(7 * S)
       const textMaxW = legendW - pad * 2 - emojiColW - Math.round(7 * S)
 
-      ctx.save()
-      ctx.font = `${Math.round(15 * S)}px serif`
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'top'
-      ctx.fillText(pin.emoji, boxX + pad, y)
-      ctx.restore()
+      if (index !== undefined) {
+        const dotR = Math.round(emojiColW * 0.45)
+        const dotCX = boxX + pad + Math.round(emojiColW / 2)
+        const dotCY = y + Math.round(emojiColW / 2)
+        ctx.save()
+        ctx.beginPath()
+        ctx.arc(dotCX, dotCY, dotR, 0, Math.PI * 2)
+        ctx.fillStyle = pin.color || '#06b6d4'
+        ctx.fill()
+        ctx.strokeStyle = 'white'
+        ctx.lineWidth = Math.max(1, Math.round(dotR * 0.3))
+        ctx.stroke()
+        ctx.fillStyle = 'white'
+        ctx.font = `700 ${Math.round(dotR * 1.1)}px system-ui,sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(String(index), dotCX, dotCY)
+        ctx.restore()
+      } else {
+        ctx.save()
+        ctx.font = `${Math.round(15 * S)}px serif`
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        ctx.fillText(pin.emoji, boxX + pad, y)
+        ctx.restore()
+      }
 
-      ctx.save()
-      ctx.fillStyle = '#1f2937'
-      ctx.font = `600 ${nameSize}px system-ui,sans-serif`
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'top'
-      ctx.fillText(pin.name, textX, y, textMaxW)
-      ctx.restore()
+      if (blankLabels) {
+        ctx.save()
+        ctx.strokeStyle = '#9ca3af'
+        ctx.lineWidth = Math.max(1, Math.round(S))
+        ctx.beginPath()
+        ctx.moveTo(textX, y + nameSize - Math.round(2 * S))
+        ctx.lineTo(textX + Math.round(textMaxW * 0.85), y + nameSize - Math.round(2 * S))
+        ctx.stroke()
+        ctx.restore()
+      } else {
+        ctx.save()
+        ctx.fillStyle = '#1f2937'
+        ctx.font = `600 ${nameSize}px system-ui,sans-serif`
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        ctx.fillText(pin.name, textX, y, textMaxW)
+        ctx.restore()
 
-      if (pin.description) {
+        if (pin.description) {
+          ctx.save()
+          ctx.fillStyle = '#6b7280'
+          ctx.font = `${descSize}px system-ui,sans-serif`
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'top'
+          ctx.fillText(pin.description, textX, y + nameSize + Math.round(2 * S), textMaxW)
+          ctx.restore()
+        }
+      }
+
+      const rowH = !blankLabels && pin.description ? nameSize + Math.round(2 * S) + descSize : nameSize
+      y += Math.max(emojiColW, rowH) + rowGap
+    }
+
+    for (const route of namedRoutes) {
+      const textH = blankLabels ? nameSize : nameSize + Math.round(2 * S) + descSize
+      const rowH = Math.max(previewH, textH)
+      const previewY = y + Math.round((rowH - previewH) / 2)
+      drawRoutePreviewInLegend(ctx, route, boxX + pad, previewY, S)
+
+      const textX = boxX + pad + previewW + Math.round(7 * S)
+      const textMaxW = legendW - pad * 2 - previewW - Math.round(7 * S)
+      const textY = y + Math.round((rowH - textH) / 2)
+
+      if (blankLabels) {
+        ctx.save()
+        ctx.strokeStyle = '#9ca3af'
+        ctx.lineWidth = Math.max(1, Math.round(S))
+        ctx.beginPath()
+        ctx.moveTo(textX, textY + nameSize - Math.round(2 * S))
+        ctx.lineTo(textX + Math.round(textMaxW * 0.85), textY + nameSize - Math.round(2 * S))
+        ctx.stroke()
+        ctx.restore()
+      } else {
+        ctx.save()
+        ctx.fillStyle = '#1f2937'
+        ctx.font = `600 ${nameSize}px system-ui,sans-serif`
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        ctx.fillText(route.name, textX, textY, textMaxW)
+        ctx.restore()
+
+        const dist = formatDistance(routeDistanceM(route.points), scaleUnit)
+        const wpCount = route.points.length
+        const meta = `${dist} · ${wpCount} ${wpCount === 1 ? 'waypoint' : 'waypoints'}`
         ctx.save()
         ctx.fillStyle = '#6b7280'
         ctx.font = `${descSize}px system-ui,sans-serif`
         ctx.textAlign = 'left'
         ctx.textBaseline = 'top'
-        ctx.fillText(pin.description, textX, y + nameSize + Math.round(2 * S), textMaxW)
+        ctx.fillText(meta, textX, textY + nameSize + Math.round(2 * S), textMaxW)
         ctx.restore()
       }
 
-      const rowH = pin.description ? nameSize + Math.round(2 * S) + descSize : nameSize
-      y += Math.max(emojiColW, rowH) + rowGap
+      y += rowH + rowGap
     }
 
     if (includeScale) {
@@ -472,6 +1001,63 @@ function subCornersForCell(corners: [number, number][], ci: number, rj: number, 
   return [cnw, cne, cse, csw]
 }
 
+// Geo-anchored text labels. Centered on each caption's lat/lng, scaled by S = paperW/612
+// (same reference as drawPins), optionally rotated and backed by a white pill. Off-canvas
+// captions are skipped with a generous margin since text can extend well past its anchor.
+function drawCaptions(ctx: CanvasRenderingContext2D, captions: Caption[], hiddenCaptionIds: Set<number>, geoToOut: (lat: number, lng: number) => [number, number], paperW: number, paperH: number) {
+  const S = paperW / 612
+  for (const cap of captions) {
+    if (hiddenCaptionIds.has(cap.id)) continue
+    const text = cap.text ?? ''
+    if (!text.trim()) continue
+    const [ox, oy] = geoToOut(cap.lat, cap.lng)
+    if (ox < -paperW * 0.5 || ox > paperW * 1.5 || oy < -paperH * 0.5 || oy > paperH * 1.5) continue
+
+    const fontPx = (CAPTION_PT[cap.size] ?? CAPTION_PT.m) * S
+    const lines = text.split('\n')
+    const lineH = fontPx * 1.15
+    const totalH = lineH * lines.length
+
+    ctx.save()
+    ctx.translate(ox, oy)
+    if (cap.rotation) ctx.rotate((cap.rotation * Math.PI) / 180)
+    ctx.font = `600 ${fontPx}px system-ui,sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+
+    if (cap.background) {
+      let maxW = 0
+      for (const ln of lines) maxW = Math.max(maxW, ctx.measureText(ln).width)
+      const padX = fontPx * 0.45
+      const padY = fontPx * 0.18
+      const boxW = maxW + padX * 2
+      const boxH = totalH + padY * 2
+      ctx.save()
+      ctx.shadowColor = 'rgba(0,0,0,0.2)'
+      ctx.shadowBlur = fontPx * 0.25
+      ctx.shadowOffsetY = fontPx * 0.06
+      ctx.fillStyle = 'rgba(255,255,255,0.92)'
+      roundRect(ctx, -boxW / 2, -boxH / 2, boxW, boxH, fontPx * 0.35)
+      ctx.fill()
+      ctx.restore()
+    } else {
+      // White halo so dark text stays legible over busy tiles.
+      ctx.lineJoin = 'round'
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+      ctx.lineWidth = fontPx * 0.22
+    }
+
+    const startY = -totalH / 2 + lineH / 2
+    for (let i = 0; i < lines.length; i++) {
+      const ly = startY + i * lineH
+      if (!cap.background) ctx.strokeText(lines[i]!, 0, ly)
+      ctx.fillStyle = cap.color || '#111827'
+      ctx.fillText(lines[i]!, 0, ly)
+    }
+    ctx.restore()
+  }
+}
+
 export interface ExportOptions {
   corners: [number, number][] // 4 geographic corners [[lat,lng], ...]  NW CW order
   angle: number // rectangle rotation in radians
@@ -480,11 +1066,18 @@ export interface ExportOptions {
   mapArea?: string
   pins: Pin[]
   hiddenPinIds: Set<number>
+  routes: Route[]
+  hiddenRouteIds: Set<number>
+  captions: Caption[]
+  hiddenCaptionIds: Set<number>
   includeLegend: boolean
+  legendSeparatePage?: boolean // render the legend on its own page(s) instead of on the map
+  legendBlankLabels?: boolean // hide pin/route names — exploration mode so viewers can fill them in
   includeCompass: boolean
   includeScale: boolean
   scaleUnit: 'km' | 'mi'
   enhanceContrast: boolean
+  fastExport?: boolean // "Fast draft": fewer tiles at a lower zoom + smaller output for a quick export
   paperWidthPt: number // PDF page width in points (1pt = 1/72 inch)
   paperHeightPt: number // PDF page height in points
   gridCols?: number // poster grid columns (default 1)
@@ -494,9 +1087,12 @@ export interface ExportOptions {
 
 const TILE_SIZE = 256 // px per tile at 1x (used for grid/zoom math regardless of retina)
 const MAX_OUTPUT_PX = 7200 // cap longest side — gives ~217 DPI at A0, ~800+ DPI at A4
+const MAX_OUTPUT_PX_FAST = 4000 // "Fast draft" longest-side cap — smaller + quicker to encode
+const TILE_BUDGET = 750 // per-page tile ceiling — picks the highest zoom under it, staying under rate limits
+const TILE_BUDGET_FAST = 200 // "Fast draft" ceiling — far fewer tiles at a lower zoom for a quick export
 const TILE_CONCURRENCY = 24 // max simultaneous tile requests (6 connections × 4 CartoDB subdomains)
 
-async function renderPageToPng(corners: [number, number][], angle: number, config: MapStyleConfig, pins: Pin[], hiddenPinIds: Set<number>, includeLegend: boolean, includeCompass: boolean, includeScale: boolean, scaleUnit: 'km' | 'mi', enhanceContrast: boolean, mapTitle: string, mapArea: string, legendPins?: Pin[], onProgress?: (msg: string) => void): Promise<Uint8Array> {
+async function renderPageToPng(corners: [number, number][], angle: number, config: MapStyleConfig, pins: Pin[], hiddenPinIds: Set<number>, routes: Route[], hiddenRouteIds: Set<number>, captions: Caption[], hiddenCaptionIds: Set<number>, includeLegend: boolean, includeCompass: boolean, includeScale: boolean, scaleUnit: 'km' | 'mi', enhanceContrast: boolean, fastExport: boolean, mapTitle: string, mapArea: string, blankLabels: boolean, legendPins?: Pin[], legendRoutes?: Route[], onProgress?: (msg: string) => void): Promise<Uint8Array> {
   // --- 1. Compute the AABB of the 4 corners in lat/lng space ---
   const lats = corners.map((c) => c[0])
   const lngs = corners.map((c) => c[1])
@@ -508,14 +1104,31 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
   // --- 2. Choose zoom level ---
   const maxZoom = config.maxNativeZoom ?? 19
 
-  // Find the highest zoom where tile count stays under 750.
+  // Find the highest zoom where tile count stays under the budget ("Fast draft" lowers it).
+  const tileBudget = fastExport ? TILE_BUDGET_FAST : TILE_BUDGET
   let zoom = 1
   for (let z = 1; z <= maxZoom; z++) {
     const xSpan = (lngToTileFrac(maxLng, z) - lngToTileFrac(minLng, z)) * TILE_SIZE
     const ySpan = (latToTileFrac(minLat, z) - latToTileFrac(maxLat, z)) * TILE_SIZE
     const tileCount = (Math.floor(xSpan / TILE_SIZE) + 2) * (Math.floor(ySpan / TILE_SIZE) + 2)
-    if (tileCount > 750) break
+    if (tileCount > tileBudget) break
     zoom = z
+  }
+
+  // Canvas size guard (iOS only): step zoom down if the stitched canvas would exceed
+  // ~16 million pixels. iOS WebKit silently returns a blank canvas above that limit —
+  // the root cause of all-white exports on phones. Desktop browsers handle much larger
+  // canvases so the guard is skipped there to preserve full quality.
+  // iOS WebKit silently returns a blank canvas above ~16 million pixels.
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
+  if (isIOS) {
+    const ds = config.retina ? 512 : TILE_SIZE
+    while (zoom > 1) {
+      const gW = Math.floor(lngToTileFrac(maxLng, zoom)) - Math.floor(lngToTileFrac(minLng, zoom)) + 1
+      const gH = Math.floor(latToTileFrac(minLat, zoom)) - Math.floor(latToTileFrac(maxLat, zoom)) + 1
+      if (gW * ds * (gH * ds) <= 16_000_000) break
+      zoom--
+    }
   }
 
   // --- 3. Determine tile grid for AABB ---
@@ -598,7 +1211,8 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
   // Use the natural tile resolution (halfW/halfH in stitch pixels) rather than a fixed DPI.
   // This means an A4 export captures the same pixels as an A0 export would — the PDF can be
   // printed at any size and quality scales with the tiles, not the paper format chosen here.
-  const capScale = Math.min(1, MAX_OUTPUT_PX / Math.max(halfW * 2, halfH * 2))
+  const outputCap = fastExport ? MAX_OUTPUT_PX_FAST : MAX_OUTPUT_PX
+  const capScale = Math.min(1, outputCap / Math.max(halfW * 2, halfH * 2))
   const paperWidthPx = Math.ceil(halfW * 2 * capScale)
   const paperHeightPx = Math.ceil(halfH * 2 * capScale)
   const outCanvas = document.createElement('canvas')
@@ -631,9 +1245,20 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
     return ox >= 0 && ox <= paperWidthPx && oy >= 0 && oy <= paperHeightPx
   })
 
+  const routesInArea = routes.filter((route) => {
+    if (hiddenRouteIds.has(route.id)) return false
+    return route.points.some((p) => {
+      if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return false
+      const [ox, oy] = geoToOutputPx(p.lat, p.lng)
+      return ox >= 0 && ox <= paperWidthPx && oy >= 0 && oy <= paperHeightPx
+    })
+  })
+
   const overlayCorner = includeLegend || includeCompass || includeScale ? bestCorner(pinsInArea, geoToOutputPx, paperWidthPx, paperHeightPx) : 2
+  drawRoutes(outCtx, routes, hiddenRouteIds, geoToOutputPx, paperWidthPx, paperHeightPx)
   drawPins(outCtx, pins, hiddenPinIds, geoToOutputPx, paperWidthPx, paperHeightPx)
-  drawInfoBox(outCtx, mapTitle, mapArea, legendPins ?? pinsInArea, angle, corners, scaleUnit, includeLegend, includeCompass, includeScale, paperWidthPx, paperHeightPx, overlayCorner)
+  drawCaptions(outCtx, captions, hiddenCaptionIds, geoToOutputPx, paperWidthPx, paperHeightPx)
+  drawInfoBox(outCtx, mapTitle, mapArea, legendPins ?? pinsInArea, legendRoutes ?? routesInArea, angle, corners, scaleUnit, includeLegend, includeCompass, includeScale, blankLabels, paperWidthPx, paperHeightPx, overlayCorner, pins)
 
   // --- 8. Return PNG bytes ---
   return new Promise<Uint8Array>((resolve, reject) => {
@@ -650,19 +1275,274 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
   })
 }
 
-export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
-  const { corners, angle, mapStyle, mapTitle, mapArea = '', pins, hiddenPinIds, includeLegend, includeCompass, includeScale, scaleUnit, enhanceContrast, paperWidthPt, paperHeightPt, gridCols = 1, gridRows = 1, onProgress } = opts
+interface LegendPageContent {
+  title: string
+  area: string
+  pins: { pin: Pin; index?: number }[]
+  routes: Route[]
+  unit: 'km' | 'mi'
+  blankLabels?: boolean
+}
 
+/**
+ * Render the legend (title, subtitle, pins, routes) as one or more standalone PDF
+ * pages, flowing items into columns and spilling onto extra pages when they don't
+ * fit. Used when the user chooses "legend on its own page". Compass and scale are
+ * NOT drawn here — they stay on the map. Returns one PNG (page) per canvas.
+ */
+async function renderLegendPagesToPng(c: LegendPageContent, paperWidthPt: number, paperHeightPt: number): Promise<Uint8Array[]> {
+  const K = 4 // px per point — ~288 DPI for crisp text; max paper ~1224pt → 4896px (< MAX_OUTPUT_PX)
+  const pt = (n: number) => n * K
+  const W = Math.round(paperWidthPt * K)
+  const H = Math.round(paperHeightPt * K)
+
+  const margin = pt(30)
+  const colGap = pt(16)
+  const rowGap = pt(4)
+  const titleSize = pt(15)
+  const subSize = pt(10)
+  const sectionSize = pt(8)
+  const nameSize = pt(10)
+  const descSize = pt(8)
+  const swatch = pt(13) // pin icon column (numbered dot / emoji)
+  const gap = pt(5) // gap between icon/preview and text
+  const previewScale = K * 0.8 // route preview swatch scale (drawRoutePreviewInLegend draws 52×20 at this)
+  const previewW = 52 * previewScale
+  const previewH = 20 * previewScale
+  const lineH = pt(1) // gap between a name and its description
+
+  const pages: HTMLCanvasElement[] = []
+  let canvas!: HTMLCanvasElement
+  let ctx!: CanvasRenderingContext2D
+  let colCount = 1
+  let colW = W - margin * 2
+  let colLeftX: number[] = [margin]
+  let top = margin
+  const bottom = H - margin
+  let col = 0
+  let y = margin
+
+  function newPage(withHeader: boolean) {
+    canvas = document.createElement('canvas')
+    canvas.width = W
+    canvas.height = H
+    ctx = canvas.getContext('2d')!
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, W, H)
+    pages.push(canvas)
+
+    let headerBottom = margin
+    if (withHeader && (c.title || c.area)) {
+      let hy = margin
+      if (c.title) {
+        ctx.fillStyle = '#111827'
+        ctx.font = `700 ${titleSize}px system-ui,sans-serif`
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        ctx.fillText(c.title, margin, hy, W - margin * 2)
+        hy += titleSize * 1.1
+      }
+      if (c.area) {
+        ctx.fillStyle = '#6b7280'
+        ctx.font = `${subSize}px system-ui,sans-serif`
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        ctx.fillText(c.area, margin, hy + pt(3), W - margin * 2)
+        hy += pt(3) + subSize
+      }
+      hy += pt(6)
+      ctx.strokeStyle = '#e5e7eb'
+      ctx.lineWidth = Math.max(1, K)
+      ctx.beginPath()
+      ctx.moveTo(margin, hy)
+      ctx.lineTo(W - margin, hy)
+      ctx.stroke()
+      headerBottom = hy + pt(8)
+    }
+
+    const contentW = W - margin * 2
+    colCount = Math.max(1, Math.floor((contentW + colGap) / (pt(165) + colGap)))
+    colW = (contentW - (colCount - 1) * colGap) / colCount
+    colLeftX = Array.from({ length: colCount }, (_, i) => margin + i * (colW + colGap))
+    top = headerBottom
+    col = 0
+    y = top
+  }
+
+  // Reserve vertical space, advancing to the next column / page when it won't fit.
+  // `keepWith` reserves a follow-on block too, so section headers never orphan.
+  function place(height: number, keepWith = 0): [number, number] {
+    if (y > top && y + height + (keepWith ? rowGap + keepWith : 0) > bottom) {
+      col++
+      if (col >= colCount) newPage(false)
+      else y = top
+    }
+    const x = colLeftX[col]!
+    const drawY = y
+    y += height + rowGap
+    return [x, drawY]
+  }
+
+  function pinHeight(p: Pin): number {
+    if (c.blankLabels) return Math.max(swatch, nameSize)
+    return Math.max(swatch, nameSize + (p.description ? lineH + descSize : 0))
+  }
+  const routeRowH = c.blankLabels ? Math.max(previewH, nameSize) : Math.max(previewH, nameSize + lineH + descSize)
+
+  function sectionHeader(text: string, firstItemH: number) {
+    const [hx, hy] = place(sectionSize + pt(3), firstItemH)
+    ctx.save()
+    ctx.fillStyle = '#9ca3af'
+    ctx.font = `700 ${sectionSize}px system-ui,sans-serif`
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.letterSpacing = `${Math.round(pt(1))}px`
+    ctx.fillText(text, hx, hy)
+    ctx.restore()
+  }
+
+  newPage(true)
+
+  const legendPins = dedupeLegendPins(c.pins)
+  const hasPins = legendPins.length > 0
+  const hasRoutes = c.routes.length > 0
+
+  if (hasPins) {
+    sectionHeader(hasRoutes ? 'PINS' : 'LEGEND', pinHeight(legendPins[0]!.pin))
+    for (const { pin, index } of legendPins) {
+      const [x, dy] = place(pinHeight(pin))
+      const textX = x + swatch + gap
+      const textMaxW = colW - swatch - gap
+      if (index !== undefined) {
+        const dotR = Math.round(swatch * 0.45)
+        const dcx = x + Math.round(swatch / 2)
+        const dcy = dy + Math.round(swatch / 2)
+        ctx.save()
+        ctx.beginPath()
+        ctx.arc(dcx, dcy, dotR, 0, Math.PI * 2)
+        ctx.fillStyle = pin.color || '#06b6d4'
+        ctx.fill()
+        ctx.strokeStyle = 'white'
+        ctx.lineWidth = Math.max(1, Math.round(dotR * 0.3))
+        ctx.stroke()
+        ctx.fillStyle = 'white'
+        ctx.font = `700 ${Math.round(dotR * 1.1)}px system-ui,sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(String(index), dcx, dcy)
+        ctx.restore()
+      } else {
+        ctx.save()
+        ctx.font = `${Math.round(swatch * 0.95)}px serif`
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        ctx.fillText(pin.emoji, x, dy)
+        ctx.restore()
+      }
+      if (c.blankLabels) {
+        ctx.save()
+        ctx.strokeStyle = '#9ca3af'
+        ctx.lineWidth = Math.max(1, pt(0.5))
+        ctx.beginPath()
+        ctx.moveTo(textX, dy + nameSize - pt(1))
+        ctx.lineTo(textX + Math.round(textMaxW * 0.85), dy + nameSize - pt(1))
+        ctx.stroke()
+        ctx.restore()
+      } else {
+        ctx.save()
+        ctx.fillStyle = '#1f2937'
+        ctx.font = `600 ${nameSize}px system-ui,sans-serif`
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        ctx.fillText(pin.name, textX, dy, textMaxW)
+        ctx.restore()
+        if (pin.description) {
+          ctx.save()
+          ctx.fillStyle = '#6b7280'
+          ctx.font = `${descSize}px system-ui,sans-serif`
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'top'
+          ctx.fillText(pin.description, textX, dy + nameSize + lineH, textMaxW)
+          ctx.restore()
+        }
+      }
+    }
+  }
+
+  if (hasRoutes) {
+    sectionHeader(hasPins ? 'ROUTES' : 'LEGEND', routeRowH)
+    for (const route of c.routes) {
+      const [x, dy] = place(routeRowH)
+      drawRoutePreviewInLegend(ctx, route, x, dy + Math.round((routeRowH - previewH) / 2), previewScale)
+      const textX = x + previewW + gap
+      const textMaxW = colW - previewW - gap
+      const textRowH = c.blankLabels ? nameSize : nameSize + lineH + descSize
+      const textY = dy + Math.round((routeRowH - textRowH) / 2)
+      if (c.blankLabels) {
+        ctx.save()
+        ctx.strokeStyle = '#9ca3af'
+        ctx.lineWidth = Math.max(1, pt(0.5))
+        ctx.beginPath()
+        ctx.moveTo(textX, textY + nameSize - pt(1))
+        ctx.lineTo(textX + Math.round(textMaxW * 0.85), textY + nameSize - pt(1))
+        ctx.stroke()
+        ctx.restore()
+      } else {
+        ctx.save()
+        ctx.fillStyle = '#1f2937'
+        ctx.font = `600 ${nameSize}px system-ui,sans-serif`
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        ctx.fillText(route.name, textX, textY, textMaxW)
+        ctx.restore()
+        const dist = formatDistance(routeDistanceM(route.points), c.unit)
+        const wp = route.points.length
+        ctx.save()
+        ctx.fillStyle = '#6b7280'
+        ctx.font = `${descSize}px system-ui,sans-serif`
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        ctx.fillText(`${dist} · ${wp} ${wp === 1 ? 'waypoint' : 'waypoints'}`, textX, textY + nameSize + lineH, textMaxW)
+        ctx.restore()
+      }
+    }
+  }
+
+  return Promise.all(
+    pages.map(
+      (cv) =>
+        new Promise<Uint8Array>((resolve, reject) => {
+          cv.toBlob((blob) => {
+            if (!blob) {
+              reject(new Error('Canvas toBlob failed'))
+              return
+            }
+            blob
+              .arrayBuffer()
+              .then((buf) => resolve(new Uint8Array(buf)))
+              .catch(reject)
+          }, 'image/png')
+        })
+    )
+  )
+}
+
+export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
+  const { corners, angle, mapStyle, mapTitle, mapArea = '', pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, includeLegend, legendSeparatePage = false, legendBlankLabels = false, includeCompass, includeScale, scaleUnit, enhanceContrast, fastExport = false, paperWidthPt, paperHeightPt, gridCols = 1, gridRows = 1, onProgress } = opts
+
+  // When the legend lives on its own page, keep it off the map overlay (compass/scale stay).
+  const onMapLegend = includeLegend && !legendSeparatePage
   const config = MAP_STYLE_CONFIGS[mapStyle]
   const totalPages = gridCols * gridRows
   const pdfDoc = await PDFDocument.create()
   pdfDoc.setTitle(mapTitle || 'MapFolio')
   pdfDoc.setCreator('MapFolio')
 
-  // For grid exports, pre-compute pins within the full area so the legend
-  // on the legend page shows all pins across every cell, not just that cell's.
+  // For grid exports, pre-compute pins/routes within the full area so the on-map
+  // legend shows all items across every cell, not just that cell's.
   let fullAreaLegendPins: Pin[] | undefined
-  if (totalPages > 1 && includeLegend) {
+  let fullAreaLegendRoutes: Route[] | undefined
+  if (totalPages > 1 && onMapLegend) {
     const lats = corners.map((c) => c[0])
     const lngs = corners.map((c) => c[1])
     const minLat = Math.min(...lats),
@@ -670,6 +1550,7 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
     const minLng = Math.min(...lngs),
       maxLng = Math.max(...lngs)
     fullAreaLegendPins = pins.filter((p) => !hiddenPinIds.has(p.id) && p.lat >= minLat && p.lat <= maxLat && p.lng >= minLng && p.lng <= maxLng)
+    fullAreaLegendRoutes = routes.filter((r) => !hiddenRouteIds.has(r.id) && r.points.some((p) => p.lat >= minLat && p.lat <= maxLat && p.lng >= minLng && p.lng <= maxLng))
   }
 
   for (let rj = 0; rj < gridRows; rj++) {
@@ -680,15 +1561,44 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
       // All overlay elements go together on the bottom-right cell as a single combined box.
       const isInfoCell = ci === gridCols - 1 && rj === gridRows - 1
       const cellCompass = includeCompass && isInfoCell
-      const cellLegend = includeLegend && isInfoCell
+      const cellLegend = onMapLegend && isInfoCell
       const cellScale = includeScale && isInfoCell
 
       const prefix = totalPages > 1 ? `Page ${pageNum} of ${totalPages} — ` : ''
-      const pngBytes = await renderPageToPng(cellCorners, angle, config, pins, hiddenPinIds, cellLegend, cellCompass, cellScale, scaleUnit, enhanceContrast, mapTitle, mapArea, cellLegend ? fullAreaLegendPins : undefined, (msg) => onProgress?.(`${prefix}${msg}`))
+      const pngBytes = await renderPageToPng(cellCorners, angle, config, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, cellLegend, cellCompass, cellScale, scaleUnit, enhanceContrast, fastExport, mapTitle, mapArea, legendBlankLabels, cellLegend ? fullAreaLegendPins : undefined, cellLegend ? fullAreaLegendRoutes : undefined, (msg) => onProgress?.(`${prefix}${msg}`))
 
       const pdfImage = await pdfDoc.embedPng(pngBytes)
       const page = pdfDoc.addPage([paperWidthPt, paperHeightPt])
       page.drawImage(pdfImage, { x: 0, y: 0, width: paperWidthPt, height: paperHeightPt })
+    }
+  }
+
+  // Dedicated legend page(s) — named pins/routes within the print area's bounding box.
+  if (includeLegend && legendSeparatePage) {
+    const lats = corners.map((c) => c[0])
+    const lngs = corners.map((c) => c[1])
+    const minLat = Math.min(...lats),
+      maxLat = Math.max(...lats)
+    const minLng = Math.min(...lngs),
+      maxLng = Math.max(...lngs)
+    const inArea = (lat: number, lng: number) => lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng
+
+    // Sequence numbers must match the map — derive them from the full ordered pin list.
+    const seq = new Map<number, number>()
+    let n = 0
+    for (const p of pins) if (p.showNumber) seq.set(p.id, ++n)
+
+    const legendPins = pins.filter((p) => p.name && !hiddenPinIds.has(p.id) && inArea(p.lat, p.lng)).map((pin) => ({ pin, index: seq.get(pin.id) }))
+    const legendRoutes = routes.filter((r) => r.name && !hiddenRouteIds.has(r.id) && r.points.some((p) => inArea(p.lat, p.lng)))
+
+    if (legendPins.length > 0 || legendRoutes.length > 0) {
+      onProgress?.('Rendering legend…')
+      const legendPages = await renderLegendPagesToPng({ title: mapTitle, area: mapArea, pins: legendPins, routes: legendRoutes, unit: scaleUnit, blankLabels: legendBlankLabels }, paperWidthPt, paperHeightPt)
+      for (const png of legendPages) {
+        const img = await pdfDoc.embedPng(png)
+        const page = pdfDoc.addPage([paperWidthPt, paperHeightPt])
+        page.drawImage(img, { x: 0, y: 0, width: paperWidthPt, height: paperHeightPt })
+      }
     }
   }
 

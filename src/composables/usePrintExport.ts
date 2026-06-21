@@ -2,13 +2,32 @@ import L from 'leaflet'
 import type { ShallowRef } from 'vue'
 
 import type { PrintAreaInfo } from '@/components/PrintAreaDrawer.vue'
-import type { MapStyle, Pin } from '@/types'
+import type { Caption, MapStyle, Pin, Route } from '@/types'
 
 import { exportMapToPdf } from './useMapExport'
 import type { PrintOrientation, PrintPaperSize } from './usePrintSettings'
 
 export type PaperSize = PrintPaperSize
 export type Orientation = PrintOrientation
+
+export interface PrintHistoryEntry {
+  timestamp: number
+  corners: [number, number][]
+  angle: number
+  paper: PaperSize
+  orientation: Orientation
+  grid: string
+  snap: boolean
+  legend: boolean
+  separatePage?: boolean
+  compass: boolean
+  scale: boolean
+  contrast: boolean
+  fastExport?: boolean
+}
+
+const HISTORY_KEY = 'mapfolio_print_history'
+const HISTORY_MAX = 5
 
 export const PAPERS = ['letter', 'tabloid', 'a'] as const
 export const PAPER_LABELS: Record<PaperSize, string> = { letter: 'Letter', tabloid: 'Tabloid', a: 'A (ISO)' }
@@ -32,26 +51,45 @@ export function usePrintExport(options: {
   mapArea: Ref<string>
   pins: Ref<Pin[]>
   hiddenPinIds: Ref<Set<number>>
+  routes: Ref<Route[]>
+  hiddenRouteIds: Ref<Set<number>>
+  captions: Ref<Caption[]>
+  hiddenCaptionIds: Ref<Set<number>>
+  units: Ref<'km' | 'mi'>
+  angleSnapEnabled: Ref<boolean>
   showNotification: (message: string, type?: 'success' | 'error' | 'info') => void
   printSettings: {
     paper: Ref<PrintPaperSize>
     orientation: Ref<PrintOrientation>
     grid: Ref<string>
     legend: Ref<boolean>
+    legendSeparatePage: Ref<boolean>
+    legendTitle: Ref<boolean>
+    legendArea: Ref<boolean>
+    legendBlankLabels: Ref<boolean>
     compass: Ref<boolean>
-    scale: Ref<'off' | 'km' | 'mi'>
+    scale: Ref<boolean>
     contrast: Ref<boolean>
+    fastExport: Ref<boolean>
   }
 }) {
-  const { leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, showNotification, printSettings } = options
+  const { leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, units, angleSnapEnabled, showNotification, printSettings } = options
 
   const printBounds = shallowRef<L.LatLngBounds | null>(null)
   const printCorners = ref<[number, number][]>([])
   const printAngle = ref(0)
-  const printSnapEnabled = ref(false)
+  const printHistory = ref<PrintHistoryEntry[]>(JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]'))
+  const printAreaVisibility = ref<'visible' | 'opaque' | 'hidden'>((localStorage.getItem('mapfolio_print_visibility') as 'visible' | 'opaque' | 'hidden') ?? 'visible')
+
+  watch(printAreaVisibility, (v) => localStorage.setItem('mapfolio_print_visibility', v))
   const overlayCorner = ref<0 | 1 | 2 | 3>(2)
   const isDownloadingPdf = ref(false)
+  const isPreviewOpen = ref(false)
+  const previewBlobUrl = ref<string | null>(null)
   const isAutoArea = ref(false)
+  // Geocoded suggestion shown as the Subtitle placeholder — never written into the
+  // map's stored `area`. Effective subtitle = user-entered area || this suggestion.
+  const autoArea = ref('')
 
   const printPaper = ref<PaperSize | null>(printSettings.paper.value)
   const printOrientation = ref<Orientation | null>(printSettings.orientation.value)
@@ -83,30 +121,50 @@ export function usePrintExport(options: {
       const a = data.address ?? {}
       const city = a.city || a.town || a.village || a.municipality || a.county || ''
       const region = a.state || a.country || ''
-      mapArea.value = city && region ? `${city}, ${region}` : city || region || data.display_name || ''
+      autoArea.value = city && region ? `${city}, ${region}` : city || region || data.display_name || ''
     } catch {
     } finally {
       isAutoArea.value = false
     }
   }
 
+  // Detect the subtitle suggestion from the print area center (what's actually being
+  // printed), falling back to the current map view. Only while the user hasn't set a
+  // subtitle. Debounced + deduped by ~0.1° (~11km) so panning doesn't spam Nominatim.
   let areaTimer: ReturnType<typeof setTimeout> | null = null
+  let lastGeocodeKey = ''
+  function scheduleAreaDetect() {
+    if (!leafletMap.value || mapArea.value !== '') return
+    if (areaTimer) clearTimeout(areaTimer)
+    areaTimer = setTimeout(() => {
+      const map = leafletMap.value
+      if (!map || mapArea.value !== '') return
+      const c = printBounds.value ? printBounds.value.getCenter() : map.getCenter()
+      const key = `${c.lat.toFixed(1)},${c.lng.toFixed(1)}`
+      if (key === lastGeocodeKey) return
+      lastGeocodeKey = key
+      geocodeCenter(c.lat, c.lng)
+    }, 1200)
+  }
+
   watch(
-    [pins, mapArea],
-    ([newPins, newArea]) => {
-      if (newArea !== '') return
-      if (newPins.length === 0) return
-      if (areaTimer) clearTimeout(areaTimer)
-      areaTimer = setTimeout(() => {
-        const lats = newPins.map((p) => p.lat)
-        const lngs = newPins.map((p) => p.lng)
-        const lat = (Math.min(...lats) + Math.max(...lats)) / 2
-        const lng = (Math.min(...lngs) + Math.max(...lngs)) / 2
-        geocodeCenter(lat, lng)
-      }, 1500)
+    leafletMap,
+    (map, prev) => {
+      if (prev) prev.off('moveend', scheduleAreaDetect)
+      if (map) {
+        map.on('moveend', scheduleAreaDetect)
+        scheduleAreaDetect()
+      }
     },
-    { deep: true, immediate: true }
+    { immediate: true }
   )
+  watch(printBounds, scheduleAreaDetect)
+  watch(mapArea, (v) => {
+    if (v === '') {
+      lastGeocodeKey = ''
+      scheduleAreaDetect()
+    }
+  })
 
   function calculatePrintBounds(widthToHeight: number): L.LatLngBounds {
     const map = leafletMap.value!
@@ -151,16 +209,21 @@ export function usePrintExport(options: {
     )
   }
 
-  function fitPrintAreaToPins() {
+  function fitPrintAreaToElements() {
     if (!leafletMap.value) return
-    const visible = pins.value.filter((p) => !hiddenPinIds.value.has(p.id))
-    if (visible.length === 0) {
-      showNotification('No visible pins to fit', 'error')
+    const map = leafletMap.value
+    const pts: L.Point[] = []
+    for (const p of pins.value) {
+      if (!hiddenPinIds.value.has(p.id)) pts.push(map.latLngToContainerPoint(L.latLng(p.lat, p.lng)))
+    }
+    for (const r of routes.value) {
+      if (hiddenRouteIds.value.has(r.id)) continue
+      for (const pt of r.points) pts.push(map.latLngToContainerPoint(L.latLng(pt.lat, pt.lng)))
+    }
+    if (pts.length === 0) {
+      showNotification('No visible elements to fit', 'error')
       return
     }
-
-    const map = leafletMap.value
-    const pts = visible.map((p) => map.latLngToContainerPoint(L.latLng(p.lat, p.lng)))
 
     let minX = Infinity,
       minY = Infinity,
@@ -246,6 +309,41 @@ export function usePrintExport(options: {
     return best
   }
 
+  function saveToHistory() {
+    if (!printPaper.value || !printOrientation.value || printCorners.value.length !== 4) return
+    const entry: PrintHistoryEntry = {
+      timestamp: Date.now(),
+      corners: [...printCorners.value] as [number, number][],
+      angle: printAngle.value,
+      paper: printPaper.value,
+      orientation: printOrientation.value,
+      grid: printSettings.grid.value,
+      snap: angleSnapEnabled.value,
+      legend: printSettings.legend.value,
+      separatePage: printSettings.legendSeparatePage.value,
+      compass: printSettings.compass.value,
+      scale: printSettings.scale.value,
+      contrast: printSettings.contrast.value,
+      fastExport: printSettings.fastExport.value
+    }
+    printHistory.value = [entry, ...printHistory.value].slice(0, HISTORY_MAX)
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(printHistory.value))
+  }
+
+  function restoreSettings(entry: PrintHistoryEntry) {
+    printPaper.value = entry.paper
+    printOrientation.value = entry.orientation
+    printSettings.grid.value = entry.grid
+    angleSnapEnabled.value = entry.snap
+    printSettings.legend.value = entry.legend
+    printSettings.legendSeparatePage.value = entry.separatePage ?? false
+    printSettings.compass.value = entry.compass
+    // Coerce legacy string entries ('off' | 'km' | 'mi') to the new boolean toggle.
+    printSettings.scale.value = entry.scale !== false && (entry.scale as unknown) !== 'off'
+    printSettings.contrast.value = entry.contrast
+    printSettings.fastExport.value = entry.fastExport ?? false
+  }
+
   function handleBoundsSet(info: PrintAreaInfo) {
     printBounds.value = info.bounds
     printCorners.value = info.corners
@@ -253,7 +351,7 @@ export function usePrintExport(options: {
     overlayCorner.value = computeOverlayCorner()
   }
 
-  async function downloadPdf() {
+  async function openPreview() {
     if (isDownloadingPdf.value) return
     if (!printBounds.value || printCorners.value.length !== 4 || !printPaper.value || !printOrientation.value) {
       showNotification('Set a print area first', 'error')
@@ -268,15 +366,22 @@ export function usePrintExport(options: {
         corners: printCorners.value,
         angle: printAngle.value,
         mapStyle: mapStyle.value,
-        mapTitle: mapName.value,
-        mapArea: mapArea.value,
+        mapTitle: printSettings.legendTitle.value ? mapName.value : '',
+        mapArea: printSettings.legendArea.value ? mapArea.value || autoArea.value : '',
         pins: pins.value,
         hiddenPinIds: hiddenPinIds.value,
+        routes: routes.value,
+        hiddenRouteIds: hiddenRouteIds.value,
+        captions: captions.value,
+        hiddenCaptionIds: hiddenCaptionIds.value,
         includeLegend: printSettings.legend.value,
+        legendSeparatePage: printSettings.legendSeparatePage.value,
+        legendBlankLabels: printSettings.legendBlankLabels.value,
         includeCompass: printSettings.compass.value,
-        includeScale: printSettings.scale.value !== 'off',
-        scaleUnit: printSettings.scale.value === 'off' ? 'km' : printSettings.scale.value,
+        includeScale: printSettings.scale.value,
+        scaleUnit: units.value,
         enhanceContrast: printSettings.contrast.value,
+        fastExport: printSettings.fastExport.value,
         paperWidthPt: pw,
         paperHeightPt: ph,
         gridCols,
@@ -284,29 +389,48 @@ export function usePrintExport(options: {
         onProgress: (msg) => showNotification(msg, 'info')
       })
       const blob = new Blob([pdfBytes as Uint8Array<ArrayBuffer>], { type: 'application/pdf' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${mapName.value || 'mapfolio'}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-      showNotification('PDF downloaded')
+      if (previewBlobUrl.value) URL.revokeObjectURL(previewBlobUrl.value)
+      previewBlobUrl.value = URL.createObjectURL(blob)
+      isPreviewOpen.value = true
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[MapFolio] PDF export error:', e)
-      showNotification('Export failed — check console', 'error')
+      showNotification('Export failed - check console', 'error')
     } finally {
       isDownloadingPdf.value = false
     }
+  }
+
+  function downloadFromPreview() {
+    if (!previewBlobUrl.value) return
+    const a = document.createElement('a')
+    a.href = previewBlobUrl.value
+    a.download = `${mapName.value || 'mapfolio'}.pdf`
+    a.click()
+    saveToHistory()
+    showNotification('PDF downloaded')
+    closePreview()
+  }
+
+  function closePreview() {
+    if (previewBlobUrl.value) {
+      URL.revokeObjectURL(previewBlobUrl.value)
+      previewBlobUrl.value = null
+    }
+    isPreviewOpen.value = false
   }
 
   return {
     printBounds,
     printCorners,
     printAngle,
-    printSnapEnabled,
+    printAreaVisibility,
+    printHistory,
     isDownloadingPdf,
+    isPreviewOpen,
+    previewBlobUrl,
     isAutoArea,
+    autoArea,
     printPaper,
     printOrientation,
     parsedGrid,
@@ -315,8 +439,11 @@ export function usePrintExport(options: {
     selectPrintPreset,
     resnapPrintArea,
     fitToPrintArea,
-    fitPrintAreaToPins,
+    fitPrintAreaToElements,
     handleBoundsSet,
-    downloadPdf
+    openPreview,
+    downloadFromPreview,
+    closePreview,
+    restoreSettings
   }
 }

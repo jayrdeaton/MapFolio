@@ -1,0 +1,7 @@
+{
+  "git": {
+    "deploymentEnabled": false
+  },
+  "framework": "nuxtjs",
+  "buildCommand": "npm run build"
+}

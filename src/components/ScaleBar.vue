@@ -2,8 +2,13 @@
 import L from 'leaflet'
 const props = defineProps<{
   map: L.Map | null
-  unit: 'km' | 'mi'
 }>()
+
+const unit = defineModel<'km' | 'mi'>('unit', { required: true })
+
+function toggleUnit() {
+  unit.value = unit.value === 'km' ? 'mi' : 'km'
+}
 
 const TARGET_PX = 220
 
@@ -26,7 +31,7 @@ function updateScale() {
   let width: number
   let lbl: string
 
-  if (props.unit === 'mi') {
+  if (unit.value === 'mi') {
     const targetMi = targetMeters / 1609.344
     if (targetMi >= 0.25) {
       const niceMi = niceValue(targetMi, [0.25, 0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000])
@@ -73,7 +78,7 @@ watch(
   { immediate: true }
 )
 
-watch(() => props.unit, updateScale)
+watch(unit, updateScale)
 
 onUnmounted(() => {
   if (props.map) detachListeners(props.map)
@@ -81,16 +86,16 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="barWidthPx > 0" class="pointer-events-none select-none inline-block">
-    <div class="bg-white/95 dark:bg-zinc-900/95 rounded-md shadow-sm border border-gray-300/60 dark:border-zinc-600/60 px-2 pt-1.5 pb-1.5">
+  <button v-if="barWidthPx > 0" type="button" :title="unit === 'mi' ? 'Switch distances to kilometers' : 'Switch distances to miles'" class="group pointer-events-auto select-none inline-block cursor-pointer text-left" @click="toggleUnit">
+    <div class="bg-white/95 dark:bg-zinc-900/95 rounded-md shadow-sm border border-gray-300/60 dark:border-zinc-600/60 group-hover:border-cyan-500 dark:group-hover:border-cyan-400 transition-colors px-2 pt-1.5 pb-1.5">
       <div class="flex h-1.25 border border-gray-800 dark:border-zinc-300 overflow-hidden" :style="{ width: `${barWidthPx}px` }">
         <div class="flex-1 bg-gray-800 dark:bg-zinc-300" />
         <div class="flex-1 bg-white dark:bg-zinc-900 border-l border-gray-800 dark:border-zinc-300" />
       </div>
       <div class="flex justify-between mt-0.75" :style="{ width: `${barWidthPx}px` }">
-        <span class="text-[9px] leading-none font-sans text-gray-900 dark:text-zinc-100">0</span>
-        <span class="text-[9px] leading-none font-sans text-gray-900 dark:text-zinc-100">{{ label }}</span>
+        <span v-if="barWidthPx >= 60" class="text-[9px] leading-none font-sans text-gray-900 dark:text-zinc-100">0</span>
+        <span class="text-[9px] leading-none font-sans text-gray-900 dark:text-zinc-100 group-hover:text-cyan-600 dark:group-hover:text-cyan-400">{{ label }}</span>
       </div>
     </div>
-  </div>
+  </button>
 </template>

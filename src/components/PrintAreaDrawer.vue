@@ -8,6 +8,10 @@ const props = defineProps<{
   gridCols?: number
   gridRows?: number
   overlayCorner?: 0 | 1 | 2 | 3
+  // Footprint of the PDF info box as fractions of the print area's width; null hides the preview.
+  legendBox?: { wFrac: number; hFrac: number; mFrac: number } | null
+  visibility?: 'visible' | 'opaque' | 'hidden'
+  selected?: boolean
 }>()
 
 export interface PrintAreaInfo {
@@ -16,7 +20,19 @@ export interface PrintAreaInfo {
   angle: number // rotation in radians
 }
 
-const emit = defineEmits<{ 'bounds-set': [info: PrintAreaInfo] }>()
+const emit = defineEmits<{
+  'bounds-set': [info: PrintAreaInfo]
+  select: [shiftHeld: boolean]
+  // Viewport coords of the right-click — the host opens a Leaflet popup there. The print area
+  // now lives in a pane below the popup pane, so the popup paints above it.
+  context: [clientX: number, clientY: number]
+}>()
+
+// Distinguish a click (select) from a drag (move): movement under this many pixels on
+// pointerup counts as a click.
+const CLICK_SLOP = 4
+// Thickness of the invisible outline hit-strips used while the area is locked.
+const EDGE_HIT = 14
 
 interface RectState {
   center: L.LatLng
@@ -28,14 +44,36 @@ interface RectState {
 const ROTATE_OFFSET = 28
 const CORNER_CURSORS = ['nw-resize', 'ne-resize', 'se-resize', 'sw-resize']
 
+// Custom rotation cursor — a circular arrow (dark glyph + white halo so it reads on any
+// tile). CSS has no native "rotate" cursor; data-URI SVG is the only way. Hotspot centered.
+const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">' + '<g stroke="white" stroke-width="4"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></g>' + '<g stroke="#1f2937" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></g>' + '</svg>')}") 12 12, grab`
+
+// During a rotate/resize drag the pointer moves off the small handle, so the cursor would
+// revert to whatever element is underneath. Force the handle's cursor everywhere via a
+// temporary global !important rule until the drag ends. Pass null to clear.
+let dragCursorStyle: HTMLStyleElement | null = null
+function setDragCursor(cursor: string | null) {
+  if (cursor) {
+    if (!dragCursorStyle) {
+      dragCursorStyle = document.createElement('style')
+      document.head.appendChild(dragCursorStyle)
+    }
+    dragCursorStyle.textContent = `*{cursor:${cursor}!important}`
+  } else if (dragCursorStyle) {
+    dragCursorStyle.remove()
+    dragCursorStyle = null
+  }
+}
+
 // ── DOM elements ──────────────────────────────────────────────────────────────
 
 let handleLayer: HTMLDivElement | null = null
 let rectEl: HTMLDivElement | null = null
 let rotateLineEl: HTMLDivElement | null = null
 let cornerEls: HTMLDivElement[] = []
+let edgeEls: HTMLDivElement[] = []
 let rotateEl: HTMLDivElement | null = null
-let cornerIndicatorEl: HTMLDivElement | null = null
+let legendBoxEl: HTMLDivElement | null = null
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -43,6 +81,8 @@ let isMounted = false
 let localRect: RectState | null = null
 let localCorners: L.LatLng[] = []
 let lastEmittedBounds: L.LatLngBounds | null = null
+let isZooming = false
+let zoomObserver: MutationObserver | null = null
 
 // ── Math ──────────────────────────────────────────────────────────────────────
 
@@ -98,28 +138,45 @@ function startCapture(el: HTMLElement, pointerId: number, onMove: PointerMoveHan
   el.addEventListener('pointercancel', handleUp as EventListener)
 }
 
+function stopEventPropagation(e: Event) {
+  e.stopPropagation()
+}
+
 // ── Build DOM ─────────────────────────────────────────────────────────────────
 
 function buildHandles() {
-  const mapContainer = props.map.getContainer()
-  const outerContainer = (mapContainer.closest('.map-print-container') as HTMLElement | null) ?? mapContainer
+  // Render inside a custom Leaflet pane (z-index 680: above markers/tooltips, below the popup
+  // pane at 700) so Leaflet popups and menus paint above the print area. Children are positioned
+  // with latLngToLayerPoint (see updateHandlePositions), the same approach RouteLayer uses. An
+  // external div at any z-index would lose to popups, which are trapped inside the map pane's
+  // transformed (and thus self-contained) stacking context.
+  const pane = props.map.getPane('mfPrintPane') ?? props.map.createPane('mfPrintPane')
+  pane.style.zIndex = '680'
 
   handleLayer = document.createElement('div')
-  handleLayer.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:900;overflow:visible;'
+  // The pane sits at the map-pane origin (0,0 in layer coords); children carry layer-point lefts/tops.
+  handleLayer.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;overflow:visible;'
   handleLayer.classList.add('no-print')
-  outerContainer.appendChild(handleLayer)
+  pane.appendChild(handleLayer)
 
   rectEl = document.createElement('div')
   rectEl.style.cssText = 'position:absolute;display:none;box-sizing:border-box;border:2px dashed #06b6d4;background:rgba(6,182,212,0.06);pointer-events:auto;cursor:move;touch-action:none;'
   rectEl.addEventListener(
     'pointerdown',
     (e: PointerEvent) => {
+      if (e.button !== 0) return // let right/middle button reach the contextmenu handler
       e.preventDefault()
       e.stopPropagation()
       onBodyDown(e)
     },
     { passive: false }
   )
+  rectEl.addEventListener('contextmenu', onContextMenu, { passive: false })
+  // The pointerdown above stops Leaflet's drag, but the native click/dblclick that follow are
+  // separate events that still bubble to the map container — firing map.click (handleMapClick),
+  // which would deselect the area right after a move or re-select. Swallow them here.
+  rectEl.addEventListener('click', stopEventPropagation)
+  rectEl.addEventListener('dblclick', stopEventPropagation)
   rectEl.addEventListener(
     'wheel',
     (e: WheelEvent) => {
@@ -128,9 +185,33 @@ function buildHandles() {
     { passive: true }
   )
 
-  cornerIndicatorEl = document.createElement('div')
-  cornerIndicatorEl.style.cssText = 'position:absolute;display:none;width:14px;height:14px;border-color:rgba(6,182,212,0.9);border-style:solid;pointer-events:none;'
-  rectEl.appendChild(cornerIndicatorEl)
+  // Outline hit-strips — interactive only while the area is locked (opaque), where the
+  // body passes pointer events through to the map. They keep left/right click working on
+  // the border. Children of rectEl so they inherit its position, size, and rotation.
+  const EDGE_STYLES = [`left:${-EDGE_HIT / 2}px;right:${-EDGE_HIT / 2}px;top:${-EDGE_HIT / 2}px;height:${EDGE_HIT}px;`, `left:${-EDGE_HIT / 2}px;right:${-EDGE_HIT / 2}px;bottom:${-EDGE_HIT / 2}px;height:${EDGE_HIT}px;`, `top:${-EDGE_HIT / 2}px;bottom:${-EDGE_HIT / 2}px;left:${-EDGE_HIT / 2}px;width:${EDGE_HIT}px;`, `top:${-EDGE_HIT / 2}px;bottom:${-EDGE_HIT / 2}px;right:${-EDGE_HIT / 2}px;width:${EDGE_HIT}px;`]
+  for (const edgeStyle of EDGE_STYLES) {
+    const el = document.createElement('div')
+    el.style.cssText = `position:absolute;${edgeStyle}pointer-events:none;cursor:pointer;touch-action:none;`
+    el.addEventListener('pointerdown', onEdgeDown, { passive: false })
+    el.addEventListener('contextmenu', onContextMenu, { passive: false })
+    // Same as rectEl: keep the trailing native click from bubbling to the map, where it would
+    // immediately undo the select this strip just triggered (locked-mode re-select).
+    el.addEventListener('click', stopEventPropagation)
+    el.addEventListener('dblclick', stopEventPropagation)
+    rectEl.appendChild(el)
+    edgeEls.push(el)
+  }
+
+  // Legend footprint preview — sized to the PDF info box, placed in the overlay corner.
+  // A child of rectEl so it inherits the print area's rotation, position, and scale.
+  legendBoxEl = document.createElement('div')
+  legendBoxEl.className = 'print-legend-footprint'
+  legendBoxEl.style.cssText = 'position:absolute;display:none;box-sizing:border-box;pointer-events:none;overflow:hidden;align-items:center;justify-content:center;'
+  const legendBoxLabel = document.createElement('span')
+  legendBoxLabel.className = 'print-legend-footprint-label'
+  legendBoxLabel.textContent = 'Legend'
+  legendBoxEl.appendChild(legendBoxLabel)
+  rectEl.appendChild(legendBoxEl)
 
   handleLayer.appendChild(rectEl)
 
@@ -151,12 +232,15 @@ function buildHandles() {
       },
       { passive: false }
     )
+    el.addEventListener('click', stopEventPropagation)
+    el.addEventListener('dblclick', stopEventPropagation)
     handleLayer.appendChild(el)
     cornerEls.push(el)
   }
 
   rotateEl = document.createElement('div')
-  rotateEl.style.cssText = 'position:absolute;display:none;width:16px;height:16px;transform:translate(-50%,-50%);background:#06b6d4;border:2px solid white;border-radius:50%;cursor:crosshair;box-shadow:0 1px 4px rgba(0,0,0,.45);pointer-events:auto;user-select:none;touch-action:none;'
+  rotateEl.style.cssText = 'position:absolute;display:none;width:16px;height:16px;transform:translate(-50%,-50%);background:#06b6d4;border:2px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.45);pointer-events:auto;user-select:none;touch-action:none;'
+  rotateEl.style.cursor = ROTATE_CURSOR
   rotateEl.addEventListener(
     'pointerdown',
     (e: PointerEvent) => {
@@ -166,34 +250,47 @@ function buildHandles() {
     },
     { passive: false }
   )
+  rotateEl.addEventListener('click', stopEventPropagation)
+  rotateEl.addEventListener('dblclick', stopEventPropagation)
   handleLayer.appendChild(rotateEl)
 }
 
 function destroyHandles() {
+  setDragCursor(null)
   handleLayer?.remove()
   handleLayer = null
   rectEl = null
   rotateLineEl = null
   cornerEls = []
+  edgeEls = []
   rotateEl = null
-  cornerIndicatorEl = null
+  legendBoxEl = null
 }
 
-function updateCornerIndicator() {
-  if (!cornerIndicatorEl) return
+function updateLegendBox() {
+  if (!legendBoxEl) return
+  const box = props.legendBox
   const c = props.overlayCorner
-  if (c === undefined) {
-    cornerIndicatorEl.style.display = 'none'
+  if (!box || c === undefined || !localRect || (props.visibility ?? 'visible') === 'hidden') {
+    legendBoxEl.style.display = 'none'
     return
   }
+  // Legend dimensions are all fractions of the print area's WIDTH (see legendBoxFractions).
+  const rectW = currentPixelDims().halfW * 2
+  const S = rectW / 612
+  const m = box.mFrac * rectW
   const isRight = c === 1 || c === 2
   const isBottom = c === 2 || c === 3
-  cornerIndicatorEl.style.display = 'block'
-  cornerIndicatorEl.style.top = isBottom ? '' : '8px'
-  cornerIndicatorEl.style.bottom = isBottom ? '8px' : ''
-  cornerIndicatorEl.style.left = isRight ? '' : '8px'
-  cornerIndicatorEl.style.right = isRight ? '8px' : ''
-  cornerIndicatorEl.style.borderWidth = `${isBottom ? '0' : '2px'} ${isRight ? '2px' : '0'} ${isBottom ? '2px' : '0'} ${isRight ? '0' : '2px'}`
+  legendBoxEl.style.width = box.wFrac * rectW + 'px'
+  legendBoxEl.style.height = box.hFrac * rectW + 'px'
+  legendBoxEl.style.borderRadius = 8 * S + 'px'
+  legendBoxEl.style.left = isRight ? '' : m + 'px'
+  legendBoxEl.style.right = isRight ? m + 'px' : ''
+  legendBoxEl.style.top = isBottom ? '' : m + 'px'
+  legendBoxEl.style.bottom = isBottom ? m + 'px' : ''
+  const label = legendBoxEl.firstElementChild as HTMLElement | null
+  if (label) label.style.fontSize = Math.max(6, Math.round(9 * S)) + 'px'
+  legendBoxEl.style.display = 'flex'
 }
 
 function updateGridLines() {
@@ -234,7 +331,9 @@ function updateHandlePositions() {
   const map = props.map
   const angle = localRect.angle
   const { halfW, halfH } = currentPixelDims()
-  const cp = map.latLngToContainerPoint(localRect.center)
+  // Layer points (not container points): the handles live in a Leaflet pane that rides the map
+  // pane's transform, so positions are relative to the map-pane origin, like RouteLayer.
+  const cp = map.latLngToLayerPoint(localRect.center)
   const cx = cp.x,
     cy = cp.y
 
@@ -247,7 +346,7 @@ function updateHandlePositions() {
     rectEl.style.display = 'block'
   }
 
-  const cPx = localCorners.map((ll) => map.latLngToContainerPoint(ll))
+  const cPx = localCorners.map((ll) => map.latLngToLayerPoint(ll))
   cornerEls.forEach((el, i) => {
     el.style.left = cPx[i]!.x + 'px'
     el.style.top = cPx[i]!.y + 'px'
@@ -277,7 +376,55 @@ function updateHandlePositions() {
     rotateEl.style.display = 'block'
   }
 
-  updateCornerIndicator()
+  // Apply visibility overrides
+  const v = props.visibility ?? 'visible'
+  if (v === 'hidden') {
+    if (rectEl) rectEl.style.display = 'none'
+    if (rotateLineEl) rotateLineEl.style.display = 'none'
+    cornerEls.forEach((el) => {
+      el.style.display = 'none'
+    })
+    edgeEls.forEach((el) => {
+      el.style.pointerEvents = 'none'
+    })
+    if (rotateEl) rotateEl.style.display = 'none'
+  } else if (v === 'opaque') {
+    // Locked: the body passes events through to the map; only the outline strips stay live so
+    // left/right click still hits the border. No resize/rotate handles.
+    if (rectEl) {
+      rectEl.style.border = '1px dashed rgba(6,182,212,0.9)'
+      rectEl.style.background = 'transparent'
+      rectEl.style.pointerEvents = 'none'
+      rectEl.style.cursor = 'default'
+    }
+    if (rotateLineEl) rotateLineEl.style.display = 'none'
+    cornerEls.forEach((el) => {
+      el.style.display = 'none'
+    })
+    edgeEls.forEach((el) => {
+      el.style.pointerEvents = 'auto'
+    })
+    if (rotateEl) rotateEl.style.display = 'none'
+  } else {
+    // Unlocked (adjusting): the body is interactive — drag it to move, click to (re)select,
+    // resize via the corner handles, rotate via the rotate handle. Hold Alt to pass clicks
+    // through to pins/routes underneath (setHandlePassthrough). The outline strips are a
+    // locked-mode affordance only, so disable them here and let the body own the whole area.
+    if (rectEl) {
+      rectEl.style.border = '2px dashed #06b6d4'
+      rectEl.style.background = 'rgba(6,182,212,0.06)'
+      rectEl.style.pointerEvents = 'auto'
+      rectEl.style.cursor = 'move'
+    }
+    edgeEls.forEach((el) => {
+      el.style.pointerEvents = 'none'
+    })
+  }
+
+  // Selection ring — shown in both visible and locked modes so a selected area always reads.
+  if (rectEl) rectEl.style.boxShadow = props.selected ? '0 0 0 2px #06b6d4, 0 0 10px rgba(6,182,212,0.45)' : 'none'
+
+  updateLegendBox()
 }
 
 // ── Apply state ───────────────────────────────────────────────────────────────
@@ -320,6 +467,7 @@ function startCornerDrag(el: HTMLElement, i: number, startEvent: PointerEvent) {
   const angle = localRect.angle
   const ratio = props.aspectRatio
   map.dragging.disable()
+  setDragCursor(CORNER_CURSORS[i]!)
 
   startCapture(
     el,
@@ -351,6 +499,7 @@ function startCornerDrag(el: HTMLElement, i: number, startEvent: PointerEvent) {
     },
     () => {
       map.dragging.enable()
+      setDragCursor(null)
       emitBounds()
     }
   )
@@ -364,6 +513,7 @@ function startRotateDrag(el: HTMLElement, startEvent: PointerEvent) {
   const centerLatLng = localRect.center
   const { halfW, halfH } = currentPixelDims()
   map.dragging.disable()
+  setDragCursor(ROTATE_CURSOR)
 
   startCapture(
     el,
@@ -381,6 +531,7 @@ function startRotateDrag(el: HTMLElement, startEvent: PointerEvent) {
     },
     () => {
       map.dragging.enable()
+      setDragCursor(null)
       emitBounds()
     }
   )
@@ -396,6 +547,10 @@ function onBodyDown(startEvent: PointerEvent) {
   const startCenter = localRect.center
   const { halfW, halfH } = currentPixelDims()
   const angle = localRect.angle
+  const startX = startEvent.clientX
+  const startY = startEvent.clientY
+  const shiftHeld = startEvent.shiftKey
+  let moved = false
   map.dragging.disable()
   if (startEvent.pointerType !== 'touch') map.getContainer().style.cursor = 'move'
 
@@ -403,6 +558,8 @@ function onBodyDown(startEvent: PointerEvent) {
     rectEl!,
     startEvent.pointerId,
     (ev) => {
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) <= CLICK_SLOP) return
+      moved = true
       if (ev.pointerType === 'touch') ev.preventDefault()
       const r2 = map.getContainer().getBoundingClientRect()
       const ll = map.containerPointToLatLng(L.point(ev.clientX - r2.left, ev.clientY - r2.top))
@@ -416,9 +573,46 @@ function onBodyDown(startEvent: PointerEvent) {
     () => {
       map.dragging.enable()
       if (startEvent.pointerType !== 'touch') map.getContainer().style.cursor = ''
-      emitBounds()
+      // A press with no real movement is a click → select; an actual drag → commit the move.
+      if (moved) emitBounds()
+      else emit('select', shiftHeld)
     }
   )
+}
+
+// ── Outline hit (locked mode) + context menu ───────────────────────────────────
+
+// Locked mode passes body events through to the map; the outline strips still select on a
+// click. No move/resize is possible while locked, so this only distinguishes click from drag.
+function onEdgeDown(startEvent: PointerEvent) {
+  if (startEvent.button !== 0) return
+  startEvent.preventDefault()
+  startEvent.stopPropagation()
+  const el = startEvent.currentTarget as HTMLElement
+  const startX = startEvent.clientX
+  const startY = startEvent.clientY
+  const shiftHeld = startEvent.shiftKey
+  let moved = false
+  startCapture(
+    el,
+    startEvent.pointerId,
+    (ev) => {
+      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > CLICK_SLOP) moved = true
+    },
+    () => {
+      if (!moved) emit('select', shiftHeld)
+    }
+  )
+}
+
+function onContextMenu(e: MouseEvent) {
+  e.preventDefault()
+  e.stopPropagation()
+  emitContext(e)
+}
+
+function emitContext(e: { clientX: number; clientY: number }) {
+  emit('context', e.clientX, e.clientY)
 }
 
 // ── Emit ──────────────────────────────────────────────────────────────────────
@@ -434,6 +628,9 @@ function emitBounds() {
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
+watch(() => props.visibility, updateHandlePositions)
+watch(() => props.selected, updateHandlePositions)
+
 watch(
   () => props.printBounds,
   (bounds) => {
@@ -447,7 +644,11 @@ watch(
   () => [props.gridCols, props.gridRows],
   () => updateGridLines()
 )
-watch(() => props.overlayCorner, updateCornerIndicator)
+watch(
+  () => props.overlayCorner,
+  () => updateLegendBox()
+)
+watch(() => props.legendBox, updateLegendBox, { deep: true })
 
 function setHandlePassthrough(pass: boolean) {
   const pe = pass ? 'none' : 'auto'
@@ -456,6 +657,8 @@ function setHandlePassthrough(pass: boolean) {
     el.style.pointerEvents = pe
   })
   if (rotateEl) rotateEl.style.pointerEvents = pe
+  // Restore the per-visibility pointer-events (edge strips and rect) when Alt is released.
+  if (!pass) updateHandlePositions()
 }
 
 function onAltDown(e: KeyboardEvent) {
@@ -465,12 +668,66 @@ function onAltUp(e: KeyboardEvent) {
   if (e.key === 'Alt') setHandlePassthrough(false)
 }
 
+// Fade the whole handle layer out instantly during a zoom animation and back in over 0.2s
+// once it settles — mirrors the pin/route fade. The handles ride the map pane's zoom transform,
+// but their pixel dimensions are computed for the pre-zoom scale; fading hides the stretched
+// state until the zoom ends and updateHandlePositions recomputes at the new zoom.
+function applyLayerOpacity() {
+  if (!handleLayer) return
+  const hidden = (props.visibility ?? 'visible') === 'hidden'
+  if (hidden || isZooming) {
+    handleLayer.style.transition = 'none'
+    handleLayer.style.opacity = '0'
+  } else {
+    handleLayer.style.transition = 'opacity 0.2s ease'
+    handleLayer.style.opacity = '1'
+  }
+}
+
+function applyVisibility() {
+  if (!handleLayer) return
+  // The layer is only a positioning container; its children (rect + handles) carry their own
+  // pointer-events. Keep the container itself non-interactive so it never blocks the map.
+  handleLayer.style.pointerEvents = 'none'
+  applyLayerOpacity()
+}
+
+watch(() => props.visibility, applyVisibility)
+
+function initFromCorners(corners: [number, number][], angle: number) {
+  if (corners.length !== 4) return
+  const map = props.map
+  const latCenter = (corners[0]![0] + corners[2]![0]) / 2
+  const lngCenter = (corners[0]![1] + corners[2]![1]) / 2
+  const center = L.latLng(latCenter, lngCenter)
+  const cp = map.latLngToContainerPoint(center)
+  const p0 = map.latLngToContainerPoint(L.latLng(corners[0]![0], corners[0]![1]))
+  const l = screenToLocal(p0, cp.x, cp.y, angle)
+  applyRect({ center, halfW: Math.abs(l.x), halfH: Math.abs(l.y), angle })
+  emitBounds()
+}
+
+defineExpose({ initFromCorners })
+
 onMounted(() => {
   isMounted = true
   buildHandles()
   updateGridLines()
+  applyVisibility()
   props.map.on('move', updateHandlePositions as L.LeafletEventHandlerFn)
   props.map.on('zoom', updateHandlePositions as L.LeafletEventHandlerFn)
+
+  // Leaflet toggles 'leaflet-zoom-anim' on the map pane around each animated zoom. Watch it the
+  // same way RouteLayer does so the print area fades out/in together with the pins and routes.
+  const mapPane = props.map.getPane('mapPane') as HTMLElement | undefined
+  if (mapPane) {
+    zoomObserver = new MutationObserver(() => {
+      isZooming = mapPane.classList.contains('leaflet-zoom-anim')
+      applyLayerOpacity()
+    })
+    zoomObserver.observe(mapPane, { attributes: true, attributeFilter: ['class'] })
+  }
+
   if (props.printBounds) initFromBounds(props.printBounds)
   document.addEventListener('keydown', onAltDown)
   document.addEventListener('keyup', onAltUp)
@@ -478,10 +735,15 @@ onMounted(() => {
 
 onUnmounted(() => {
   isMounted = false
+  zoomObserver?.disconnect()
+  zoomObserver = null
   destroyHandles()
+  props.map.getPane('mfPrintPane')?.remove()
   props.map.off('move', updateHandlePositions as L.LeafletEventHandlerFn)
   props.map.off('zoom', updateHandlePositions as L.LeafletEventHandlerFn)
   document.removeEventListener('keydown', onAltDown)
   document.removeEventListener('keyup', onAltUp)
 })
 </script>
+
+<template></template>

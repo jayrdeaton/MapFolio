@@ -2,7 +2,6 @@ import type L from 'leaflet'
 import type { ShallowRef } from 'vue'
 
 import type { Route, RoutePoint } from '@/types'
-import { parseGeoJsonRouteImport, parseRouteImport, routesToGeoJson } from '@/utils'
 
 function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000
@@ -28,30 +27,32 @@ export function formatDistance(meters: number, unit: 'km' | 'mi' = 'km'): string
   return meters < 100 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(2)} km`
 }
 
-let routeCounter = 1
-
-export function useRoutes(options: { initialRoutes: Route[]; mapTitle: Ref<string>; leafletMap: ShallowRef<L.Map | null>; routeImportFileRef: Ref<HTMLInputElement | null>; showNotification: (message: string, type?: 'success' | 'error' | 'info') => void; distanceUnit: Ref<'km' | 'mi'> }) {
-  const { initialRoutes, mapTitle, leafletMap, routeImportFileRef, showNotification, distanceUnit } = options
+export function useRoutes(options: { initialRoutes: Route[]; leafletMap: ShallowRef<L.Map | null>; showNotification: (message: string, type?: 'success' | 'error' | 'info') => void; distanceUnit: Ref<'km' | 'mi'>; pushHistory: (label?: string) => void }) {
+  const { initialRoutes, leafletMap, showNotification, distanceUnit } = options
 
   const routes = ref<Route[]>(initialRoutes)
-  const hiddenRouteIds = ref<Set<number>>(new Set())
+  const hiddenRouteIds = computed(() => new Set(routes.value.filter((r) => r.hidden).map((r) => r.id)))
   const isDrawingRoute = ref(false)
   const drawingRouteId = ref<number | null>(null)
   const drawingInsertAfter = ref<number | null>(null) // null=append, -1=prepend, n=insert-after-n
+  const drawingRedoStack = ref<{ point: RoutePoint; index: number; insertAfter: number | null }[]>([])
   const editingRoute = ref<Route | null>(null)
-  const routeSnapEnabled = ref(false)
+  const routeSnapEnabled = ref(localStorage.getItem('mapfolio_route_snap') === 'true')
 
-  const allRoutesHidden = computed(() => routes.value.length > 0 && routes.value.every((r) => hiddenRouteIds.value.has(r.id)))
+  watch(routeSnapEnabled, (v) => localStorage.setItem('mapfolio_route_snap', String(v)))
+
+  const allRoutesHidden = computed(() => routes.value.length > 0 && routes.value.every((r) => r.hidden))
 
   function toggleRouteVisibility(id: number) {
-    const next = new Set(hiddenRouteIds.value)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    hiddenRouteIds.value = next
+    const isHidden = routes.value.find((r) => r.id === id)?.hidden ?? false
+    options.pushHistory(isHidden ? 'show route' : 'hide route')
+    routes.value = routes.value.map((r) => (r.id === id ? { ...r, hidden: !r.hidden } : r))
   }
 
   function toggleAllRouteVisibility() {
-    hiddenRouteIds.value = allRoutesHidden.value ? new Set() : new Set(routes.value.map((r) => r.id))
+    const hide = !allRoutesHidden.value
+    options.pushHistory(hide ? 'hide all routes' : 'show all routes')
+    routes.value = routes.value.map((r) => ({ ...r, hidden: hide }))
   }
 
   const drawingRoute = computed(() => (drawingRouteId.value !== null ? (routes.value.find((r) => r.id === drawingRouteId.value) ?? null) : null))
@@ -72,23 +73,32 @@ export function useRoutes(options: { initialRoutes: Route[]; mapTitle: Ref<strin
     return Math.min(drawingInsertAfter.value, n - 1)
   })
 
-  function startNewRoute() {
-    const id = Date.now()
+  const canUndoPoint = computed(() => (drawingRoute.value?.points.length ?? 0) > 0)
+  const canRedoPoint = computed(() => drawingRedoStack.value.length > 0)
+
+  function startNewRoute(defaults: { color?: string; lineStyle?: Route['lineStyle']; waypointStyle?: Route['waypointStyle']; waypointSize?: Route['waypointSize'] } = {}) {
+    options.pushHistory('add route')
+    const id = uid()
     const route: Route = {
       id,
-      name: `Route ${routeCounter++}`,
-      color: '#06b6d4',
+      name: '',
+      color: defaults.color ?? '#06b6d4',
+      ...(defaults.lineStyle ? { lineStyle: defaults.lineStyle } : {}),
+      ...(defaults.waypointStyle ? { waypointStyle: defaults.waypointStyle } : {}),
+      ...(defaults.waypointSize ? { waypointSize: defaults.waypointSize } : {}),
       points: []
     }
     routes.value = [...routes.value, route]
     drawingRouteId.value = id
     drawingInsertAfter.value = null
+    drawingRedoStack.value = []
     isDrawingRoute.value = true
   }
 
   // insertAfter: null=append, -1=prepend, n=insert-after-n
   function continueDrawing(routeId: number, insertAfter: number | null = null) {
     drawingInsertAfter.value = insertAfter
+    drawingRedoStack.value = []
     drawingRouteId.value = routeId
     isDrawingRoute.value = true
   }
@@ -96,17 +106,18 @@ export function useRoutes(options: { initialRoutes: Route[]; mapTitle: Ref<strin
   function stopDrawing() {
     if (drawingRoute.value && drawingRoute.value.points.length === 0) {
       routes.value = routes.value.filter((r) => r.id !== drawingRouteId.value)
-      routeCounter--
     }
     isDrawingRoute.value = false
     drawingRouteId.value = null
     drawingInsertAfter.value = null
+    drawingRedoStack.value = []
   }
 
   function addPoint(lat: number, lng: number, pinId?: number) {
     if (!isDrawingRoute.value || drawingRouteId.value === null) return
     const id = drawingRouteId.value
     const insertAfter = drawingInsertAfter.value
+    drawingRedoStack.value = []
     const pt: RoutePoint = pinId !== undefined ? { lat, lng, pinId } : { lat, lng }
     routes.value = routes.value.map((r) => {
       if (r.id !== id) return r
@@ -122,21 +133,76 @@ export function useRoutes(options: { initialRoutes: Route[]; mapTitle: Ref<strin
     if (!isDrawingRoute.value || drawingRouteId.value === null) return
     const id = drawingRouteId.value
     const insertAfter = drawingInsertAfter.value
-    routes.value = routes.value.map((r) => {
-      if (r.id !== id || r.points.length === 0) return r
-      if (insertAfter === null) return { ...r, points: r.points.slice(0, -1) }
-      if (insertAfter === -1) return { ...r, points: r.points.slice(1) }
-      return { ...r, points: r.points.filter((_, i) => i !== insertAfter) }
-    })
+    const route = routes.value.find((r) => r.id === id)
+    if (!route || route.points.length === 0) return
+    const removeIndex = insertAfter === null ? route.points.length - 1 : insertAfter === -1 ? 0 : insertAfter
+    const removed = route.points[removeIndex]
+    if (!removed) return
+    drawingRedoStack.value = [...drawingRedoStack.value, { point: removed, index: removeIndex, insertAfter }]
+    routes.value = routes.value.map((r) => (r.id === id ? { ...r, points: r.points.filter((_, i) => i !== removeIndex) } : r))
     if (insertAfter !== null && insertAfter >= 0) drawingInsertAfter.value = insertAfter - 1
   }
 
+  function redoLastPoint() {
+    if (!isDrawingRoute.value || drawingRouteId.value === null) return
+    const entry = drawingRedoStack.value[drawingRedoStack.value.length - 1]
+    if (!entry) return
+    const id = drawingRouteId.value
+    drawingRedoStack.value = drawingRedoStack.value.slice(0, -1)
+    routes.value = routes.value.map((r) => {
+      if (r.id !== id) return r
+      const points = [...r.points]
+      points.splice(entry.index, 0, entry.point)
+      return { ...r, points }
+    })
+    if (entry.insertAfter !== null && entry.insertAfter >= 0) drawingInsertAfter.value = entry.insertAfter
+  }
+
+  function nearestSegmentIndex(points: RoutePoint[], lat: number, lng: number): number {
+    let bestIdx = 0
+    let bestDist = Infinity
+    for (let i = 0; i < points.length - 1; i++) {
+      const ax = points[i]!.lng,
+        ay = points[i]!.lat
+      const bx = points[i + 1]!.lng,
+        by = points[i + 1]!.lat
+      const dx = bx - ax,
+        dy = by - ay
+      const lenSq = dx * dx + dy * dy
+      let t = lenSq > 0 ? ((lng - ax) * dx + (lat - ay) * dy) / lenSq : 0
+      t = Math.max(0, Math.min(1, t))
+      const nx = ax + t * dx,
+        ny = ay + t * dy
+      const dist = (lng - nx) ** 2 + (lat - ny) ** 2
+      if (dist < bestDist) {
+        bestDist = dist
+        bestIdx = i
+      }
+    }
+    return bestIdx
+  }
+
+  function insertPoint(routeId: number, lat: number, lng: number) {
+    const route = routes.value.find((r) => r.id === routeId)
+    if (!route || route.points.length < 2) return
+    const segIdx = nearestSegmentIndex(route.points, lat, lng)
+    options.pushHistory('insert waypoint')
+    const pt: RoutePoint = { lat, lng }
+    routes.value = routes.value.map((r) => {
+      if (r.id !== routeId) return r
+      const pts = [...r.points]
+      pts.splice(segIdx + 1, 0, pt)
+      return { ...r, points: pts }
+    })
+  }
+
   function removePoint(routeId: number, pointIndex: number) {
+    options.pushHistory('remove waypoint')
     routes.value = routes.value.map((r) => (r.id === routeId ? { ...r, points: r.points.filter((_, i) => i !== pointIndex) } : r))
   }
 
   function movePoint(routeId: number, pointIndex: number, lat: number, lng: number, pinId?: number) {
-    routes.value = routes.value.map((r) => (r.id === routeId ? { ...r, points: r.points.map((p, i) => (i === pointIndex ? (pinId !== undefined ? { ...p, lat, lng, pinId } : { ...p, lat, lng }) : p)) } : r))
+    routes.value = routes.value.map((r) => (r.id === routeId ? { ...r, points: r.points.map((p, i) => (i === pointIndex ? (pinId !== undefined ? { lat, lng, pinId } : { lat, lng }) : p)) } : r))
   }
 
   function moveRoute(routeId: number, points: RoutePoint[]) {
@@ -152,18 +218,20 @@ export function useRoutes(options: { initialRoutes: Route[]; mapTitle: Ref<strin
   }
 
   function breakWaypointLink(routeId: number, pointIndex: number) {
+    options.pushHistory('unlink waypoint')
     routes.value = routes.value.map((r) => (r.id === routeId ? { ...r, points: r.points.map((p, i) => (i === pointIndex ? { ...p, pinId: undefined } : p)) } : r))
   }
 
-  function cleanupOrphanedLinks(pinId: number) {
-    routes.value = routes.value.map((r) => ({
-      ...r,
-      points: r.points.map((p) => (p.pinId === pinId ? { ...p, pinId: undefined } : p))
-    }))
+  // Unlink route waypoints that pointed at a deleted pin (single id or a set, for
+  // bulk deletes). Waypoints keep their position; only the dangling pinId is cleared.
+  function cleanupOrphanedLinks(pinId: number | Set<number>) {
+    const orphaned = (id: number | undefined) => id !== undefined && (typeof pinId === 'number' ? id === pinId : pinId.has(id))
+    routes.value = routes.value.map((r) => (r.points.some((p) => orphaned(p.pinId)) ? { ...r, points: r.points.map((p) => (orphaned(p.pinId) ? { ...p, pinId: undefined } : p)) } : r))
   }
 
   function deleteRoute(id: number) {
     if (drawingRouteId.value === id) stopDrawing()
+    options.pushHistory('delete route')
     routes.value = routes.value.filter((r) => r.id !== id)
     showNotification('Route deleted')
   }
@@ -199,84 +267,23 @@ export function useRoutes(options: { initialRoutes: Route[]; mapTitle: Ref<strin
   }
 
   function saveEditRoute(updated: Route) {
+    options.pushHistory('edit route')
     updateRoute(updated)
     editingRoute.value = null
   }
 
   function clearAllRoutes() {
-    if (!window.confirm('Remove all routes?')) return
+    const n = routes.value.length
+    if (n === 0) return
+    if (!window.confirm(`Delete all ${n} route${n === 1 ? '' : 's'}?\n\nThis is permanent and cannot be undone.`)) return
+    options.pushHistory('clear routes')
     routes.value = []
-    hiddenRouteIds.value = new Set()
     showNotification('All routes cleared')
-  }
-
-  function exportRoutesJson() {
-    if (routes.value.length === 0) {
-      showNotification('No routes to export', 'error')
-      return
-    }
-    const data = JSON.stringify({ routes: routes.value, mapTitle: mapTitle.value }, null, 2)
-    const blob = new Blob([data], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${mapTitle.value || 'mapfolio'}-routes.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    showNotification(`Exported ${routes.value.length} route${routes.value.length !== 1 ? 's' : ''}`)
-  }
-
-  function exportRoutesGeoJson() {
-    if (routes.value.length === 0) {
-      showNotification('No routes to export', 'error')
-      return
-    }
-    const blob = new Blob([JSON.stringify(routesToGeoJson(routes.value), null, 2)], { type: 'application/geo+json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${mapTitle.value || 'mapfolio'}-routes.geojson`
-    a.click()
-    URL.revokeObjectURL(url)
-    showNotification('GeoJSON exported!')
-  }
-
-  function triggerRouteImport() {
-    routeImportFileRef.value?.click()
-  }
-
-  function handleRouteImportFile(e: Event) {
-    const file = (e.target as HTMLInputElement).files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string
-      const result = parseRouteImport(text) ?? parseGeoJsonRouteImport(text)
-      if (result) {
-        routes.value = [...routes.value, ...result.routes]
-        if ('mapTitle' in result && result.mapTitle && !mapTitle.value) {
-          mapTitle.value = result.mapTitle as string
-        }
-        showNotification(`Imported ${result.routes.length} route${result.routes.length !== 1 ? 's' : ''}!`)
-        if (leafletMap.value && result.routes.length > 0) {
-          const allPoints = result.routes.flatMap((r) => r.points)
-          if (allPoints.length > 0) {
-            const bounds = allPoints.map((p) => [p.lat, p.lng] as [number, number])
-            requestAnimationFrame(() => leafletMap.value?.fitBounds(bounds, { padding: [60, 60], animate: true }))
-          }
-        }
-      } else {
-        showNotification('Invalid or unreadable route file', 'error')
-      }
-      if (routeImportFileRef.value) routeImportFileRef.value.value = ''
-    }
-    reader.readAsText(file)
   }
 
   function resetRoutes(newRoutes: Route[]) {
     if (isDrawingRoute.value) stopDrawing()
     routes.value = newRoutes
-    hiddenRouteIds.value = new Set()
     editingRoute.value = null
   }
 
@@ -296,6 +303,10 @@ export function useRoutes(options: { initialRoutes: Route[]; mapTitle: Ref<strin
     stopDrawing,
     addPoint,
     undoLastPoint,
+    redoLastPoint,
+    canUndoPoint,
+    canRedoPoint,
+    insertPoint,
     removePoint,
     movePoint,
     moveRoute,
@@ -313,10 +324,6 @@ export function useRoutes(options: { initialRoutes: Route[]; mapTitle: Ref<strin
     toggleAllRouteVisibility,
     fitToAllRoutes,
     clearAllRoutes,
-    exportRoutesJson,
-    exportRoutesGeoJson,
-    triggerRouteImport,
-    handleRouteImportFile,
     resetRoutes
   }
 }

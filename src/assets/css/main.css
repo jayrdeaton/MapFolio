@@ -16,6 +16,127 @@ html.dark {
   background-color: #0f0f0f;
 }
 
+/* ── Icon buttons — one shared style for every menu + pill icon button ────────
+   Three dev constants drive global classes on <html> (see config/buttons.ts):
+     OUTLINED_BUTTONS → .mf-outlined   (draw a border)
+     HOVER_STYLE      → .mf-hover-dim  (neutral hover instead of cyan highlight)
+   The hover palette lives in CSS vars so the dim variant just swaps values —
+   no specificity fights. `--danger` always hovers red; `--active` is cyan-fill.
+   Size (w-7/h-7, etc.) stays an inline utility. */
+
+.mf-ibtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.375rem;
+  border: 1px solid transparent; /* reserved so toggling outline never shifts layout */
+  color: #4b5563;
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+  --ibtn-hover-fg: #0891b2; /* highlight (default): cyan */
+  --ibtn-hover-bg: #ecfeff;
+  --ibtn-hover-bd: #67e8f9;
+}
+.dark .mf-ibtn {
+  color: #a1a1aa;
+  --ibtn-hover-fg: #22d3ee;
+  --ibtn-hover-bg: rgba(8, 145, 178, 0.18);
+  --ibtn-hover-bd: #0e7490;
+}
+.mf-hover-dim .mf-ibtn {
+  --ibtn-hover-fg: #4b5563; /* dim: neutral darken, no accent */
+  --ibtn-hover-bg: rgba(0, 0, 0, 0.06);
+  --ibtn-hover-bd: #9ca3af;
+}
+.dark.mf-hover-dim .mf-ibtn {
+  --ibtn-hover-fg: #a1a1aa;
+  --ibtn-hover-bg: rgba(255, 255, 255, 0.08);
+  --ibtn-hover-bd: #52525b;
+}
+
+.mf-outlined .mf-ibtn { border-color: #d1d5db; }
+.dark.mf-outlined .mf-ibtn { border-color: #3f3f46; }
+
+/* Default hover (palette set above) */
+.mf-ibtn:hover { color: var(--ibtn-hover-fg); background-color: var(--ibtn-hover-bg); }
+.mf-outlined .mf-ibtn:hover { border-color: var(--ibtn-hover-bd); }
+
+/* Danger (delete) → red at rest and on hover, matching .mf-menu-item--danger.
+   The `.dark` rule lifts specificity to beat `.dark .mf-ibtn` (the grey base),
+   same pattern as --primary / --active below. */
+.mf-ibtn--danger { color: #dc2626; }
+.dark .mf-ibtn--danger { color: #f87171; }
+.mf-ibtn--danger:hover { color: #dc2626; background-color: #fef2f2; }
+.dark .mf-ibtn--danger:hover { color: #f87171; background-color: rgba(239, 68, 68, 0.15); }
+.mf-outlined .mf-ibtn--danger:hover { border-color: #fca5a5; }
+.dark.mf-outlined .mf-ibtn--danger:hover { border-color: #991b1b; }
+
+/* Primary action (Add / New) → solid cyan fill with a white icon: the single
+   bold accent in a panel. Darkens (not highlights) on hover. Each line lifts
+   specificity just enough to beat the matching `.dark .mf-ibtn` /
+   `.mf-outlined .mf-ibtn` base rule above — otherwise dark mode paints the icon
+   grey (#a1a1aa) on the cyan fill and the border stays neutral. */
+.mf-ibtn--primary { color: #fff; background-color: #06b6d4; border-color: #06b6d4; }
+.dark .mf-ibtn--primary { color: #fff; }
+.mf-outlined .mf-ibtn--primary { border-color: #06b6d4; }
+.dark.mf-outlined .mf-ibtn--primary { border-color: #06b6d4; }
+.mf-ibtn--primary:hover { color: #fff; background-color: #0891b2; border-color: #0891b2; }
+.dark .mf-ibtn--primary:hover { color: #fff; }
+.mf-outlined .mf-ibtn--primary:hover { border-color: #0891b2; }
+.dark.mf-outlined .mf-ibtn--primary:hover { border-color: #0891b2; }
+
+/* Active toggle (state = ON) → soft cyan: a tinted background + cyan glyph, no
+   solid fill, so it reads as "lit" without competing with the primary button.
+   No border outside `.mf-outlined`, so it stays flush when outlines are off.
+   `.dark` rules lift specificity to beat `.dark .mf-ibtn` (the grey base). */
+.mf-ibtn--active { color: #0891b2; background-color: #cffafe; }
+.dark .mf-ibtn--active { color: #22d3ee; background-color: rgba(8, 145, 178, 0.22); }
+.mf-outlined .mf-ibtn--active { border-color: #67e8f9; }
+.dark.mf-outlined .mf-ibtn--active { border-color: #155e75; }
+.mf-ibtn--active:hover { color: #0e7490; background-color: #a5f3fc; }
+.dark .mf-ibtn--active:hover { color: #67e8f9; background-color: rgba(8, 145, 178, 0.32); }
+
+/* Disabled → inert, no hover response */
+.mf-ibtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.mf-ibtn:disabled:hover { color: #4b5563; background-color: transparent; border-color: transparent; }
+.dark .mf-ibtn:disabled:hover { color: #a1a1aa; }
+.mf-outlined .mf-ibtn:disabled:hover { border-color: #d1d5db; }
+.dark.mf-outlined .mf-ibtn:disabled:hover { border-color: #3f3f46; }
+
+/* ── Row context menu (kebab / right-click / long-press) ─────────────────── */
+
+.mf-menu {
+  min-width: 9rem;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
+  background-color: #fff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.18), 0 8px 10px -6px rgba(0, 0, 0, 0.12);
+}
+.dark .mf-menu {
+  background-color: #18181b; /* zinc-900 */
+  border-color: #3f3f46; /* zinc-700 */
+}
+.mf-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  color: #374151; /* gray-700 */
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
+}
+.dark .mf-menu-item { color: #d4d4d8; } /* zinc-300 */
+.mf-menu-item:hover { background-color: rgba(0, 0, 0, 0.06); }
+.dark .mf-menu-item:hover { background-color: rgba(255, 255, 255, 0.08); }
+.mf-menu-item--danger { color: #dc2626; } /* red-600 */
+.dark .mf-menu-item--danger { color: #f87171; }
+.mf-menu-item--danger:hover { background-color: #fef2f2; color: #dc2626; }
+.dark .mf-menu-item--danger:hover { background-color: rgba(239, 68, 68, 0.15); color: #f87171; }
+
 /* ── Prevent iOS auto-zoom on input focus ────────────────────────────────── */
 
 input, textarea, select {
@@ -23,6 +144,14 @@ input, textarea, select {
 }
 
 /* ── Marker cluster overrides ────────────────────────────────────────────── */
+
+/* Kill the cluster-expansion CSS transition so markers snap directly to their
+   final positions instead of animating from the cluster centroid — that animation
+   was leaving icons at wrong screen coordinates after zoom 16→17 expansion. */
+.leaflet-cluster-anim .leaflet-marker-icon,
+.leaflet-cluster-anim .leaflet-marker-shadow {
+  transition: none !important;
+}
 
 .marker-cluster-small,
 .marker-cluster-medium,
@@ -120,8 +249,28 @@ input, textarea, select {
 }
 
 .pin-marker--locked {
-  cursor: not-allowed;
-  opacity: 0.75;
+}
+
+.pin-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: fit-content;
+}
+
+.pin-marker--selected .pin-inner {
+  outline: 2px solid #06b6d4;
+  outline-offset: 4px;
+  border-radius: 5px;
+}
+
+/* Outer Leaflet marker element for pins linked to a route waypoint (z-index 600) — pass pointer
+   events through so the underlying waypoint (in mfRoutePane at z-index 450) is reachable in the
+   margin area of the icon (outside the inner visual elements). Uses :has() so this applies
+   immediately via CSS without requiring a JS icon rebuild. The inner .pin-marker keeps
+   pointer-events:auto so locked pins can still be clicked to select the pin directly. */
+.leaflet-marker-icon:has(.pin-marker--locked) {
+  pointer-events: none !important;
 }
 
 .pin-emoji {
@@ -132,28 +281,110 @@ input, textarea, select {
 
 .pin-dot {
   border-radius: 50%;
-  border: 2px solid white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-  margin-top: 3px;
+  /* White contrast ring (drawn as a box-shadow so it doesn't grow the box — keeps DOT_GEO
+     anchor math valid) lets dark/pale colors stay visible on any map background. */
+  box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0, 0, 0, 0.35);
+  margin-top: 0; /* emoji base flush with the dot top */
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.pin-dot--s { width: 8px;  height: 8px; }
-.pin-dot--m { width: 12px; height: 12px; }
-.pin-dot--l { width: 16px; height: 16px; }
+/* Sizes are the colored content only; the white contrast ring is a box-shadow that paints
+   outward without changing the box, so DOT_GEO in PinMarker stays built around these values. */
+.pin-dot--xs { width: 8px;  height: 8px; }
+.pin-dot--s  { width: 12px; height: 12px; }
+.pin-dot--m  { width: 17px; height: 17px; }
+.pin-dot--l  { width: 22px; height: 22px; }
+.pin-dot--xl { width: 28px; height: 28px; }
+
+.pin-dot--circle { border-radius: 50%; }
+.pin-dot--square { border-radius: 2px; }
+.pin-dot--diamond { border-radius: 2px; transform: rotate(45deg); }
+
+@keyframes pin-in {
+  from { opacity: 0; transform: scale(0.4) translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes caption-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Map context popup action rows ──────────────────────────────────────── */
+
+.pin-popup-action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  color: #374151;
+  text-align: left;
+}
+
+.pin-popup-action-row:last-child {
+  border-bottom: none;
+}
+
+.pin-popup-action-row:hover {
+  background: #f9fafb;
+  color: #111827;
+}
+
+.dark .pin-popup-action-row {
+  border-bottom-color: #3f3f46;
+  color: #d4d4d8;
+}
+
+.dark .pin-popup-action-row:last-child {
+  border-bottom: none;
+}
+
+.dark .pin-popup-action-row:hover {
+  background: #27272a;
+  color: #f4f4f5;
+}
 
 /* ── Pin popup ───────────────────────────────────────────────────────────── */
 
 .pin-popup {
-  padding: 10px 12px 8px;
-  min-width: 180px;
+  padding: 0;
+  min-width: 190px;
+  max-width: 260px;
   font-family: system-ui, sans-serif;
+}
+
+.pin-popup-action-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .pin-popup-header {
   display: flex;
   align-items: flex-start;
   gap: 6px;
+  padding: 10px 12px 6px;
+}
+
+
+.pin-popup-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid #f3f4f6;
 }
 
 .pin-popup-name {
@@ -186,32 +417,32 @@ input, textarea, select {
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 
-.pin-popup-hide {
+.pin-popup-btn.pin-popup-hide {
   background: #06b6d4;
   border-color: #22d3ee;
   color: #ffffff;
 }
 
-.pin-popup-hide:hover {
+.pin-popup-btn.pin-popup-hide:hover {
   background: #0891b2;
   border-color: #22d3ee;
   color: #ffffff;
 }
 
-.pin-popup-edit:hover {
+.pin-popup-btn.pin-popup-edit:hover {
   background: #ecfeff;
   border-color: #67e8f9;
   color: #0891b2;
 }
 
-.pin-popup-delete:hover {
+.pin-popup-btn.pin-popup-delete:hover {
   background: #fef2f2;
   border-color: #fca5a5;
   color: #ef4444;
 }
 
-.pin-popup-copy:hover,
-.pin-popup-copy-addr:hover {
+.pin-popup-btn.pin-popup-copy:hover,
+.pin-popup-btn.pin-popup-copy-addr:hover {
   background: #f3f4f6;
   border-color: #9ca3af;
   color: #374151;
@@ -220,6 +451,25 @@ input, textarea, select {
 .pin-popup-copy.copied {
   border-color: #6ee7b7;
   color: #10b981;
+}
+
+/* Delete rows read red by default, matching .mf-menu-item--danger. */
+.pin-popup-action-row.pin-popup-delete {
+  color: #dc2626; /* red-600 */
+}
+
+.dark .pin-popup-action-row.pin-popup-delete {
+  color: #f87171; /* red-400 */
+}
+
+.pin-popup-action-row.pin-popup-delete:hover {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.dark .pin-popup-action-row.pin-popup-delete:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
 }
 
 .pin-popup-desc {
@@ -233,8 +483,7 @@ input, textarea, select {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-top: 7px;
-  padding-top: 7px;
+  padding: 6px 12px 8px;
   border-top: 1px solid #f3f4f6;
 }
 
@@ -287,35 +536,45 @@ input, textarea, select {
   color: #a1a1aa;
 }
 
-.dark .pin-popup-hide {
+
+.dark .pin-popup-copy-row {
+  border-bottom-color: #3f3f46;
+}
+
+.dark .pin-popup-btn.pin-popup-hide {
   background: #06b6d4;
   border-color: #22d3ee;
   color: #ffffff;
 }
 
-.dark .pin-popup-hide:hover {
+.dark .pin-popup-btn.pin-popup-hide:hover {
   background: #0891b2;
   border-color: #22d3ee;
   color: #ffffff;
 }
 
-.dark .pin-popup-edit:hover {
+.dark .pin-popup-btn.pin-popup-edit:hover {
   background: rgba(6, 182, 212, 0.1);
   border-color: #0891b2;
   color: #22d3ee;
 }
 
-.dark .pin-popup-delete:hover {
+.dark .pin-popup-btn.pin-popup-delete:hover {
   background: rgba(239, 68, 68, 0.1);
   border-color: #991b1b;
   color: #f87171;
 }
 
-.dark .pin-popup-copy:hover,
-.dark .pin-popup-copy-addr:hover {
+.dark .pin-popup-btn.pin-popup-copy:hover,
+.dark .pin-popup-btn.pin-popup-copy-addr:hover {
   background: #27272a;
   border-color: #71717a;
   color: #d4d4d8;
+}
+
+.dark .pin-popup-action-row.pin-popup-delete:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
 }
 
 /* ── Print legend overlay ────────────────────────────────────────────────── */
@@ -398,6 +657,12 @@ input, textarea, select {
   margin-top: 1px;
 }
 
+.print-legend-blank {
+  height: 13px;
+  border-bottom: 1px solid #9ca3af;
+  width: 88%;
+}
+
 /* ── Print legend overlay — dark mode ───────────────────────────────────── */
 
 .dark .print-legend {
@@ -424,6 +689,32 @@ input, textarea, select {
 
 .dark .print-legend-desc {
   color: #a1a1aa;
+}
+
+/* ── Print legend footprint preview (on-map overlay while editing print area) ── */
+
+.print-legend-footprint {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px dashed rgba(6, 182, 212, 0.9);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.print-legend-footprint-label {
+  font-family: system-ui, sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(8, 145, 178, 0.9);
+  white-space: nowrap;
+}
+
+.dark .print-legend-footprint {
+  background: rgba(24, 24, 27, 0.55);
+  border-color: rgba(34, 211, 238, 0.9);
+}
+
+.dark .print-legend-footprint-label {
+  color: rgba(34, 211, 238, 0.9);
 }
 
 /* ── Print map title (hidden on screen, shown when printing) ─────────────── */
@@ -478,12 +769,6 @@ input, textarea, select {
   from { transform: scale(0) translateY(-4px); opacity: 0; }
   to   { transform: scale(1) translateY(0); opacity: 1; }
 }
-
-@keyframes slideIn {
-  from { transform: translateY(-8px); opacity: 0; }
-  to   { transform: translateY(0); opacity: 1; }
-}
-
 
 /* ── Print styles ────────────────────────────────────────────────────────── */
 

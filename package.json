@@ -1,6 +1,7 @@
 {
   "name": "mapfolio",
   "displayName": "MapFolio",
+  "private": true,
   "version": "1.3.0",
   "description": "Interactive mapping app for creating, annotating, and printing custom maps",
   "license": "ISC",
@@ -9,14 +10,19 @@
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",
-    "generate": "nuxt generate",
-    "tunnel": "cloudflared tunnel --url http://localhost:3000",
     "fix": "eslint . --fix",
+    "generate": "nuxt generate",
     "lint": "eslint .",
     "postinstall": "nuxt prepare",
     "preview": "nuxt preview",
-    "test": "vitest run --passWithNoTests",
-    "test:watch": "vitest",
+    "preversion": "npm ci && npm run validate",
+    "validate": "npm run typecheck && npm run lint && npm test && npm run build",
+    "release:major": "npm version major && git push --follow-tags",
+    "release:minor": "npm version minor && git push --follow-tags",
+    "release:patch": "npm version patch && git push --follow-tags",
+    "test": "NODE_OPTIONS=--no-experimental-webstorage vitest run",
+    "test:watch": "NODE_OPTIONS=--no-experimental-webstorage vitest",
+    "tunnel": "cloudflared tunnel --url http://localhost:3000",
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
@@ -40,9 +46,8 @@
   },
   "devDependencies": {
     "@nuxt/test-utils": "^4.0.3",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/vue": "^8.0.0",
     "@types/leaflet": "^1.9.4",
+    "@types/node": "^25.0.0",
     "@typescript-eslint/parser": "^8.61.0",
     "@vite-pwa/nuxt": "^1.1.1",
     "@vue/test-utils": "^2.4.0",

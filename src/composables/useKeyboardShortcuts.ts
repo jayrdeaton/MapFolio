@@ -1,10 +1,51 @@
 import type { Route } from '@/types'
 
-export function useKeyboardShortcuts(options: { showInfo: Ref<boolean>; closeInfo: () => void; editingRoute: Ref<Route | null>; closeEditRoute: () => void; bottomSheet: Ref<boolean>; closeSheet: () => void; showMapsPanel: Ref<boolean>; activeFab: Ref<string | null>; showSearch: Ref<boolean>; isPlacingPin: Ref<boolean>; isDrawingRoute: Ref<boolean>; stopDrawing: () => void; undoLastPoint: () => void; undo: () => void }) {
+export function useKeyboardShortcuts(options: {
+  showInfo: Ref<boolean>
+  closeInfo: () => void
+  openInfo: () => void
+  editingRoute: Ref<Route | null>
+  closeEditRoute: () => void
+  editingCaption: Ref<unknown>
+  closeCaptionSheet: () => void
+  bottomSheet: Ref<boolean>
+  closeSheet: () => void
+  showMapsPanel: Ref<boolean>
+  activeFab: Ref<string | null>
+  showSearch: Ref<boolean>
+  isPlacingPin: Ref<boolean>
+  isPlacingCaption: Ref<boolean>
+  stopPlacingCaption: () => void
+  isDrawingRoute: Ref<boolean>
+  stopDrawing: () => void
+  isAdjustingPrintArea: Ref<boolean>
+  hasSelection: Ref<boolean>
+  deleteSelection: () => void
+  copySelection: () => void
+  cutSelection: () => void
+  toggleSelectionVisibility: () => void
+  editSelection: () => void
+  fitSelection: () => void
+  activatePrintArea: () => void
+  clearPrintBounds: () => void
+  startPlacingPin: () => void
+  startNewRoute: () => void
+  startPlacingCaption: () => void
+  closeAllPills: () => void
+  undoLastPoint: () => void
+  undo: () => void
+  redo: () => void
+  pasteAtCenter: () => void
+  saveActiveForm: () => void
+}) {
   function handleKeyDown(e: KeyboardEvent) {
     if (e.key === 'Escape') {
       if (options.showInfo.value) {
         options.closeInfo()
+        return
+      }
+      if (options.editingCaption.value) {
+        options.closeCaptionSheet()
         return
       }
       if (options.editingRoute.value) {
@@ -31,23 +72,119 @@ export function useKeyboardShortcuts(options: { showInfo: Ref<boolean>; closeInf
         options.isPlacingPin.value = false
         return
       }
+      if (options.isPlacingCaption.value) {
+        options.stopPlacingCaption()
+        return
+      }
       if (options.isDrawingRoute.value) {
         options.stopDrawing()
         return
       }
       return
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey && options.isDrawingRoute.value) {
-      const target = e.target as HTMLElement
-      if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && !target.isContentEditable) {
+    const target = e.target as HTMLElement
+    const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
+    // Delete / Backspace removes the current selection or clears the print area.
+    if (!inInput && (e.key === 'Delete' || e.key === 'Backspace')) {
+      if (options.hasSelection.value) {
         e.preventDefault()
-        options.undoLastPoint()
+        options.deleteSelection()
+        return
+      }
+      if (options.isAdjustingPrintArea.value) {
+        e.preventDefault()
+        options.clearPrintBounds()
         return
       }
     }
+    if (!inInput && !e.metaKey && !e.ctrlKey && e.key === 'h' && options.hasSelection.value) {
+      e.preventDefault()
+      options.toggleSelectionVisibility()
+      return
+    }
+    if (!inInput && !e.metaKey && !e.ctrlKey && e.key === 'e' && options.hasSelection.value) {
+      e.preventDefault()
+      options.editSelection()
+      return
+    }
+    if (!inInput && !e.metaKey && !e.ctrlKey && e.key === 'f' && options.hasSelection.value) {
+      e.preventDefault()
+      options.fitSelection()
+      return
+    }
+    if (!inInput && !e.metaKey && !e.ctrlKey && e.key === 'a') {
+      e.preventDefault()
+      options.activatePrintArea()
+      return
+    }
+    const anyFormOpen = options.bottomSheet.value || !!options.editingRoute.value || !!options.editingCaption.value
+    if (!inInput && !anyFormOpen && !e.metaKey && !e.ctrlKey && e.key === 'p') {
+      e.preventDefault()
+      options.startPlacingPin()
+      return
+    }
+    if (!inInput && !anyFormOpen && !e.metaKey && !e.ctrlKey && e.key === 'r') {
+      e.preventDefault()
+      options.startNewRoute()
+      return
+    }
+    if (!inInput && !anyFormOpen && !e.metaKey && !e.ctrlKey && e.key === 'c') {
+      e.preventDefault()
+      options.startPlacingCaption()
+      return
+    }
+    if (!inInput && e.key === '?') {
+      e.preventDefault()
+      options.openInfo()
+      return
+    }
+    // Enter saves the open form, or closes whichever pill is open.
+    if (e.key === 'Enter') {
+      const anyFormOpen = options.bottomSheet.value || !!options.editingRoute.value || !!options.editingCaption.value
+      if (anyFormOpen && !inInput) {
+        e.preventDefault()
+        options.saveActiveForm()
+        return
+      }
+      const anyPillOpen = options.isPlacingPin.value || options.isPlacingCaption.value || options.isDrawingRoute.value || options.isAdjustingPrintArea.value || options.hasSelection.value
+      if (!inInput && anyPillOpen) {
+        e.preventDefault()
+        options.closeAllPills()
+        return
+      }
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey && options.isDrawingRoute.value && !inInput) {
+      e.preventDefault()
+      options.undoLastPoint()
+      return
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey && !inInput) {
+      e.preventDefault()
+      options.redo()
+      return
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'y' && !inInput) {
+      e.preventDefault()
+      options.redo()
+      return
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'c' && !inInput && options.hasSelection.value) {
+      e.preventDefault()
+      options.copySelection()
+      return
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'x' && !inInput && options.hasSelection.value) {
+      e.preventDefault()
+      options.cutSelection()
+      return
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'v' && !inInput) {
+      e.preventDefault()
+      options.pasteAtCenter()
+      return
+    }
     if (!((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey)) return
-    const target = e.target as HTMLElement
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+    if (inInput) return
     e.preventDefault()
     options.undo()
   }
