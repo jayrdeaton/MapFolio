@@ -164,7 +164,21 @@ const editingPinIndex = computed(() => {
 const editingRoutePlaceholder = computed(() => (editingRouteRef.value && !editingRouteRef.value.name ? routePlaceholder(editingRouteRef.value, routes.value) : undefined))
 const editingCaptionPlaceholder = computed(() => (editingCaption.value && !editingCaption.value.text ? captionPlaceholder(editingCaption.value, captions.value) : undefined))
 
-const history = useHistory({ pins, routes, captions, showNotification })
+const { printBounds, printCorners, printAngle, printAreaVisibility, printHistory, isDownloadingPdf, isPreviewOpen, previewBlobUrl, isAutoArea, autoArea, printPaper, printOrientation, printAspectRatio, overlayCorner, selectPrintPreset, resnapPrintArea, fitToPrintArea, fitPrintAreaToElements, handleBoundsSet, openPreview, downloadFromPreview, closePreview, restoreSettings } = usePrintExport({ leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, units: mapUnits, angleSnapEnabled, showNotification, printSettings })
+
+const history = useHistory({
+  pins,
+  routes,
+  captions,
+  showNotification,
+  printCorners,
+  printAngle,
+  legendX: printSettings.legendX,
+  legendY: printSettings.legendY,
+  legendScale: printSettings.legendScale,
+  restorePrintArea: (corners, angle) => printAreaDrawerRef.value?.initFromCorners(corners, angle),
+  clearPrintArea: () => clearPrintBoundsRaw()
+})
 _historyPush = history.push
 const { canUndo, canRedo, undo, redo, clear: clearHistory } = history
 
@@ -183,8 +197,6 @@ const pinsLinkedToSelectedRoutes = computed(() => {
   }
   return ids
 })
-
-const { printBounds, printAreaVisibility, printHistory, isDownloadingPdf, isPreviewOpen, previewBlobUrl, isAutoArea, autoArea, printPaper, printOrientation, printAspectRatio, overlayCorner, selectPrintPreset, resnapPrintArea, fitToPrintArea, fitPrintAreaToElements, handleBoundsSet, openPreview, downloadFromPreview, closePreview, restoreSettings } = usePrintExport({ leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, units: mapUnits, angleSnapEnabled, showNotification, printSettings })
 
 useMapModeState({
   isPlacingPin,
@@ -378,7 +390,7 @@ const legendBox = computed(() => {
     includeScale: printSettings.scale.value,
     pins: namedPins.map(({ pin }) => ({ hasDescription: !!pin.description })),
     routeCount: namedRoutes.length
-  })
+  }, printSettings.legendScale.value)
 })
 
 const printAreaDrawerRef = ref<{ initFromCorners: (corners: [number, number][], angle: number) => void } | null>(null)
@@ -530,15 +542,38 @@ function handleUnlinkSelectedPin() {
   }
 }
 
-function clearPrintBounds() {
+function clearPrintBoundsRaw() {
   printBounds.value = null
   isAdjustingPrintArea.value = false
 }
 
+function clearPrintBounds() {
+  history.push('remove print area')
+  clearPrintBoundsRaw()
+}
+
 function activatePrintArea() {
   selection.clearSelection()
-  if (!printBounds.value) selectPrintPreset(printPaper.value ?? 'letter', printOrientation.value ?? 'portrait')
+  if (!printBounds.value) {
+    history.push('add print area')
+    selectPrintPreset(printPaper.value ?? 'letter', printOrientation.value ?? 'portrait')
+  }
   isAdjustingPrintArea.value = true
+}
+
+function handleSelectPreset(paper: import('@/composables/usePrintExport').PaperSize, orientation: import('@/composables/usePrintExport').Orientation) {
+  history.push(printBounds.value ? 'resize print area' : 'add print area')
+  selectPrintPreset(paper, orientation)
+}
+
+function handleResnapPrintArea() {
+  if (printBounds.value) history.push('resize print area')
+  resnapPrintArea()
+}
+
+function handleFitPrintAreaToElements() {
+  if (printBounds.value) history.push('fit print area to pins')
+  fitPrintAreaToElements()
 }
 function reorderPins(newPins: Pin[]) {
   history.push('reorder pins')
@@ -993,10 +1028,10 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
       </svg>
 
       <template v-if="leafletMap && clusterGroup">
-        <PrintAreaDrawer ref="printAreaDrawerRef" :map="leafletMap" :print-bounds="printBounds" :aspect-ratio="printAspectRatio" :snap-enabled="angleSnapEnabled" :grid-cols="Number(printSettings.grid.value.split('x')[0]) || 1" :grid-rows="Number(printSettings.grid.value.split('x')[1]) || 1" :overlay-corner="overlayCorner" :legend-box="legendBox" :visibility="printAreaVisibility" :selected="isAdjustingPrintArea" @bounds-set="handleBoundsSet" @select="handleSelectPrintArea" @context="openPrintAreaContextMenu" />
+        <PrintAreaDrawer ref="printAreaDrawerRef" :map="leafletMap" :print-bounds="printBounds" :aspect-ratio="printAspectRatio" :snap-enabled="angleSnapEnabled" :grid-cols="Number(printSettings.grid.value.split('x')[0]) || 1" :grid-rows="Number(printSettings.grid.value.split('x')[1]) || 1" :overlay-corner="overlayCorner" :legend-box="legendBox" :legend-x="printSettings.legendX.value" :legend-y="printSettings.legendY.value" :visibility="printAreaVisibility" :selected="isAdjustingPrintArea" @bounds-set="handleBoundsSet" @select="handleSelectPrintArea" @context="openPrintAreaContextMenu" @legend-move="(x, y) => { printSettings.legendX.value = x; printSettings.legendY.value = y }" @legend-scale="(s) => { printSettings.legendScale.value = s }" @legend-reset="() => { history.push('reset legend position'); printSettings.legendX.value = null; printSettings.legendY.value = null }" @drag-start="(label) => history.push(label)" />
         <PinMarker v-for="(pin, i) in pins" :key="pin.id" :render-index="i" :pin="pin" :map="leafletMap" :layer="showClusters ? clusterGroup : undefined" :hidden="hiddenPinIds.has(pin.id)" :dot-size="stickyDotSize" :locked="linkedPinIds.has(pin.id)" :drawing="isDrawingRoute" :find-snap="findWaypointSnapForPin" :pin-index="pinNumberedIndex.get(pin.id)" :selected="selection.selectedPinIds.value.has(pin.id) || pinsLinkedToSelectedRoutes.has(pin.id)" :linked-to-selected-route="false" @delete="deletePinWithCleanup" @hide="togglePinVisibility" @drag-start="handlePinDragStart" @drag-move="handlePinDragMove" @move="handlePinMoveOnDrop" @edit="openEditPin" @copy="(coords) => showNotification(`Copied: ${coords}`)" @clip-copy="handleClipCopyPin" @clip-cut="handleClipCutPin" @place-waypoint="(lat, lng, pinId) => addPoint(lat, lng, pinId)" @select="handlePinSelect" @context-locked="handleLockedPinContext" />
         <CaptionMarker v-for="(caption, i) in captions" :key="caption.id" :render-index="i" :caption="caption" :map="leafletMap" :hidden="hiddenCaptionIds.has(caption.id)" :selected="selection.selectedCaptionIds.value.has(caption.id) || editingCaption?.id === caption.id || activeCaptionId === caption.id" :is-dark="isDark" :placeholder="caption.text ? undefined : captionPlaceholder(caption, captions)" @delete="handleDeleteCaption" @hide="toggleCaptionVisibility" @move-start="onCaptionMoveStart" @move="onCaptionMove" @edit="openEditCaption" @clip-copy="handleClipCopyCaption" @clip-cut="handleClipCutCaption" @select="handleSelectCaption" />
-        <CaptionRotateHandle v-if="activeCaption" :caption="activeCaption" :map="leafletMap" :angle-snap="angleSnapEnabled" @rotate-start="onCaptionRotateStart" @rotate="onCaptionRotate" />
+        <CaptionRotateHandle v-if="activeCaption && !hiddenCaptionIds.has(activeCaption.id)" :caption="activeCaption" :map="leafletMap" :angle-snap="angleSnapEnabled" @rotate-start="onCaptionRotateStart" @rotate="onCaptionRotate" />
         <SearchMarker v-if="searchLocation" :key="`${searchLocation.lat}-${searchLocation.lng}`" ref="searchMarkerRef" :lat="searchLocation.lat" :lng="searchLocation.lng" :map="leafletMap" @pin="handleSearchMarkerPin" @dismiss="searchLocation = null" />
         <RouteLayer v-if="routes.length > 0" ref="routeLayerRef" :routes="routes" :hidden-route-ids="hiddenRouteIds" :map="leafletMap" :drawing-route-id="isDrawingRoute ? (drawingRoute?.id ?? null) : null" :drawing-anchor-index="isDrawingRoute ? drawingAnchorIndex : null" :pins="pins" :snap-enabled="routeSnapEnabled" :hidden-pin-ids="hiddenPinIds" :angle-snap-enabled="angleSnapEnabled" :selected-route-ids="selection.selectedRouteIds.value" :selected-waypoint-key="selection.selectedWaypointKey.value" @remove-point="removePoint" @move-point="handleMovePoint" @move-route="handleMoveRoute" @select-route="handleSelectRoute" @select-waypoint="handleSelectWaypoint" @context-route="handleContextRoute" @context-waypoint="onContextWaypoint" />
       </template>
@@ -1020,7 +1055,7 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
 
       <!-- Print area adjusting indicator -->
       <Transition name="mf-fade">
-        <PrintPill v-if="isAdjustingPrintArea && printBounds" :snap-enabled="angleSnapEnabled" :is-downloading-pdf="isDownloadingPdf" @update:snap-enabled="angleSnapEnabled = $event" @fit="fitPrintAreaToElements" @download="openPreview" @done="isAdjustingPrintArea = false" />
+        <PrintPill v-if="isAdjustingPrintArea && printBounds" :snap-enabled="angleSnapEnabled" :is-downloading-pdf="isDownloadingPdf" @update:snap-enabled="angleSnapEnabled = $event" @fit="handleFitPrintAreaToElements" @download="openPreview" @done="isAdjustingPrintArea = false" />
       </Transition>
 
       <!-- Selection pill: pins / routes / captions -->
@@ -1088,21 +1123,21 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
             v-model:include-compass="printSettings.compass.value"
             v-model:include-scale="printSettings.scale.value"
             v-model:enhance-contrast="printSettings.contrast.value"
-            v-model:fast-export="printSettings.fastExport.value"
+            v-model:export-quality="printSettings.exportQuality.value"
             v-model:print-area-visibility="printAreaVisibility"
             :print-bounds="printBounds"
             :print-aspect-ratio="printAspectRatio"
             :is-downloading-pdf="isDownloadingPdf"
             :map-style="mapStyle"
             :print-history="printHistory"
-            @select-preset="selectPrintPreset"
+            @select-preset="handleSelectPreset"
             @start-adjusting="
               () => {
                 isAdjustingPrintArea = true
                 activeFab = null
               }
             "
-            @resnap-print-area="resnapPrintArea"
+            @resnap-print-area="handleResnapPrintArea"
             @fit-to-print-area="fitToPrintArea"
             @clear-print-bounds="clearPrintBounds"
             @download-pdf="openPreview"
@@ -1271,6 +1306,7 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
             >
               <Plus :size="13" />
             </button>
+            <div class="h-6 flex items-center justify-center border-b border-gray-200/60 dark:border-zinc-700/60 text-xs font-mono tabular-nums text-gray-500 dark:text-zinc-400 select-none">{{ previewView.zoom }}</div>
             <button
               :disabled="atMinZoom"
               :class="['h-7 flex items-center justify-center transition-colors select-none', atMinZoom ? 'text-gray-300 dark:text-zinc-600 cursor-not-allowed' : 'text-gray-500 dark:text-zinc-400 hover:bg-gray-100/80 dark:hover:bg-zinc-800/80 cursor-pointer']"

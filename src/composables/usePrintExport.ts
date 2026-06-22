@@ -5,6 +5,7 @@ import type { PrintAreaInfo } from '@/components/PrintAreaDrawer.vue'
 import type { Caption, MapStyle, Pin, Route } from '@/types'
 
 import { exportMapToPdf } from './useMapExport'
+import type { ExportQuality } from './useMapExport'
 import type { PrintOrientation, PrintPaperSize } from './usePrintSettings'
 
 export type PaperSize = PrintPaperSize
@@ -23,7 +24,10 @@ export interface PrintHistoryEntry {
   compass: boolean
   scale: boolean
   contrast: boolean
-  fastExport?: boolean
+  exportQuality?: ExportQuality
+  legendScale?: number
+  legendX?: number | null
+  legendY?: number | null
 }
 
 const HISTORY_KEY = 'mapfolio_print_history'
@@ -67,10 +71,13 @@ export function usePrintExport(options: {
     legendTitle: Ref<boolean>
     legendArea: Ref<boolean>
     legendBlankLabels: Ref<boolean>
+    legendScale: Ref<number>
+    legendX: Ref<number | null>
+    legendY: Ref<number | null>
     compass: Ref<boolean>
     scale: Ref<boolean>
     contrast: Ref<boolean>
-    fastExport: Ref<boolean>
+    exportQuality: Ref<ExportQuality>
   }
 }) {
   const { leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, units, angleSnapEnabled, showNotification, printSettings } = options
@@ -324,7 +331,10 @@ export function usePrintExport(options: {
       compass: printSettings.compass.value,
       scale: printSettings.scale.value,
       contrast: printSettings.contrast.value,
-      fastExport: printSettings.fastExport.value
+      exportQuality: printSettings.exportQuality.value,
+      legendScale: printSettings.legendScale.value,
+      legendX: printSettings.legendX.value,
+      legendY: printSettings.legendY.value
     }
     printHistory.value = [entry, ...printHistory.value].slice(0, HISTORY_MAX)
     localStorage.setItem(HISTORY_KEY, JSON.stringify(printHistory.value))
@@ -341,7 +351,10 @@ export function usePrintExport(options: {
     // Coerce legacy string entries ('off' | 'km' | 'mi') to the new boolean toggle.
     printSettings.scale.value = entry.scale !== false && (entry.scale as unknown) !== 'off'
     printSettings.contrast.value = entry.contrast
-    printSettings.fastExport.value = entry.fastExport ?? false
+    printSettings.exportQuality.value = entry.exportQuality ?? 'standard'
+    printSettings.legendScale.value = entry.legendScale ?? 1
+    printSettings.legendX.value = entry.legendX ?? null
+    printSettings.legendY.value = entry.legendY ?? null
   }
 
   function handleBoundsSet(info: PrintAreaInfo) {
@@ -377,11 +390,14 @@ export function usePrintExport(options: {
         includeLegend: printSettings.legend.value,
         legendSeparatePage: printSettings.legendSeparatePage.value,
         legendBlankLabels: printSettings.legendBlankLabels.value,
+        legendScale: printSettings.legendScale.value,
+        legendX: printSettings.legendX.value,
+        legendY: printSettings.legendY.value,
         includeCompass: printSettings.compass.value,
         includeScale: printSettings.scale.value,
         scaleUnit: units.value,
         enhanceContrast: printSettings.contrast.value,
-        fastExport: printSettings.fastExport.value,
+        exportQuality: printSettings.exportQuality.value,
         paperWidthPt: pw,
         paperHeightPt: ph,
         gridCols,

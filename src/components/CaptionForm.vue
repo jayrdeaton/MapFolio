@@ -20,7 +20,7 @@ const emit = defineEmits<{
 const SIZES: CaptionSize[] = ['xs', 's', 'm', 'l', 'xl']
 
 const text = ref('')
-const color = ref('#111827')
+const color = ref('#ffffff')
 const size = ref<CaptionSize>('m')
 const background = ref(true)
 
@@ -35,6 +35,11 @@ watch(
   },
   { immediate: true }
 )
+
+function toggleBackground() {
+  background.value = !background.value
+  if (!background.value && (color.value === 'transparent' || color.value === '#ffffff')) color.value = '#111827'
+}
 
 function save() {
   if (!props.editingCaption) return
@@ -89,15 +94,13 @@ defineExpose({ save })
         </div>
 
         <div>
-          <label :class="sectionLabelClass">Color</label>
-          <ColorPicker v-model="color" />
-        </div>
-
-        <div class="flex items-center justify-between">
-          <label :class="sectionLabelClass" style="margin-bottom: 0">Background</label>
-          <button :class="['relative w-10 h-6 rounded-full transition-colors cursor-pointer', background ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-zinc-700']" @click="background = !background">
-            <span :class="['absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform', background && 'translate-x-4']" />
-          </button>
+          <div class="flex items-center justify-between mb-1.5">
+            <label :class="sectionLabelClass" style="margin-bottom: 0">{{ background ? 'Background' : 'Color' }}</label>
+            <button :class="['relative w-10 h-6 rounded-full transition-colors cursor-pointer', background ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-zinc-700']" @click="toggleBackground">
+              <span :class="['absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform', background && 'translate-x-4']" />
+            </button>
+          </div>
+          <ColorPicker v-model="color" :hide-transparent="!background" />
         </div>
 
         <div class="border-t border-gray-100 dark:border-zinc-800" />

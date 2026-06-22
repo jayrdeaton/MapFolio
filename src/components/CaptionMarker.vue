@@ -3,6 +3,7 @@ import L from 'leaflet'
 
 import type { Caption } from '@/types'
 import { CAPTION_PX } from '@/types'
+import { isDarkColor } from '@/utils'
 
 const PENCIL_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`
 const TRASH_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`
@@ -43,47 +44,51 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-// Perceived luminance (Rec. 601 weights) of a #rgb / #rrggbb color, used to pick a contrasting
-// halo: light text colors get a dark halo, dark ones get a light halo. NaN (bad input) → false,
-// which yields the white halo — the safe default for the common dark-text case.
-function isLightColor(hex: string): boolean {
-  const h = hex.replace('#', '')
-  const full = h.length === 3 ? h.replace(/(.)/g, '$1$1') : h
-  const r = parseInt(full.slice(0, 2), 16)
-  const g = parseInt(full.slice(2, 4), 16)
-  const b = parseInt(full.slice(4, 6), 16)
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6
-}
-
 function buildIcon() {
   const c = props.caption
   const fontSize = CAPTION_PX[c.size] ?? CAPTION_PX.m
   const rot = c.rotation ? ` rotate(${c.rotation}deg)` : ''
   const safe = escapeHtml(c.text || props.placeholder || 'Caption').replace(/\n/g, '<br>')
 
-  // border-radius rounds the selection outline (browsers clip outline to it, same as the pin
-  // emoji ring). The pill's own radius in `skin` overrides this when background is on.
-  const base = `font-size:${fontSize}px;font-weight:600;line-height:1.15;color:${c.color};white-space:pre;text-align:center;border-radius:4px;`
-  // The pill follows the app theme on screen (the PDF export always uses the light pill, since
-  // print is always light mode). Dark mode gets a dark pill + stronger shadow.
-  const pillBg = props.isDark ? 'rgba(24,24,27,0.92)' : 'rgba(255,255,255,0.92)'
+  // background on: color = pill background, text auto-contrasts. background off: color = text color.
+  const textColor = c.background ? (isDarkColor(c.color) ? '#ffffff' : '#111827') : c.color
+  const base = `font-size:${fontSize}px;font-weight:600;line-height:1.15;color:${textColor};white-space:pre;text-align:center;border-radius:4px;`
   const pillShadow = props.isDark ? '0 2px 6px rgba(0,0,0,0.6)' : '0 1px 4px rgba(0,0,0,0.2)'
   const pillBorder = props.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'
-  // No-background captions get a legibility halo whose luminance opposes the text color, so the
-  // glyphs stay readable on any background — a black caption gets a white halo, a white caption a
-  // dark one. Keyed off the text color (not app/print theme) so "black on black" can't happen.
-  const halo = isLightColor(c.color) ? '#18181b' : '#fff'
-  const skin = c.background ? `background:${pillBg};padding:${Math.round(fontSize * 0.18)}px ${Math.round(fontSize * 0.45)}px;border-radius:${Math.round(fontSize * 0.35)}px;box-shadow:${pillShadow};border:1px solid ${pillBorder};` : `text-shadow:0 0 2px ${halo},0 0 2px ${halo},0 0 3px ${halo};`
+  const skin = c.background
+    ? `background:${c.color};padding:${Math.round(fontSize * 0.18)}px ${Math.round(fontSize * 0.45)}px;border-radius:${Math.round(fontSize * 0.35)}px;box-shadow:${pillShadow};border:1px solid ${pillBorder};`
+    : `text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff;`
   const ring = props.selected ? 'outline:2.5px solid #06b6d4;outline-offset:2px;' : ''
   const animDelay = Math.min((props.renderIndex ?? 0) * 25, 600)
   const animStyle = hasAnimated ? '' : `animation:caption-in 250ms ease-out both;animation-delay:${animDelay}ms;`
   hasAnimated = true
 
+  // Safari doesn't hit-test CSS-transformed children that extend outside their
+  // parent's layout area. With iconSize:undefined the outer div is 0×0, so the
+  // inner pill (translated -50%,-50%) is entirely outside its parent — only the
+  // anchor pixel is clickable. Fix: size the outer div to contain the rotated pill,
+  // center it with iconAnchor, and nullify its pointer-events via CSS so the large
+  // transparent container doesn't block map panning outside the visible pill.
+  const rawText = c.text || props.placeholder || 'Caption'
+  const lines = rawText.split('\n')
+  const maxLen = Math.max(...lines.map((l) => l.length), 1)
+  const nLines = lines.length
+  const pxH = Math.round(fontSize * 0.18)
+  const pxW = Math.round(fontSize * 0.45)
+  const pillW = maxLen * fontSize * 0.65 + pxW * 2 + 2
+  const pillH = nLines * fontSize * 1.15 + pxH * 2 + 2
+  const ang = ((c.rotation ?? 0) * Math.PI) / 180
+  const cosA = Math.abs(Math.cos(ang))
+  const sinA = Math.abs(Math.sin(ang))
+  const span = Math.ceil(Math.max(pillW * cosA + pillH * sinA, pillW * sinA + pillH * cosA) + 40)
+  const half = Math.ceil(span / 2)
+  const dim = half * 2
+
   return L.divIcon({
     className: 'mf-caption-icon',
-    html: `<div class="mf-caption-inner" data-caption-id="${c.id}" style="position:absolute;left:0;top:0;transform:translate(-50%,-50%)${rot};transform-origin:center;cursor:pointer;user-select:none;pointer-events:auto;${base}${skin}${ring}${animStyle}">${safe}</div>`,
-    iconSize: undefined,
-    iconAnchor: [0, 0]
+    html: `<div class="mf-caption-inner" data-caption-id="${c.id}" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)${rot};transform-origin:center;cursor:pointer;user-select:none;pointer-events:auto;${base}${skin}${ring}${animStyle}">${safe}</div>`,
+    iconSize: [dim, dim] as unknown as L.PointExpression,
+    iconAnchor: [half, half] as unknown as L.PointExpression
   })
 }
 

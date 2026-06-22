@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { Captions, Compass, Contrast, Eye, EyeOff, FileText, Heading, List, Lock, Maximize2, PenLine, Plus, Printer, RectangleHorizontal, RectangleVertical, RotateCcw, Ruler, Trash2, Zap } from '@lucide/vue'
+import { Captions, Circle, Compass, Contrast, Eye, EyeOff, FileText, Heading, List, Lock, Maximize2, PenLine, Plus, Printer, RectangleHorizontal, RectangleVertical, RotateCcw, Ruler, Snail, Trash2, Zap } from '@lucide/vue'
 import type L from 'leaflet'
 
+import type { ExportQuality } from '@/composables/useMapExport'
 import type { PrintHistoryEntry } from '@/composables/usePrintExport'
 import { GRID_PRESETS, type Orientation, PAPER_LABELS, PAPERS, type PaperSize } from '@/composables/usePrintExport'
 import type { MapStyle } from '@/types'
@@ -37,7 +38,7 @@ const legendBlankLabels = defineModel<boolean>('legendBlankLabels', { required: 
 const includeCompass = defineModel<boolean>('includeCompass', { required: true })
 const includeScale = defineModel<boolean>('includeScale', { required: true })
 const enhanceContrast = defineModel<boolean>('enhanceContrast', { required: true })
-const fastExport = defineModel<boolean>('fastExport', { required: true })
+const exportQuality = defineModel<ExportQuality>('exportQuality', { required: true })
 
 function setArea() {
   emit('select-preset', printPaper.value ?? 'letter', printOrientation.value ?? 'portrait')
@@ -183,9 +184,13 @@ const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.maxTouc
       <!-- Render quality -->
       <div class="flex items-center justify-between gap-2">
         <span :class="sectionLabelClass" class="shrink-0" style="margin-bottom: 0">Quality</span>
-        <div class="flex gap-1">
+        <div class="flex gap-1 items-center">
           <button v-if="MAP_STYLE_CONFIGS[mapStyle].printBlackPoint !== undefined" :class="['mf-ibtn w-7 h-7', enhanceContrast && 'mf-ibtn--active']" title="Enhance contrast (stretches tonal range for cleaner prints on light map styles)" @click="enhanceContrast = !enhanceContrast"><Contrast :size="13" /></button>
-          <button v-if="!isIOS" :class="['mf-ibtn w-7 h-7', fastExport && 'mf-ibtn--active']" :title="fastExport ? 'Fast draft on (fewer tiles, quicker export, lower detail)' : 'Fast draft: fewer tiles, quicker export, lower detail'" @click="fastExport = !fastExport"><Zap :size="13" /></button>
+          <div v-if="!isIOS" class="mf-seg">
+            <button :class="['mf-seg-btn w-7', exportQuality === 'draft' && 'mf-seg-btn--active']" title="Draft: fewer tiles, faster export, lower detail" @click="exportQuality = 'draft'"><Zap :size="13" /></button>
+            <button :class="['mf-seg-btn w-7', exportQuality === 'standard' && 'mf-seg-btn--active']" title="Normal: standard quality" @click="exportQuality = 'standard'"><Circle :size="13" /></button>
+            <button :class="['mf-seg-btn w-7', exportQuality === 'hires' && 'mf-seg-btn--active']" title="Hi-res: more tiles, highest detail — best for A0 and large-format printing. Takes longer." @click="exportQuality = 'hires'"><Snail :size="13" /></button>
+          </div>
         </div>
       </div>
       <div>

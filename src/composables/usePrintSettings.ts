@@ -1,11 +1,14 @@
 export type PrintPaperSize = 'letter' | 'tabloid' | 'a'
 export type PrintOrientation = 'portrait' | 'landscape'
 
+import type { ExportQuality } from './useMapExport'
+
 const COOKIE_KEY = 'mapfolio_print_v1'
 const LETTER_REGIONS = new Set(['US', 'CA', 'MX', 'CO', 'VE', 'CL', 'PH'])
 const VALID_PAPERS: PrintPaperSize[] = ['letter', 'tabloid', 'a']
 const VALID_ORIENTATIONS: PrintOrientation[] = ['portrait', 'landscape']
 const VALID_GRIDS = ['1x1', '2x1', '1x2', '2x2', '3x2', '2x3', '3x3']
+const VALID_QUALITY: ExportQuality[] = ['draft', 'standard', 'hires']
 
 function regionDefaultPaper(): PrintPaperSize {
   return LETTER_REGIONS.has((navigator.language.split('-')[1] ?? '').toUpperCase()) ? 'letter' : 'a'
@@ -45,11 +48,20 @@ export function usePrintSettings() {
   // Migrate the legacy 'off' | 'km' | 'mi' value: anything that wasn't 'off' means on.
   const scale = ref<boolean>(typeof saved.scale === 'boolean' ? saved.scale : saved.scale !== 'off')
   const contrast = ref<boolean>(typeof saved.contrast === 'boolean' ? saved.contrast : true)
-  // "Fast draft": fetch far fewer tiles at a lower zoom and shrink the output for a quick,
-  // lightweight PDF. Off by default — the standard export renders at full detail.
-  const fastExport = ref<boolean>(typeof saved.fastExport === 'boolean' ? saved.fastExport : false)
+  // Export quality tier. Migrates old boolean fastExport: true → 'draft'.
+  const exportQuality = ref<ExportQuality>(
+    VALID_QUALITY.includes(saved.exportQuality as ExportQuality)
+      ? (saved.exportQuality as ExportQuality)
+      : saved.fastExport === true
+        ? 'draft'
+        : 'standard'
+  )
+  const legendScale = ref<number>(typeof saved.legendScale === 'number' && saved.legendScale >= 0.25 && saved.legendScale <= 2 ? saved.legendScale : 1)
+  // Explicit legend position as fractions of paper width (x) and height (y). null = auto-corner.
+  const legendX = ref<number | null>(typeof saved.legendX === 'number' ? saved.legendX : null)
+  const legendY = ref<number | null>(typeof saved.legendY === 'number' ? saved.legendY : null)
 
-  watch([paper, orientation, grid, legend, legendSeparatePage, legendTitle, legendArea, legendBlankLabels, compass, scale, contrast, fastExport], () =>
+  watch([paper, orientation, grid, legend, legendSeparatePage, legendTitle, legendArea, legendBlankLabels, compass, scale, contrast, exportQuality, legendScale, legendX, legendY], () =>
     writeCookie({
       paper: paper.value,
       orientation: orientation.value,
@@ -62,9 +74,12 @@ export function usePrintSettings() {
       compass: compass.value,
       scale: scale.value,
       contrast: contrast.value,
-      fastExport: fastExport.value
+      exportQuality: exportQuality.value,
+      legendScale: legendScale.value,
+      legendX: legendX.value,
+      legendY: legendY.value
     })
   )
 
-  return { paper, orientation, grid, legend, legendSeparatePage, legendTitle, legendArea, legendBlankLabels, compass, scale, contrast, fastExport }
+  return { paper, orientation, grid, legend, legendSeparatePage, legendTitle, legendArea, legendBlankLabels, compass, scale, contrast, exportQuality, legendScale, legendX, legendY }
 }

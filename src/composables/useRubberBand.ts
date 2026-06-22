@@ -73,7 +73,14 @@ export function useRubberBand(leafletMap: Ref<L.Map | null>, isInteracting: Ref<
     const ne = map.containerPointToLatLng([x + w, y])
     // Leaflet fires a `click` event after pointerup because dragging was disabled (so
     // _moved() is false). Suppress it so handleMapClick can't call clearSelection().
-    document.addEventListener('click', (ev) => ev.stopPropagation(), { capture: true, once: true })
+    // The mousedown that started the rubber-band had preventDefault() called on it, which
+    // in some browsers prevents the subsequent click from ever firing — in that case the
+    // once listener would linger and eat the user's very next intentional click. A short
+    // timeout removes it automatically when click never fires (clicks fire within a few
+    // ms of pointerup when they do).
+    const suppress = (ev: Event) => ev.stopPropagation()
+    document.addEventListener('click', suppress, { capture: true, once: true })
+    setTimeout(() => document.removeEventListener('click', suppress, { capture: true }), 300)
     onSelect(L.latLngBounds(sw, ne))
   }
 

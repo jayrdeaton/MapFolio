@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PinDotShape, PinDotSize } from '@/types'
+import { isDarkColor } from '@/utils'
 
 const props = defineProps<{
   emoji: string
@@ -10,44 +11,55 @@ const props = defineProps<{
   // The pin's actual index to render inside the dot. Falls back to "#" when omitted (e.g. the
   // edit form, where a not-yet-placed pin has no index).
   number?: number
-  // List rows / pills: a compact miniature — a small emoji stacked over a small uniform dot,
-  // like the map marker. Dotless pins just show the emoji. The edit form omits this to show
-  // the pin's real emoji + dot size as a live preview.
+  // List rows / pills: a compact miniature. The edit form omits this to show a live preview.
   preview?: boolean
 }>()
 
-// Preview uses a uniform 16px dot ('s') so every pin dot — and the route preview's waypoints —
-// read at the same size. The form keeps the pin's real dot size.
-const resolvedSize = computed<PinDotSize>(() => (props.preview ? 's' : (props.dotSize ?? 'none')))
+const resolvedSize = computed<PinDotSize>(() => (props.preview ? 's' : (props.dotSize ?? 'm')))
 const resolvedShape = computed(() => props.dotShape ?? 'circle')
-const hasDot = computed(() => (props.dotSize ?? 'none') !== 'none')
-const numberVisible = computed(() => props.showNumber && hasDot.value && (props.preview || ['m', 'l', 'xl'].includes(props.dotSize ?? 'none')))
+const numberVisible = computed(() => props.showNumber && (props.preview || ['m', 'l', 'xl'].includes(props.dotSize ?? 'm')))
 const numFontSize = computed(() => {
-  // Compact preview dot: shrink the font for multi-digit indices so they fit the small dot.
   if (props.preview) return (props.number ?? 0) >= 100 ? '6px' : (props.number ?? 0) >= 10 ? '7px' : '8px'
   if (resolvedSize.value === 'xl') return '13px'
   if (resolvedSize.value === 'l') return '10px'
   return '8px'
 })
+const BUBBLE_EMOJI_SIZE: Record<PinDotSize, string> = { xs: '14px', s: '16px', m: '20px', l: '24px', xl: '30px' }
+const emojiFontSize = computed(() => props.preview ? '14px' : BUBBLE_EMOJI_SIZE[resolvedSize.value])
+const dotRingBox = computed(() => (props.color === 'transparent' ? 'none' : '0 0 0 2px #ffffff'))
+const dotFilter = computed(() => (props.color === 'transparent' ? undefined : 'drop-shadow(0 1px 4px rgba(0,0,0,0.3))'))
+const numColor = computed(() => (isDarkColor(props.color) ? '#ffffff' : '#1f2937'))
 </script>
 
 <template>
   <div class="flex flex-col items-center">
-    <span v-if="emoji" class="pin-emoji" :style="preview ? { fontSize: '16px' } : undefined">{{ emoji }}</span>
-    <div v-if="hasDot" :class="['pin-dot', `pin-dot--${resolvedSize}`, `pin-dot--${resolvedShape}`]" :style="{ background: color }">
-      <span
-        v-if="numberVisible"
-        :style="{
-          color: 'white',
-          fontSize: numFontSize,
-          fontWeight: '700',
-          lineHeight: '1',
-          pointerEvents: 'none',
-          userSelect: 'none',
-          transform: resolvedShape === 'diamond' ? 'rotate(-45deg)' : undefined
-        }"
-        >{{ number ?? '#' }}</span
-      >
+    <!-- Emoji bubble mode -->
+    <div v-if="emoji" :style="color !== 'transparent' ? { filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.3))' } : undefined" class="flex flex-col items-center">
+      <div :class="['pin-bubble', preview ? 'pin-bubble--preview' : '', color === 'transparent' ? 'pin-bubble--clear' : '']" :style="color !== 'transparent' ? { background: color } : undefined">
+        <span class="pin-emoji" :style="{ fontSize: emojiFontSize, ...(color === 'transparent' ? { filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.4))' } : {}) }">{{ emoji }}</span>
+      </div>
+      <div v-if="color !== 'transparent'" class="pin-bubble-tip" :style="{ borderTopColor: color }" />
     </div>
+    <!-- Dot mode -->
+    <template v-else>
+      <div
+        :class="['pin-dot', `pin-dot--${resolvedSize}`, `pin-dot--${resolvedShape}`]"
+        :style="{ background: color, boxShadow: dotRingBox, filter: dotFilter }"
+      >
+        <span
+          v-if="numberVisible"
+          :style="{
+            color: numColor,
+            fontSize: numFontSize,
+            fontWeight: '700',
+            lineHeight: '1',
+            pointerEvents: 'none',
+            userSelect: 'none',
+            transform: resolvedShape === 'diamond' ? 'rotate(-45deg)' : undefined
+          }"
+          >{{ number ?? '#' }}</span
+        >
+      </div>
+    </template>
   </div>
 </template>
