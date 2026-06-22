@@ -73,7 +73,7 @@ export const CAPTION_PT: Record<CaptionSize, number> = { xs: 9, s: 11, m: 14, l:
 export const CAPTION_PX: Record<CaptionSize, number> = { xs: 11, s: 13, m: 16, l: 20, xl: 26 }
 
 export type MapStyle = 'clean' | 'minimal' | 'standard' | 'satellite' | 'terrain'
-export type PinDotSize = 'none' | 'xs' | 's' | 'm' | 'l' | 'xl'
+export type PinDotSize = 'xs' | 's' | 'm' | 'l' | 'xl'
 export type PinDotShape = 'circle' | 'square' | 'diamond'
 
 export interface MapStyleConfig {

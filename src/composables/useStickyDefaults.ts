@@ -3,8 +3,9 @@ import type { CaptionSize, PinDotShape, PinDotSize, RouteLineStyle, RouteWaypoin
 export function useStickyDefaults() {
   // ── Sticky pin defaults ───────────────────────────────────────────────────
   const stickyEmoji = ref('📍')
-  const stickyColor = ref('#06b6d4')
-  const stickyDotSize = ref<PinDotSize>((localStorage.getItem('mapfolio_sticky_dot_size') as PinDotSize) || 'm')
+  const stickyColor = ref('#ffffff')
+  const rawDotSize = localStorage.getItem('mapfolio_sticky_dot_size') as PinDotSize | 'none' | null
+  const stickyDotSize = ref<PinDotSize>(rawDotSize && rawDotSize !== 'none' ? rawDotSize : 'm')
   const stickyDotShape = ref<PinDotShape>((localStorage.getItem('mapfolio_sticky_dot_shape') as PinDotShape) || 'circle')
   const stickyShowNumber = ref(localStorage.getItem('mapfolio_sticky_show_number') === 'true')
 
@@ -24,7 +25,7 @@ export function useStickyDefaults() {
   watch(stickyRouteWaypointSize, (v) => (v ? localStorage.setItem('mapfolio_sticky_route_wp_size', v) : localStorage.removeItem('mapfolio_sticky_route_wp_size')))
 
   // ── Sticky caption defaults ───────────────────────────────────────────────
-  const stickyCaptionColor = ref(localStorage.getItem('mapfolio_sticky_caption_color') || '#111827')
+  const stickyCaptionColor = ref(localStorage.getItem('mapfolio_sticky_caption_color') || '#ffffff')
   const stickyCaptionSize = ref<CaptionSize>((localStorage.getItem('mapfolio_sticky_caption_size') as CaptionSize) || 'm')
   const stickyCaptionBackground = ref(localStorage.getItem('mapfolio_sticky_caption_background') !== 'false')
 

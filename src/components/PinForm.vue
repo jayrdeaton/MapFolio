@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Trash2, X } from '@lucide/vue'
 
+import ColorPicker from '@/components/ColorPicker.vue'
 import DotPicker from '@/components/DotPicker.vue'
 import PinPreview from '@/components/PinPreview.vue'
 import type { Pin, PinDotShape, PinDotSize } from '@/types'
@@ -23,28 +24,13 @@ const emit = defineEmits<{
 const newPinName = ref('')
 const newPinDescription = ref('')
 const newPinEmoji = ref('📍')
-const newPinColor = ref('#06b6d4')
+const newPinColor = ref('#ffffff')
 const customEmoji = ref('')
 const showAllEmojis = ref(false)
+const showCustomInput = ref(false)
 const newPinDotSize = ref<PinDotSize>('m')
 const newPinDotShape = ref<PinDotShape>('circle')
 const newPinShowNumber = ref(false)
-
-const dotShape = computed({
-  get: () => (newPinDotSize.value === 'none' ? 'none' : newPinDotShape.value) as 'circle' | 'square' | 'diamond' | 'none',
-  set: (v: 'circle' | 'square' | 'diamond' | 'none') => {
-    if (v === 'none') {
-      newPinDotSize.value = 'none'
-    } else {
-      newPinDotShape.value = v
-      // Promoting a dotless pin needs a real size. globalDotSize is the sticky default, but it
-      // can itself be 'none' (the user last saved a dotless pin) — falling back to it would leave
-      // the size 'none', so the getter immediately reverts the shape to 'none' and it looks like
-      // the shape can't be selected. Guard with 'm' so promotion always yields a visible dot.
-      if (newPinDotSize.value === 'none') newPinDotSize.value = props.globalDotSize === 'none' ? 'm' : props.globalDotSize
-    }
-  }
-})
 
 const dotSize = computed({
   get: () => newPinDotSize.value as string,
@@ -53,19 +39,21 @@ const dotSize = computed({
   }
 })
 
+const activeEmoji = computed(() => customEmoji.value.trim() || newPinEmoji.value)
+
 function selectEmoji(emoji: string) {
   newPinEmoji.value = emoji
   customEmoji.value = ''
 }
 
-function selectNone() {
+function switchToEmoji() {
+  if (!activeEmoji.value) selectEmoji(DEFAULT_EMOJIS[0]!)
+}
+
+function switchToDot() {
   newPinEmoji.value = ''
   customEmoji.value = ''
 }
-
-const noneSelected = computed(() => newPinEmoji.value === '' && !customEmoji.value.trim())
-const noneIconDisabled = computed(() => dotShape.value === 'none')
-const activeEmoji = computed(() => customEmoji.value.trim() || newPinEmoji.value)
 
 watch(
   () => props.editingPin,
@@ -77,7 +65,9 @@ watch(
     newPinColor.value = pin.color
     customEmoji.value = ''
     showAllEmojis.value = false
-    newPinDotSize.value = pin.dotSize ?? props.globalDotSize
+    showCustomInput.value = false
+    const loadedSize = pin.dotSize ?? props.globalDotSize
+    newPinDotSize.value = (loadedSize as string) === 'none' ? 'm' : loadedSize
     newPinDotShape.value = pin.dotShape ?? 'circle'
     newPinShowNumber.value = pin.showNumber ?? false
   },
@@ -114,7 +104,7 @@ defineExpose({ save })
 
       <div class="flex items-center gap-3 mb-4">
         <div class="shrink-0">
-          <PinPreview :emoji="activeEmoji" :color="newPinColor" :dot-size="newPinDotSize" :dot-shape="newPinDotShape" :show-number="newPinShowNumber" />
+          <PinPreview :emoji="activeEmoji" :color="newPinColor" :dot-size="activeEmoji ? undefined : newPinDotSize" :dot-shape="newPinDotShape" :show-number="newPinShowNumber" />
         </div>
         <div class="flex-1 min-w-0">
           <h2 class="text-gray-900 dark:text-zinc-100 text-lg font-bold leading-tight">Edit Pin</h2>
@@ -138,22 +128,42 @@ defineExpose({ save })
         </div>
 
         <div>
-          <label :class="sectionLabelClass">Icon</label>
-          <div class="flex flex-wrap gap-0.5 mb-2">
-            <button :disabled="noneIconDisabled" :class="['w-8 h-8 rounded transition-all flex items-center justify-center', noneSelected ? 'ring-2 ring-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-500 cursor-pointer' : noneIconDisabled ? 'text-gray-200 dark:text-zinc-700 cursor-not-allowed' : 'text-gray-300 dark:text-zinc-600 hover:bg-gray-100 dark:hover:bg-zinc-800 cursor-pointer']" :title="noneIconDisabled ? 'Enable dot first' : 'No icon'" @click="!noneIconDisabled && selectNone()">
-              <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2.5 2" /></svg>
-            </button>
-            <button v-for="emoji in showAllEmojis ? DEFAULT_EMOJIS : DEFAULT_EMOJIS.slice(0, 10)" :key="emoji" :class="['w-8 h-8 text-base rounded cursor-pointer transition-all flex items-center justify-center', newPinEmoji === emoji && !customEmoji.trim() ? 'ring-2 ring-cyan-500 bg-cyan-50 dark:bg-cyan-950/30' : 'hover:bg-gray-100 dark:hover:bg-zinc-800']" @click="selectEmoji(emoji)">
-              {{ emoji }}
-            </button>
-            <button class="w-8 h-8 text-xs rounded cursor-pointer flex items-center justify-center font-medium text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-800" @click="showAllEmojis = !showAllEmojis">{{ showAllEmojis ? '−' : '···' }}</button>
-          </div>
-          <input v-model="customEmoji" type="text" placeholder="Or type any emoji…" :class="inputClass" :maxlength="4" />
-        </div>
+          <label :class="sectionLabelClass">Style</label>
 
-        <div>
-          <label :class="sectionLabelClass">Dot</label>
-          <DotPicker v-model:shape="dotShape" v-model:size="dotSize" v-model:show-number="newPinShowNumber" v-model:color="newPinColor" :sizes="['xs', 's', 'm', 'l', 'xl']" :number-disabled-sizes="['xs', 's']" :none-disabled="noneSelected" :with-color-picker="true" />
+          <!-- Mode toggle -->
+          <div class="flex gap-1.5 mb-2">
+            <button :class="['flex-1 py-1.5 rounded border text-sm font-medium transition-colors cursor-pointer', activeEmoji ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400' : 'border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800']" @click="switchToEmoji">
+              Bubble
+            </button>
+            <button :class="['flex-1 py-1.5 rounded border text-sm font-medium transition-colors cursor-pointer', !activeEmoji ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400' : 'border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800']" @click="switchToDot">
+              Dot
+            </button>
+          </div>
+
+          <!-- Emoji bubble options -->
+          <template v-if="activeEmoji !== undefined && activeEmoji !== ''">
+            <div class="flex flex-wrap gap-0.5 mb-2">
+              <button :class="['w-8 h-8 text-xs font-semibold rounded cursor-pointer flex items-center justify-center transition-all shrink-0', showCustomInput || customEmoji.trim() ? 'ring-2 ring-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400' : 'text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-800']" title="Custom emoji" @click="showCustomInput = !showCustomInput">Aa</button>
+              <template v-if="showCustomInput">
+                <input v-model="customEmoji" type="text" placeholder="Any text or emoji…" class="flex-1 min-w-0 h-8 ml-1 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20" autofocus @keydown.enter="showCustomInput = false" />
+              </template>
+              <template v-else>
+                <button v-for="emoji in showAllEmojis ? DEFAULT_EMOJIS : DEFAULT_EMOJIS.slice(0, 10)" :key="emoji" :class="['w-8 h-8 text-base rounded cursor-pointer transition-all flex items-center justify-center', newPinEmoji === emoji && !customEmoji.trim() ? 'ring-2 ring-cyan-500 bg-cyan-50 dark:bg-cyan-950/30' : 'hover:bg-gray-100 dark:hover:bg-zinc-800']" @click="selectEmoji(emoji)">
+                  {{ emoji }}
+                </button>
+                <button class="w-8 h-8 text-xs rounded cursor-pointer flex items-center justify-center font-medium text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-800" @click="showAllEmojis = !showAllEmojis">{{ showAllEmojis ? '−' : '···' }}</button>
+              </template>
+            </div>
+            <div class="flex gap-1.5 mb-2">
+              <button v-for="s in ['xs', 's', 'm', 'l', 'xl']" :key="s" :class="['flex-1 py-2 rounded border text-xs font-medium transition-colors cursor-pointer', newPinDotSize === s ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400' : 'border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800']" @click="newPinDotSize = s as PinDotSize">{{ s.toUpperCase() }}</button>
+            </div>
+            <ColorPicker v-model="newPinColor" />
+          </template>
+
+          <!-- Dot options -->
+          <template v-else>
+            <DotPicker v-model:shape="newPinDotShape" v-model:size="dotSize" v-model:show-number="newPinShowNumber" v-model:color="newPinColor" :sizes="['xs', 's', 'm', 'l', 'xl']" :number-disabled-sizes="['xs', 's']" :with-color-picker="true" />
+          </template>
         </div>
 
         <div class="border-t border-gray-100 dark:border-zinc-800" />

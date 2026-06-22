@@ -10,6 +10,10 @@ const props = defineProps<{
   overlayCorner?: 0 | 1 | 2 | 3
   // Footprint of the PDF info box as fractions of the print area's width; null hides the preview.
   legendBox?: { wFrac: number; hFrac: number; mFrac: number } | null
+  // Explicit legend position: fraction of paper width (x) and height (y) for the box's top-left.
+  // null = auto-corner based on pin density.
+  legendX?: number | null
+  legendY?: number | null
   visibility?: 'visible' | 'opaque' | 'hidden'
   selected?: boolean
 }>()
@@ -26,6 +30,12 @@ const emit = defineEmits<{
   // Viewport coords of the right-click — the host opens a Leaflet popup there. The print area
   // now lives in a pane below the popup pane, so the popup paints above it.
   context: [clientX: number, clientY: number]
+  // Legend direct-manipulation: position (fractions of paper w/h) and scale multiplier.
+  'legend-move': [xFrac: number, yFrac: number]
+  'legend-scale': [scale: number]
+  'legend-reset': []
+  // Fired at the start of any user drag so the host can push an undo snapshot before state changes.
+  'drag-start': [label: string]
 }>()
 
 // Distinguish a click (select) from a drag (move): movement under this many pixels on
@@ -74,6 +84,10 @@ let cornerEls: HTMLDivElement[] = []
 let edgeEls: HTMLDivElement[] = []
 let rotateEl: HTMLDivElement | null = null
 let legendBoxEl: HTMLDivElement | null = null
+let legendResizeEl: HTMLDivElement | null = null
+// Which corner of the legend box the resize handle currently sits at — tracks the caddy-corner
+// from whichever print-area corner the legend is snapped to. 'br' when floating freely.
+let legendResizeCorner: 'br' | 'bl' | 'tl' | 'tr' = 'br'
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -204,13 +218,23 @@ function buildHandles() {
 
   // Legend footprint preview — sized to the PDF info box, placed in the overlay corner.
   // A child of rectEl so it inherits the print area's rotation, position, and scale.
+  // Draggable to reposition; resize handle in bottom-right corner to scale.
   legendBoxEl = document.createElement('div')
   legendBoxEl.className = 'print-legend-footprint'
-  legendBoxEl.style.cssText = 'position:absolute;display:none;box-sizing:border-box;pointer-events:none;overflow:hidden;align-items:center;justify-content:center;'
+  legendBoxEl.style.cssText = 'position:absolute;display:none;box-sizing:border-box;pointer-events:none;overflow:visible;align-items:center;justify-content:center;'
+  legendBoxEl.addEventListener('pointerdown', onLegendBoxDown, { passive: false })
+  legendBoxEl.addEventListener('dblclick', onLegendDblClick)
   const legendBoxLabel = document.createElement('span')
   legendBoxLabel.className = 'print-legend-footprint-label'
   legendBoxLabel.textContent = 'Legend'
   legendBoxEl.appendChild(legendBoxLabel)
+
+  legendResizeEl = document.createElement('div')
+  legendResizeEl.style.cssText = 'position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;display:none;background:#06b6d4;border:2px solid white;border-radius:2px;cursor:se-resize;touch-action:none;box-shadow:0 1px 3px rgba(0,0,0,.4);'
+  legendResizeEl.addEventListener('pointerdown', onLegendResizeDown, { passive: false })
+  legendResizeEl.addEventListener('click', stopEventPropagation)
+  legendBoxEl.appendChild(legendResizeEl)
+
   rectEl.appendChild(legendBoxEl)
 
   handleLayer.appendChild(rectEl)
@@ -265,32 +289,281 @@ function destroyHandles() {
   edgeEls = []
   rotateEl = null
   legendBoxEl = null
+  legendResizeEl = null
+  legendResizeCorner = 'br'
 }
 
 function updateLegendBox() {
   if (!legendBoxEl) return
   const box = props.legendBox
   const c = props.overlayCorner
-  if (!box || c === undefined || !localRect || (props.visibility ?? 'visible') === 'hidden') {
+  const v = props.visibility ?? 'visible'
+  if (!box || c === undefined || !localRect || v === 'hidden') {
     legendBoxEl.style.display = 'none'
+    if (legendResizeEl) legendResizeEl.style.display = 'none'
     return
   }
-  // Legend dimensions are all fractions of the print area's WIDTH (see legendBoxFractions).
-  const rectW = currentPixelDims().halfW * 2
+  // All legend dimensions are fractions of the print area's WIDTH (see legendBoxFractions).
+  const { halfW, halfH } = currentPixelDims()
+  const rectW = halfW * 2
+  const rectH = halfH * 2
   const S = rectW / 612
-  const m = box.mFrac * rectW
-  const isRight = c === 1 || c === 2
-  const isBottom = c === 2 || c === 3
-  legendBoxEl.style.width = box.wFrac * rectW + 'px'
-  legendBoxEl.style.height = box.hFrac * rectW + 'px'
+  const boxW = box.wFrac * rectW
+  const boxH = box.hFrac * rectW // hFrac is also fraction of WIDTH
+
+  legendBoxEl.style.width = boxW + 'px'
+  legendBoxEl.style.height = boxH + 'px'
   legendBoxEl.style.borderRadius = 8 * S + 'px'
-  legendBoxEl.style.left = isRight ? '' : m + 'px'
-  legendBoxEl.style.right = isRight ? m + 'px' : ''
-  legendBoxEl.style.top = isBottom ? '' : m + 'px'
-  legendBoxEl.style.bottom = isBottom ? m + 'px' : ''
-  const label = legendBoxEl.firstElementChild as HTMLElement | null
+
+  const lx = props.legendX
+  const ly = props.legendY
+  if (lx !== null && lx !== undefined && ly !== null && ly !== undefined) {
+    legendBoxEl.style.left = lx * rectW + 'px'
+    legendBoxEl.style.top = ly * rectH + 'px'
+    legendBoxEl.style.right = ''
+    legendBoxEl.style.bottom = ''
+  } else {
+    const m = box.mFrac * rectW
+    const isRight = c === 1 || c === 2
+    const isBottom = c === 2 || c === 3
+    legendBoxEl.style.left = isRight ? '' : m + 'px'
+    legendBoxEl.style.right = isRight ? m + 'px' : ''
+    legendBoxEl.style.top = isBottom ? '' : m + 'px'
+    legendBoxEl.style.bottom = isBottom ? m + 'px' : ''
+  }
+
+  const label = legendBoxEl.querySelector('.print-legend-footprint-label') as HTMLElement | null
   if (label) label.style.fontSize = Math.max(6, Math.round(9 * S)) + 'px'
+
+  const interactive = v === 'visible'
+  legendBoxEl.style.pointerEvents = interactive ? 'auto' : 'none'
+  legendBoxEl.style.cursor = interactive ? 'move' : 'default'
   legendBoxEl.style.display = 'flex'
+
+  if (legendResizeEl) {
+    legendResizeEl.style.display = interactive ? 'block' : 'none'
+    if (interactive) {
+      // Detect which print-area corner the legend is snapped to, then put the resize handle
+      // at the caddy-corner (interior of the print area) so it never overlaps the snap zone.
+      const m = box.mFrac * rectW
+      let snappedCorner: 0 | 1 | 2 | 3 | null = null
+      if (lx === null || lx === undefined || ly === null || ly === undefined) {
+        // Auto-corner mode — the overlay corner IS the snapped corner.
+        snappedCorner = c as 0 | 1 | 2 | 3
+      } else {
+        const curL = lx * rectW, curT = ly * rectH
+        const tol = 2
+        const checks: [number, number, 0 | 1 | 2 | 3][] = [
+          [m, m, 0],
+          [rectW - boxW - m, m, 1],
+          [rectW - boxW - m, rectH - boxH - m, 2],
+          [m, rectH - boxH - m, 3],
+        ]
+        for (const [sl, st, ci] of checks) {
+          if (Math.abs(curL - sl) < tol && Math.abs(curT - st) < tol) { snappedCorner = ci; break }
+        }
+      }
+      // Caddy-corners: TL→BR, TR→BL, BR→TL, BL→TR, null→BR
+      const HANDLE: ('br' | 'bl' | 'tl' | 'tr')[] = ['br', 'bl', 'tl', 'tr']
+      const CURSORS = { br: 'se-resize', bl: 'sw-resize', tl: 'nw-resize', tr: 'ne-resize' }
+      legendResizeCorner = snappedCorner !== null ? HANDLE[snappedCorner]! : 'br'
+      legendResizeEl.style.right  = (legendResizeCorner === 'br' || legendResizeCorner === 'tr') ? '-5px' : ''
+      legendResizeEl.style.left   = (legendResizeCorner === 'bl' || legendResizeCorner === 'tl') ? '-5px' : ''
+      legendResizeEl.style.bottom = (legendResizeCorner === 'br' || legendResizeCorner === 'bl') ? '-5px' : ''
+      legendResizeEl.style.top    = (legendResizeCorner === 'tl' || legendResizeCorner === 'tr') ? '-5px' : ''
+      legendResizeEl.style.cursor = CURSORS[legendResizeCorner]
+    }
+  }
+}
+
+// ── Legend drag / resize ──────────────────────────────────────────────────────
+
+function legendCurrentPixelPos(): { left: number; top: number; boxW: number; boxH: number; rectW: number; rectH: number } | null {
+  const box = props.legendBox
+  if (!box || !localRect) return null
+  const { halfW, halfH } = currentPixelDims()
+  const rectW = halfW * 2
+  const rectH = halfH * 2
+  const boxW = box.wFrac * rectW
+  const boxH = box.hFrac * rectW
+  const lx = props.legendX
+  const ly = props.legendY
+  let left: number, top: number
+  if (lx !== null && lx !== undefined && ly !== null && ly !== undefined) {
+    left = lx * rectW
+    top = ly * rectH
+  } else {
+    const m = box.mFrac * rectW
+    const c = props.overlayCorner ?? 2
+    const isRight = c === 1 || c === 2
+    const isBottom = c === 2 || c === 3
+    left = isRight ? rectW - boxW - m : m
+    top = isBottom ? rectH - boxH - m : m
+  }
+  return { left, top, boxW, boxH, rectW, rectH }
+}
+
+function onLegendBoxDown(startEvent: PointerEvent) {
+  if (startEvent.button !== 0) return
+  startEvent.preventDefault()
+  startEvent.stopPropagation()
+  if (!legendBoxEl || !localRect) return
+
+  const state = legendCurrentPixelPos()
+  if (!state) return
+  const { left: startLeft, top: startTop, boxW, boxH, rectW, rectH } = state
+  const box = props.legendBox!
+  const m = box.mFrac * rectW
+  // Positions of the four corner snap targets (top-left of legend box in local rect coords).
+  const snapCorners = [
+    { left: m,                  top: m                  }, // TL
+    { left: rectW - boxW - m,   top: m                  }, // TR
+    { left: rectW - boxW - m,   top: rectH - boxH - m   }, // BR
+    { left: m,                  top: rectH - boxH - m   }, // BL
+  ]
+  const snapThreshold = Math.min(rectW, rectH) * 0.12
+  const angle = localRect.angle
+  const startClientX = startEvent.clientX
+  const startClientY = startEvent.clientY
+  let moved = false
+
+  // Switch to explicit left/top positioning immediately so CSS right/bottom doesn't fight us.
+  legendBoxEl.style.left = startLeft + 'px'
+  legendBoxEl.style.top = startTop + 'px'
+  legendBoxEl.style.right = ''
+  legendBoxEl.style.bottom = ''
+
+  startCapture(
+    legendBoxEl,
+    startEvent.pointerId,
+    (ev) => {
+      if (!moved && Math.hypot(ev.clientX - startClientX, ev.clientY - startClientY) <= CLICK_SLOP) return
+      if (!moved) emit('drag-start', 'move legend')
+      moved = true
+      ev.stopPropagation()
+      // Convert screen delta → rect-local delta (unrotate by print area angle).
+      const cosA = Math.cos(angle), sinA = Math.sin(angle)
+      const dxS = ev.clientX - startClientX, dyS = ev.clientY - startClientY
+      const localDx = dxS * cosA + dyS * sinA
+      const localDy = -dxS * sinA + dyS * cosA
+      let newLeft = Math.max(0, Math.min(rectW - boxW, startLeft + localDx))
+      let newTop = Math.max(0, Math.min(rectH - boxH, startTop + localDy))
+      // Snap to corners — same inversion as rotation snap (Shift toggles snap while dragging).
+      const shiftHeld = ev.pointerType !== 'touch' && ev.shiftKey
+      if (props.snapEnabled !== shiftHeld) {
+        for (const sc of snapCorners) {
+          if (Math.hypot(newLeft - sc.left, newTop - sc.top) < snapThreshold) {
+            newLeft = sc.left
+            newTop = sc.top
+            break
+          }
+        }
+      }
+      legendBoxEl!.style.left = newLeft + 'px'
+      legendBoxEl!.style.top = newTop + 'px'
+      emit('legend-move', newLeft / rectW, newTop / rectH)
+    },
+    () => {
+      if (!moved) return
+      const finalLeft = parseFloat(legendBoxEl!.style.left)
+      const finalTop = parseFloat(legendBoxEl!.style.top)
+      emit('legend-move', finalLeft / rectW, finalTop / rectH)
+    }
+  )
+}
+
+function onLegendResizeDown(startEvent: PointerEvent) {
+  if (startEvent.button !== 0) return
+  startEvent.preventDefault()
+  startEvent.stopPropagation()
+  if (!legendResizeEl || !localRect) return
+  emit('drag-start', 'resize legend')
+
+  const box = props.legendBox
+  if (!box) return
+  const state = legendCurrentPixelPos()
+  if (!state) return
+  const { left: startLeft, top: startTop, boxW: startBoxW, boxH: startBoxH, rectW, rectH } = state
+  const startRight = startLeft + startBoxW
+  const startBottom = startTop + startBoxH
+  const hwRatio = startBoxH / startBoxW
+  const mStart = box.mFrac * rectW
+
+  // Capture the handle corner now — reactive updates to legendResizeCorner (triggered by
+  // updateLegendBox on each emit) must not flip the anchor mid-drag.
+  const capturedCorner = legendResizeCorner
+
+  // Detect whether the legend is snapped to a print-area corner at drag start.
+  // For snapped resizes, we re-derive the exact corner position at each new scale so that
+  // snap detection in updateLegendBox stays valid — preventing legendResizeCorner from flipping.
+  let snappedAtStart: 0 | 1 | 2 | 3 | null = null
+  const lx0 = props.legendX, ly0 = props.legendY
+  if (lx0 === null || lx0 === undefined || ly0 === null || ly0 === undefined) {
+    snappedAtStart = (props.overlayCorner ?? 0) as 0 | 1 | 2 | 3
+  } else {
+    const curL = lx0 * rectW, curT = ly0 * rectH
+    const snapChecks: [number, number, 0 | 1 | 2 | 3][] = [
+      [mStart, mStart, 0],
+      [rectW - startBoxW - mStart, mStart, 1],
+      [rectW - startBoxW - mStart, rectH - startBoxH - mStart, 2],
+      [mStart, rectH - startBoxH - mStart, 3],
+    ]
+    for (const [sl, st, ci] of snapChecks) {
+      if (Math.abs(curL - sl) < 4 && Math.abs(curT - st) < 4) { snappedAtStart = ci; break }
+    }
+  }
+
+  const angle = localRect.angle
+  const startClientX = startEvent.clientX
+  const startClientY = startEvent.clientY
+  const resizeSign = (capturedCorner === 'bl' || capturedCorner === 'tl') ? -1 : 1
+  const CURSORS = { br: 'se-resize', bl: 'sw-resize', tl: 'nw-resize', tr: 'ne-resize' }
+  setDragCursor(CURSORS[capturedCorner])
+
+  startCapture(
+    legendResizeEl,
+    startEvent.pointerId,
+    (ev) => {
+      ev.stopPropagation()
+      const cosA = Math.cos(angle), sinA = Math.sin(angle)
+      const dxS = ev.clientX - startClientX, dyS = ev.clientY - startClientY
+      const localDx = dxS * cosA + dyS * sinA
+      const newBoxW = Math.max(30, startBoxW + resizeSign * localDx)
+      const newScale = Math.max(0.25, Math.min(2, (newBoxW / rectW) * (612 / 190)))
+      const clampedW = newScale * rectW * (190 / 612)
+      const clampedH = clampedW * hwRatio
+      // mFrac = (16/612) × legendScale, so margin scales proportionally with the box width.
+      // newM = mStart × (newScale/startScale) = mStart × (clampedW/startBoxW).
+      const newM = mStart * (clampedW / startBoxW)
+
+      let newLeft: number, newTop: number
+      if (snappedAtStart !== null) {
+        // Snapped resize: re-compute the exact corner position for the new scale so that
+        // snap detection continues to pass on every pointermove (mFrac changes with scale,
+        // so anchoring to the start pixel edge would drift out of snap tolerance).
+        if (capturedCorner === 'tl')      { newLeft = rectW - clampedW - newM; newTop = rectH - clampedH - newM }
+        else if (capturedCorner === 'tr') { newLeft = newM;                    newTop = rectH - clampedH - newM }
+        else if (capturedCorner === 'bl') { newLeft = rectW - clampedW - newM; newTop = newM }
+        else                              { newLeft = newM;                    newTop = newM } // br → TL corner
+      } else {
+        // Free-floating: keep the anchor corner of the legend box at its start pixel position.
+        if (capturedCorner === 'tl')      { newLeft = startRight - clampedW; newTop = startBottom - clampedH }
+        else if (capturedCorner === 'tr') { newLeft = startLeft;             newTop = startBottom - clampedH }
+        else if (capturedCorner === 'bl') { newLeft = startRight - clampedW; newTop = startTop }
+        else                              { newLeft = startLeft;             newTop = startTop }
+      }
+      newLeft = Math.max(0, Math.min(rectW - clampedW, newLeft))
+      newTop = Math.max(0, Math.min(rectH - clampedH, newTop))
+      emit('legend-scale', newScale)
+      emit('legend-move', newLeft / rectW, newTop / rectH)
+    },
+    () => { setDragCursor(null) }
+  )
+}
+
+function onLegendDblClick(e: MouseEvent) {
+  e.stopPropagation()
+  emit('legend-reset')
 }
 
 function updateGridLines() {
@@ -462,6 +735,7 @@ function initFromBounds(bounds: L.LatLngBounds) {
 
 function startCornerDrag(el: HTMLElement, i: number, startEvent: PointerEvent) {
   if (!localRect || !props.aspectRatio) return
+  emit('drag-start', 'resize print area')
   const map = props.map
   const fixedPt = map.latLngToContainerPoint(localCorners[(i + 2) % 4]!)
   const angle = localRect.angle
@@ -509,6 +783,7 @@ function startCornerDrag(el: HTMLElement, i: number, startEvent: PointerEvent) {
 
 function startRotateDrag(el: HTMLElement, startEvent: PointerEvent) {
   if (!localRect) return
+  emit('drag-start', 'rotate print area')
   const map = props.map
   const centerLatLng = localRect.center
   const { halfW, halfH } = currentPixelDims()
@@ -559,6 +834,7 @@ function onBodyDown(startEvent: PointerEvent) {
     startEvent.pointerId,
     (ev) => {
       if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) <= CLICK_SLOP) return
+      if (!moved) emit('drag-start', 'move print area')
       moved = true
       if (ev.pointerType === 'touch') ev.preventDefault()
       const r2 = map.getContainer().getBoundingClientRect()
@@ -649,6 +925,7 @@ watch(
   () => updateLegendBox()
 )
 watch(() => props.legendBox, updateLegendBox, { deep: true })
+watch(() => [props.legendX, props.legendY], updateLegendBox)
 
 function setHandlePassthrough(pass: boolean) {
   const pe = pass ? 'none' : 'auto'

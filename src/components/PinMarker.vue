@@ -2,6 +2,7 @@
 import L from 'leaflet'
 
 import type { Pin, PinDotShape, PinDotSize } from '@/types'
+import { isDarkColor } from '@/utils'
 
 // Leaflet's internal Draggable, reached to re-anchor the drag origin on snap enter/exit.
 // Not exposed by @types/leaflet, but stable across the snap re-anchoring path used below.
@@ -21,22 +22,27 @@ const COPY_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13"
 const CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
 const SCISSORS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>`
 
-// anchorY = emoji(28) + gap(0) + content/2; iconH = 28 + content + 10 (hit margin below dot).
-// The white contrast ring is a box-shadow (see .pin-dot in main.css), so it paints outward without
-// affecting this geometry — emoji base stays flush with the dot top. 'none' anchors at emoji bottom.
-const DOT_GEO: Record<PinDotSize, { iconH: number; anchorY: number }> = {
-  none: { iconH: 28, anchorY: 28 }, // no dot
-  xs: { iconH: 46, anchorY: 32 }, // content=8,  half=4
-  s: { iconH: 50, anchorY: 34 }, // content=12, half=6
-  m: { iconH: 55, anchorY: 36.5 }, // content=17, half=8.5
-  l: { iconH: 60, anchorY: 39 }, // content=22, half=11
-  xl: { iconH: 66, anchorY: 42 } // content=28, half=14
+// Emoji size per dot-size step. anchorY = emojiSize+15, iconH = emojiSize+19 (bubble+tip+margin).
+const BUBBLE_EMOJI_SIZE: Record<PinDotSize, number> = { xs: 14, s: 16, m: 20, l: 24, xl: 30 }
+const BUBBLE_GEO: Record<PinDotSize, { iconH: number; anchorY: number }> = {
+  xs: { iconH: 33, anchorY: 29 },
+  s:  { iconH: 35, anchorY: 31 },
+  m:  { iconH: 39, anchorY: 35 },
+  l:  { iconH: 43, anchorY: 39 },
+  xl: { iconH: 49, anchorY: 45 },
+}
+// Clear (transparent) bubble: no tip, anchor at bubble bottom (emojiSize+12 / emojiSize+8).
+const BUBBLE_GEO_CLEAR: Record<PinDotSize, { iconH: number; anchorY: number }> = {
+  xs: { iconH: 26, anchorY: 22 },
+  s:  { iconH: 28, anchorY: 24 },
+  m:  { iconH: 32, anchorY: 28 },
+  l:  { iconH: 36, anchorY: 32 },
+  xl: { iconH: 42, anchorY: 38 },
 }
 
-// Same as DOT_GEO but without the emoji. anchorY extended +6px above dot, iconH +16px total
+// Dot-only geometry. anchorY extended +6px above dot, iconH +16px total
 // (6 above + 10 below) to give a forgiving hit area around the small dot.
-const DOT_GEO_NO_EMOJI: Record<PinDotSize, { iconH: number; anchorY: number }> = {
-  none: { iconH: 1, anchorY: 0 },
+const DOT_GEO: Record<PinDotSize, { iconH: number; anchorY: number }> = {
   xs: { iconH: 24, anchorY: 10 },
   s: { iconH: 28, anchorY: 12 },
   m: { iconH: 33, anchorY: 14.5 },
@@ -105,22 +111,45 @@ function target(): L.Map | L.LayerGroup {
 }
 
 function buildIcon() {
-  const size = props.pin.dotSize ?? props.dotSize ?? 'm'
-  const dotShape: PinDotShape = props.pin.dotShape ?? 'circle'
   const hasEmoji = !!props.pin.emoji
-  const { iconH, anchorY } = hasEmoji ? DOT_GEO[size] : DOT_GEO_NO_EMOJI[size]
-  const showNum = props.pin.showNumber && props.pinIndex !== undefined && (size === 'm' || size === 'l' || size === 'xl')
-  const numFs = size === 'xl' ? '13' : size === 'l' ? '10' : '8'
-  const numRotate = dotShape === 'diamond' ? 'transform:rotate(-45deg);' : ''
-  const numSpan = showNum ? `<span style="color:white;font-size:${numFs}px;font-weight:700;line-height:1;pointer-events:none;user-select:none;${numRotate}">${props.pinIndex}</span>` : ''
-  const dot = size === 'none' ? '' : `<div class="pin-dot pin-dot--${size} pin-dot--${dotShape}" style="background:${props.pin.color}">${numSpan}</div>`
-  const emojiSpan = hasEmoji ? `<span class="pin-emoji">${props.pin.emoji}</span>` : ''
   const cls = ['pin-marker', props.pending ? 'pin-marker--pending' : '', props.locked ? 'pin-marker--locked' : '', props.selected ? 'pin-marker--selected' : '', props.linkedToSelectedRoute ? 'pin-marker--route-linked' : ''].filter(Boolean).join(' ')
   const animDelay = Math.min((props.renderIndex ?? 0) * 25, 600)
   const animStyle = hasAnimated ? '' : `animation:pin-in 200ms ease-out both;animation-delay:${animDelay}ms;`
   hasAnimated = true
+
+  if (hasEmoji) {
+    const isClear = props.pin.color === 'transparent'
+    const bubbleSize: PinDotSize = props.pin.dotSize ?? 'm'
+    const { iconH, anchorY } = (isClear ? BUBBLE_GEO_CLEAR : BUBBLE_GEO)[bubbleSize]
+    const emojiPx = BUBBLE_EMOJI_SIZE[bubbleSize]
+    const bubbleCls = isClear ? 'pin-bubble pin-bubble--clear' : 'pin-bubble'
+    const emojiStyle = `font-size:${emojiPx}px;${isClear ? 'filter:drop-shadow(0 1px 3px rgba(0,0,0,0.4))' : ''}`
+    const bubbleStyle = isClear ? '' : `background:${props.pin.color}`
+    const tip = isClear ? '' : `<div class="pin-bubble-tip" style="border-top-color:${props.pin.color}"></div>`
+    const wrapFilter = isClear ? '' : 'filter:drop-shadow(0 1px 4px rgba(0,0,0,0.3))'
+    const inner = `<div class="pin-inner pin-inner--bubble" style="${wrapFilter}"><div class="${bubbleCls}" style="${bubbleStyle}"><span class="pin-emoji" style="${emojiStyle}">${props.pin.emoji}</span></div>${tip}</div>`
+    return L.divIcon({
+      html: `<div class="${cls}" style="${animStyle}">${inner}</div>`,
+      className: '',
+      iconSize: [40, iconH],
+      iconAnchor: [20, anchorY]
+    })
+  }
+
+  const size = props.pin.dotSize ?? props.dotSize ?? 'm'
+  const dotShape: PinDotShape = props.pin.dotShape ?? 'circle'
+  const { iconH, anchorY } = DOT_GEO[size]
+  const isTransparentDot = props.pin.color === 'transparent'
+  const numColor = isDarkColor(props.pin.color) ? '#ffffff' : '#1f2937'
+  const ringBox = isTransparentDot ? 'none' : '0 0 0 2px #ffffff'
+  const dotFilter = isTransparentDot ? '' : 'filter:drop-shadow(0 1px 4px rgba(0,0,0,0.3))'
+  const showNum = props.pin.showNumber && props.pinIndex !== undefined && (size === 'm' || size === 'l' || size === 'xl')
+  const numFs = size === 'xl' ? '13' : size === 'l' ? '10' : '8'
+  const numRotate = dotShape === 'diamond' ? 'transform:rotate(-45deg);' : ''
+  const numSpan = showNum ? `<span style="color:${numColor};font-size:${numFs}px;font-weight:700;line-height:1;pointer-events:none;user-select:none;${numRotate}">${props.pinIndex}</span>` : ''
+  const dot = `<div class="pin-dot pin-dot--${size} pin-dot--${dotShape}" style="background:${props.pin.color};box-shadow:${ringBox}">${numSpan}</div>`
   return L.divIcon({
-    html: `<div class="${cls}" style="${animStyle}"><div class="pin-inner">${emojiSpan}${dot}</div></div>`,
+    html: `<div class="${cls}" style="${animStyle}"><div class="pin-inner" style="${dotFilter}">${dot}</div></div>`,
     className: '',
     iconSize: [40, iconH],
     iconAnchor: [20, anchorY]

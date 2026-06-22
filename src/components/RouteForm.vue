@@ -123,7 +123,7 @@ defineExpose({ save })
 
         <div>
           <label :class="sectionLabelClass">Waypoints</label>
-          <DotPicker v-model:shape="waypointStyle" v-model:size="dotSize" v-model:show-number="waypointShowNumber" v-model:color="color" :sizes="['xs', 's', 'm', 'l', 'xl']" :with-color-picker="true" :none-disabled="lineStyle === 'none'" />
+          <DotPicker v-model:shape="waypointStyle" v-model:size="dotSize" v-model:show-number="waypointShowNumber" v-model:color="color" :sizes="['xs', 's', 'm', 'l', 'xl']" :with-color-picker="true" with-none />
         </div>
 
         <div class="border-t border-gray-100 dark:border-zinc-800" />

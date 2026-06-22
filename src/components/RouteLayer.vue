@@ -544,8 +544,7 @@ onUnmounted(() => {
         <polyline
           v-if="selectedRouteIds?.has(route.id) && drawingRouteId !== route.id && (positions.get(route.id)?.length ?? 0) >= 2"
           :points="
-            positions
-              .get(route.id)!
+            getRouteDisplayPoints(route.id)
               .map(([x, y]) => `${x},${y}`)
               .join(' ')
           "

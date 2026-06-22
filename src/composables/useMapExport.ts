@@ -3,6 +3,7 @@ import { PDFDocument } from 'pdf-lib'
 import type { Caption, MapStyle, MapStyleConfig, Pin, PinDotShape, PinDotSize, Route } from '@/types'
 import { CAPTION_PT, MAP_STYLE_CONFIGS } from '@/types'
 
+import { isDarkColor } from '@/utils'
 import { formatDistance, routeDistanceM } from './useRoutes'
 
 // Standard Web Mercator tile math
@@ -99,14 +100,19 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 // Inner dot diameter (px) per size — matches the on-map `.pin-dot--*` CSS rules.
-const DOT_CONTENT_PX: Record<PinDotSize, number> = { none: 0, xs: 8, s: 12, m: 17, l: 22, xl: 28 }
+const DOT_CONTENT_PX: Record<PinDotSize, number> = { xs: 8, s: 12, m: 17, l: 22, xl: 28 }
 // Number is only legible (and shown) on m/l/xl dots, mirroring the map marker.
 const DOT_NUM_PX: Partial<Record<PinDotSize, number>> = { m: 8, l: 10, xl: 13 }
+
+// Bubble emoji size per dot-size step — matches BUBBLE_EMOJI_SIZE in PinMarker/PinPreview.
+const BUBBLE_EMOJI_PX: Record<PinDotSize, number> = { xs: 14, s: 16, m: 20, l: 24, xl: 30 }
+const BUBBLE_PAD_V = 4  // equal padding all around
+const BUBBLE_PAD_H = 4
+const BUBBLE_TIP_H = 7
 
 function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<number>, geoToOut: (lat: number, lng: number) => [number, number], paperW: number, paperH: number) {
   // Scale pins relative to page width (same reference as drawInfoBox).
   const S = paperW / 612
-  const emojiSize = Math.round(28 * S)
 
   // Pre-compute sequence numbers for numbered pins (order within full list).
   const pinSeqMap = new Map<number, number>()
@@ -115,27 +121,76 @@ function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<
     if (pin.showNumber) pinSeqMap.set(pin.id, ++seq)
   }
 
+  const margin = Math.round(50 * S)
   for (const pin of pins) {
     if (hiddenPinIds.has(pin.id)) continue
     const [ox, oy] = geoToOut(pin.lat, pin.lng)
+    if (ox < -margin || ox > paperW + margin || oy < -margin || oy > paperH + margin) continue
 
-    // Skip pins outside the canvas (with small margin for clipping)
-    if (ox < -emojiSize || ox > paperW + emojiSize || oy < -emojiSize || oy > paperH + emojiSize) continue
+    if (pin.emoji) {
+      // Emoji bubble: colored rounded-rect + downward triangle tip. Geo anchor at tip.
+      const emojiSize = Math.round(BUBBLE_EMOJI_PX[pin.dotSize ?? 'm'] * S)
+      const padV = Math.round(BUBBLE_PAD_V * S)
+      const padH = Math.round(BUBBLE_PAD_H * S)
+      const tipH = Math.round(BUBBLE_TIP_H * S)
+      const tipW = Math.round(7 * S)
+      const bubbleH = emojiSize + padV * 2
+      const bx = ox  // bubble horizontal center
+      const bubbleBottom = oy - tipH
+      const bubbleTop = bubbleBottom - bubbleH
 
-    const size = pin.dotSize ?? 'm'
-    const shape: PinDotShape = pin.dotShape ?? 'circle'
-    const hasDot = size !== 'none'
-    // Ringless: the dot is just its colored content size, matching the on-screen .pin-dot.
-    const r = hasDot ? (DOT_CONTENT_PX[size] / 2) * S : 0
+      // Measure emoji to determine bubble width
+      ctx.font = `${emojiSize}px serif`
+      const emojiW = ctx.measureText(pin.emoji).width
+      const bubbleW = Math.max(emojiW + padH * 2, bubbleH)
+      const bLeft = bx - bubbleW / 2
 
-    // The geo point sits at the dot centre (emoji floats above); with no dot, at the emoji base.
-    if (hasDot) {
+      const isClear = pin.color === 'transparent'
+      if (!isClear) {
+        // Colored bubble + matching tip
+        ctx.save()
+        ctx.shadowColor = 'rgba(0,0,0,0.25)'
+        ctx.shadowBlur = Math.round(4 * S)
+        ctx.shadowOffsetY = Math.round(1 * S)
+        ctx.fillStyle = pin.color || '#ffffff'
+        const br = Math.round(7 * S)
+        roundRect(ctx, bLeft, bubbleTop, bubbleW, bubbleH, br)
+        ctx.fill()
+        ctx.beginPath()
+        ctx.moveTo(bx - tipW, bubbleBottom)
+        ctx.lineTo(bx + tipW, bubbleBottom)
+        ctx.lineTo(bx, oy)
+        ctx.closePath()
+        ctx.fill()
+        ctx.restore()
+      }
+
+      // Emoji centered in bubble (or at geo point when transparent)
+      ctx.save()
+      if (isClear) {
+        ctx.shadowColor = 'rgba(0,0,0,0.4)'
+        ctx.shadowBlur = Math.round(3 * S)
+        ctx.shadowOffsetY = Math.round(1 * S)
+      }
+      ctx.font = `${emojiSize}px serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(pin.emoji, bx, bubbleTop + bubbleH / 2)
+      ctx.restore()
+    } else {
+      // Dot marker. Geo anchor at dot centre.
+      const size = pin.dotSize ?? 'm'
+      const shape: PinDotShape = pin.dotShape ?? 'circle'
+      const r = (DOT_CONTENT_PX[size] / 2) * S
+
+      const isTransparentDot = pin.color === 'transparent'
+      const numTextColor = isDarkColor(pin.color) ? 'white' : '#1f2937'
       ctx.save()
       ctx.translate(ox, oy)
       ctx.shadowColor = 'rgba(0,0,0,0.35)'
       ctx.shadowBlur = Math.round(3 * S)
       ctx.shadowOffsetY = Math.round(1 * S)
-      ctx.fillStyle = pin.color || '#06b6d4'
+      ctx.fillStyle = isTransparentDot ? 'rgba(0,0,0,0)' : (pin.color || '#06b6d4')
       if (shape === 'circle') {
         ctx.beginPath()
         ctx.arc(0, 0, r, 0, Math.PI * 2)
@@ -145,41 +200,26 @@ function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<
         roundRect(ctx, -r, -r, r * 2, r * 2, Math.max(1, Math.round(2 * S)))
         ctx.fill()
       }
-      ctx.shadowColor = 'transparent'
-      ctx.strokeStyle = 'white'
-      ctx.lineWidth = 2 * S
-      ctx.stroke()
+      if (!isTransparentDot) {
+        ctx.shadowColor = 'transparent'
+        ctx.strokeStyle = 'white'
+        ctx.lineWidth = 2 * S
+        ctx.stroke()
+      }
       ctx.restore()
 
-      // Number — drawn upright at the dot centre, only on sizes that can hold it.
+      // Number inside dot — only on m/l/xl.
       const pinNum = pinSeqMap.get(pin.id)
       const numPx = DOT_NUM_PX[size]
       if (pinNum !== undefined && numPx !== undefined) {
         ctx.save()
-        ctx.fillStyle = 'white'
+        ctx.fillStyle = numTextColor
         ctx.font = `700 ${Math.round(numPx * S)}px system-ui,sans-serif`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
         ctx.fillText(String(pinNum), ox, oy)
         ctx.restore()
       }
-    }
-
-    if (pin.emoji) {
-      ctx.save()
-      ctx.shadowColor = 'rgba(0,0,0,0.35)'
-      ctx.shadowBlur = Math.round(3 * S)
-      ctx.shadowOffsetY = Math.round(1 * S)
-      ctx.font = `${emojiSize}px serif`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'alphabetic'
-      // textBaseline='bottom' uses the em-box bottom which reserves unused descent space for emoji,
-      // making glyphs appear above the dot. Measure actual descent and compensate so the rendered
-      // glyph bottom aligns with the dot top (or geo point when there is no dot).
-      const descent = ctx.measureText(pin.emoji).actualBoundingBoxDescent
-      const emojiAlphaY = (hasDot ? oy - r : oy) - descent
-      ctx.fillText(pin.emoji, ox, emojiAlphaY)
-      ctx.restore()
     }
   }
 }
@@ -517,7 +557,7 @@ export interface LegendBoxContent {
  * matching box. Mirrors the `S = 1` constants in `drawInfoBox`; keep them in sync.
  * Returns null when nothing would be drawn.
  */
-export function legendBoxFractions(c: LegendBoxContent): { wFrac: number; hFrac: number; mFrac: number } | null {
+export function legendBoxFractions(c: LegendBoxContent, scale = 1): { wFrac: number; hFrac: number; mFrac: number } | null {
   const hasLegend = c.pins.length > 0 || c.routeCount > 0
   const hasHeader = c.hasTitle || c.hasArea || c.includeCompass
   if (!hasHeader && !hasLegend && !c.includeScale) return null
@@ -570,7 +610,7 @@ export function legendBoxFractions(c: LegendBoxContent): { wFrac: number; hFrac:
   if (c.includeScale) contentH += scaleFooterH
   const boxH = contentH + pad * 2
 
-  return { wFrac: legendW / 612, hFrac: boxH / 612, mFrac: margin / 612 }
+  return { wFrac: (legendW / 612) * scale, hFrac: (boxH / 612) * scale, mFrac: (margin / 612) * scale }
 }
 
 /**
@@ -588,7 +628,7 @@ export function dedupeLegendPins<T extends { pin: Pin; index?: number }>(items: 
   })
 }
 
-function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string, pins: Pin[], routes: Route[], angle: number, corners: [number, number][], scaleUnit: 'km' | 'mi', includeLegend: boolean, includeCompass: boolean, includeScale: boolean, blankLabels: boolean, paperW: number, paperH: number, corner: OverlayCorner, allPins?: Pin[]) {
+function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string, pins: Pin[], routes: Route[], angle: number, corners: [number, number][], scaleUnit: 'km' | 'mi', includeLegend: boolean, includeCompass: boolean, includeScale: boolean, blankLabels: boolean, paperW: number, paperH: number, corner: OverlayCorner, legendScale = 1, legendX: number | null = null, legendY: number | null = null, allPins?: Pin[]) {
   // Compute sequence numbers from the full ordered list so legend indices match the map.
   const pinSeqMap = new Map<number, number>()
   let seq = 0
@@ -603,7 +643,7 @@ function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string,
   const hasHeader = hasTitle || hasArea || includeCompass
   if (!hasHeader && !hasLegend && !includeScale) return
 
-  const S = paperW / 612
+  const S = (paperW / 612) * legendScale
   const pad = Math.round(8 * S)
   const margin = Math.round(16 * S)
   const borderR = Math.round(7 * S)
@@ -664,10 +704,16 @@ function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string,
   if (includeScale) contentH += scaleFooterH
   const boxH = contentH + pad * 2
 
-  const isRight = corner === 1 || corner === 2
-  const isTop = corner === 0 || corner === 1
-  const boxX = isRight ? paperW - legendW - margin : margin
-  const boxY = isTop ? margin : paperH - boxH - margin
+  let boxX: number, boxY: number
+  if (legendX !== null && legendY !== null) {
+    boxX = Math.max(0, Math.min(paperW - legendW, Math.round(legendX * paperW)))
+    boxY = Math.max(0, Math.min(paperH - boxH, Math.round(legendY * paperH)))
+  } else {
+    const isRight = corner === 1 || corner === 2
+    const isTop = corner === 0 || corner === 1
+    boxX = isRight ? paperW - legendW - margin : margin
+    boxY = isTop ? margin : paperH - boxH - margin
+  }
 
   ctx.save()
   ctx.shadowColor = 'rgba(0,0,0,0.12)'
@@ -1036,22 +1082,22 @@ function drawCaptions(ctx: CanvasRenderingContext2D, captions: Caption[], hidden
       ctx.shadowColor = 'rgba(0,0,0,0.2)'
       ctx.shadowBlur = fontPx * 0.25
       ctx.shadowOffsetY = fontPx * 0.06
-      ctx.fillStyle = 'rgba(255,255,255,0.92)'
+      ctx.fillStyle = cap.color || '#ffffff'
       roundRect(ctx, -boxW / 2, -boxH / 2, boxW, boxH, fontPx * 0.35)
       ctx.fill()
       ctx.restore()
     } else {
-      // White halo so dark text stays legible over busy tiles.
       ctx.lineJoin = 'round'
       ctx.strokeStyle = 'rgba(255,255,255,0.9)'
       ctx.lineWidth = fontPx * 0.22
     }
 
+    const textColor = cap.background ? (isDarkColor(cap.color) ? '#ffffff' : '#111827') : cap.color
     const startY = -totalH / 2 + lineH / 2
     for (let i = 0; i < lines.length; i++) {
       const ly = startY + i * lineH
       if (!cap.background) ctx.strokeText(lines[i]!, 0, ly)
-      ctx.fillStyle = cap.color || '#111827'
+      ctx.fillStyle = textColor
       ctx.fillText(lines[i]!, 0, ly)
     }
     ctx.restore()
@@ -1073,11 +1119,14 @@ export interface ExportOptions {
   includeLegend: boolean
   legendSeparatePage?: boolean // render the legend on its own page(s) instead of on the map
   legendBlankLabels?: boolean // hide pin/route names — exploration mode so viewers can fill them in
+  legendScale?: number // multiplier for the on-map legend box size (default 1)
+  legendX?: number | null // explicit legend position: fraction of paper width for left edge (null = auto-corner)
+  legendY?: number | null // explicit legend position: fraction of paper height for top edge (null = auto-corner)
   includeCompass: boolean
   includeScale: boolean
   scaleUnit: 'km' | 'mi'
   enhanceContrast: boolean
-  fastExport?: boolean // "Fast draft": fewer tiles at a lower zoom + smaller output for a quick export
+  exportQuality?: ExportQuality // 'draft' = fast/low-detail, 'standard' = default, 'hires' = large-format
   paperWidthPt: number // PDF page width in points (1pt = 1/72 inch)
   paperHeightPt: number // PDF page height in points
   gridCols?: number // poster grid columns (default 1)
@@ -1085,14 +1134,18 @@ export interface ExportOptions {
   onProgress?: (msg: string) => void
 }
 
-const TILE_SIZE = 256 // px per tile at 1x (used for grid/zoom math regardless of retina)
-const MAX_OUTPUT_PX = 7200 // cap longest side — gives ~217 DPI at A0, ~800+ DPI at A4
-const MAX_OUTPUT_PX_FAST = 4000 // "Fast draft" longest-side cap — smaller + quicker to encode
-const TILE_BUDGET = 750 // per-page tile ceiling — picks the highest zoom under it, staying under rate limits
-const TILE_BUDGET_FAST = 200 // "Fast draft" ceiling — far fewer tiles at a lower zoom for a quick export
-const TILE_CONCURRENCY = 24 // max simultaneous tile requests (6 connections × 4 CartoDB subdomains)
+export type ExportQuality = 'draft' | 'standard' | 'hires'
 
-async function renderPageToPng(corners: [number, number][], angle: number, config: MapStyleConfig, pins: Pin[], hiddenPinIds: Set<number>, routes: Route[], hiddenRouteIds: Set<number>, captions: Caption[], hiddenCaptionIds: Set<number>, includeLegend: boolean, includeCompass: boolean, includeScale: boolean, scaleUnit: 'km' | 'mi', enhanceContrast: boolean, fastExport: boolean, mapTitle: string, mapArea: string, blankLabels: boolean, legendPins?: Pin[], legendRoutes?: Route[], onProgress?: (msg: string) => void): Promise<Uint8Array> {
+const TILE_SIZE = 256 // px per tile at 1x (used for grid/zoom math regardless of retina)
+const MAX_OUTPUT_PX = 7200        // standard: ~217 DPI at A0, ~800+ DPI at A4
+const MAX_OUTPUT_PX_FAST = 4000   // draft: smaller + quicker to encode
+const MAX_OUTPUT_PX_HIRES = 24000 // hi-res: native tile resolution for areas up to ~50km; downscaled above that
+const TILE_BUDGET = 750           // standard: picks the highest zoom under this ceiling
+const TILE_BUDGET_FAST = 200      // draft: far fewer tiles at a lower zoom for a quick export
+const TILE_BUDGET_HIRES = 50000   // hi-res: allows zoom 16 for large areas, zoom 17-18 for smaller ones
+const TILE_CONCURRENCY = 24       // max simultaneous tile requests (6 connections × 4 CartoDB subdomains)
+
+async function renderPageToPng(corners: [number, number][], angle: number, config: MapStyleConfig, pins: Pin[], hiddenPinIds: Set<number>, routes: Route[], hiddenRouteIds: Set<number>, captions: Caption[], hiddenCaptionIds: Set<number>, includeLegend: boolean, includeCompass: boolean, includeScale: boolean, scaleUnit: 'km' | 'mi', enhanceContrast: boolean, exportQuality: ExportQuality, mapTitle: string, mapArea: string, blankLabels: boolean, legendScale?: number, legendX?: number | null, legendY?: number | null, legendPins?: Pin[], legendRoutes?: Route[], onProgress?: (msg: string) => void): Promise<Uint8Array> {
   // --- 1. Compute the AABB of the 4 corners in lat/lng space ---
   const lats = corners.map((c) => c[0])
   const lngs = corners.map((c) => c[1])
@@ -1104,8 +1157,8 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
   // --- 2. Choose zoom level ---
   const maxZoom = config.maxNativeZoom ?? 19
 
-  // Find the highest zoom where tile count stays under the budget ("Fast draft" lowers it).
-  const tileBudget = fastExport ? TILE_BUDGET_FAST : TILE_BUDGET
+  // Find the highest zoom where tile count stays under the budget (quality tier scales it).
+  const tileBudget = exportQuality === 'draft' ? TILE_BUDGET_FAST : exportQuality === 'hires' ? TILE_BUDGET_HIRES : TILE_BUDGET
   let zoom = 1
   for (let z = 1; z <= maxZoom; z++) {
     const xSpan = (lngToTileFrac(maxLng, z) - lngToTileFrac(minLng, z)) * TILE_SIZE
@@ -1115,21 +1168,11 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
     zoom = z
   }
 
-  // Canvas size guard (iOS only): step zoom down if the stitched canvas would exceed
-  // ~16 million pixels. iOS WebKit silently returns a blank canvas above that limit —
-  // the root cause of all-white exports on phones. Desktop browsers handle much larger
-  // canvases so the guard is skipped there to preserve full quality.
-  // iOS WebKit silently returns a blank canvas above ~16 million pixels.
+  // No stitch canvas size guard needed — tiles are drawn directly to the (size-capped)
+  // output canvas, so there is no intermediate giant canvas to overflow.
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
-  if (isIOS) {
-    const ds = config.retina ? 512 : TILE_SIZE
-    while (zoom > 1) {
-      const gW = Math.floor(lngToTileFrac(maxLng, zoom)) - Math.floor(lngToTileFrac(minLng, zoom)) + 1
-      const gH = Math.floor(latToTileFrac(minLat, zoom)) - Math.floor(latToTileFrac(maxLat, zoom)) + 1
-      if (gW * ds * (gH * ds) <= 16_000_000) break
-      zoom--
-    }
-  }
+  // Safari on macOS enforces a hard 268,435,456 px (width × height) canvas area limit.
+  const isSafari = !isIOS && /WebKit/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent)
 
   // --- 3. Determine tile grid for AABB ---
   const tileXMin = Math.floor(lngToTileFrac(minLng, zoom))
@@ -1139,52 +1182,9 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
   const gridW = tileXMax - tileXMin + 1
   const gridH = tileYMax - tileYMin + 1
 
-  const totalTiles = gridW * gridH
-  let fetchedTiles = 0
-  onProgress?.(`Fetching tiles… 0 / ${totalTiles}`)
-
-  // --- 4. Stitch tiles onto a canvas ---
-  // drawSize is 512 for @2x retina tiles, 256 for standard 1x tiles.
-  // TILE_SIZE (256) is kept for all grid/zoom math — tile coords are always on a 256px grid.
+  // --- 4. Stitch-space geometry (pure math — no intermediate canvas).
+  //    drawSize is 512 for @2x retina tiles, 256 for standard 1x tiles.
   const drawSize = config.retina ? 512 : TILE_SIZE
-  const stitchCanvas = document.createElement('canvas')
-  stitchCanvas.width = gridW * drawSize
-  stitchCanvas.height = gridH * drawSize
-  const stitchCtx = stitchCanvas.getContext('2d')!
-  stitchCtx.fillStyle = '#f8f8f7'
-  stitchCtx.fillRect(0, 0, stitchCanvas.width, stitchCanvas.height)
-
-  const tileJobs: (() => Promise<void>)[] = []
-  for (let tx = tileXMin; tx <= tileXMax; tx++) {
-    for (let ty = tileYMin; ty <= tileYMax; ty++) {
-      const url = tileUrl(config, false, zoom, tx, ty)
-      const px = (tx - tileXMin) * drawSize,
-        py = (ty - tileYMin) * drawSize
-      tileJobs.push(() =>
-        fetchTile(url).then((img) => {
-          if (img) stitchCtx.drawImage(img, px, py, drawSize, drawSize)
-          onProgress?.(`Fetching tiles… ${++fetchedTiles} / ${totalTiles}`)
-        })
-      )
-    }
-  }
-  await fetchTilesConcurrent(tileJobs, TILE_CONCURRENCY)
-
-  // Levels adjustment: stretch tonal range so light-style features are visible when printed.
-  if (enhanceContrast && config.printBlackPoint !== undefined) {
-    const lo = config.printBlackPoint,
-      range = 255 - lo
-    const imgData = stitchCtx.getImageData(0, 0, stitchCanvas.width, stitchCanvas.height)
-    const d = imgData.data
-    for (let i = 0; i < d.length; i += 4) {
-      d[i] = Math.round(Math.max(0, (((d[i] ?? 0) - lo) / range) * 255))
-      d[i + 1] = Math.round(Math.max(0, (((d[i + 1] ?? 0) - lo) / range) * 255))
-      d[i + 2] = Math.round(Math.max(0, (((d[i + 2] ?? 0) - lo) / range) * 255))
-    }
-    stitchCtx.putImageData(imgData, 0, 0)
-  }
-
-  // --- 5. Find pixel coords of rect center and corners in the stitched canvas ---
   const centerLat = (minLat + maxLat) / 2,
     centerLng = (minLng + maxLng) / 2
 
@@ -1194,7 +1194,7 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
 
   const [cx, cy] = geoToStitchPx(centerLat, centerLng)
 
-  // Unrotate corners to find axis-aligned half-dims in the stitch canvas
+  // Unrotate corners to find axis-aligned half-dims in stitch-pixel space.
   const cosA = Math.cos(-angle),
     sinA = Math.sin(-angle)
   let halfW = 0,
@@ -1207,12 +1207,17 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
     halfH = Math.max(halfH, Math.abs(dx * sinA + dy * cosA))
   }
 
-  // --- 6. Build the output canvas ---
-  // Use the natural tile resolution (halfW/halfH in stitch pixels) rather than a fixed DPI.
-  // This means an A4 export captures the same pixels as an A0 export would — the PDF can be
-  // printed at any size and quality scales with the tiles, not the paper format chosen here.
-  const outputCap = fastExport ? MAX_OUTPUT_PX_FAST : MAX_OUTPUT_PX
-  const capScale = Math.min(1, outputCap / Math.max(halfW * 2, halfH * 2))
+  // --- 5. Build the output canvas ---
+  // On iOS, cap at MAX_OUTPUT_PX_FAST regardless of quality — iOS WebKit silently blanks
+  // above ~16 MP and the output canvas is now the only canvas (no stitch canvas).
+  const outputCap = isIOS ? MAX_OUTPUT_PX_FAST : exportQuality === 'draft' ? MAX_OUTPUT_PX_FAST : exportQuality === 'hires' ? MAX_OUTPUT_PX_HIRES : MAX_OUTPUT_PX
+  let capScale = Math.min(1, outputCap / Math.max(halfW * 2, halfH * 2))
+  // Safari on macOS hard-limits canvas area to 268,435,456 px (width × height). The longest-side
+  // cap above isn't enough for wide aspect ratios, so apply a second area constraint.
+  if (isSafari) {
+    const projectedArea = halfW * 2 * capScale * (halfH * 2 * capScale)
+    if (projectedArea > 268_000_000) capScale *= Math.sqrt(268_000_000 / projectedArea)
+  }
   const paperWidthPx = Math.ceil(halfW * 2 * capScale)
   const paperHeightPx = Math.ceil(halfH * 2 * capScale)
   const outCanvas = document.createElement('canvas')
@@ -1222,14 +1227,58 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
   const scaleX = capScale,
     scaleY = capScale
 
+  outCtx.fillStyle = '#f8f8f7'
+  outCtx.fillRect(0, 0, paperWidthPx, paperHeightPx)
+
+  // --- 6. Fetch tiles and draw directly to the output canvas through the rotation/crop
+  //    transform. Previously tiles were stitched into a full AABB canvas first, which for
+  //    retina sources at high zoom produced canvases exceeding 600 MP that silently blank
+  //    in any browser. Drawing tile-by-tile in stitch coordinates through the same
+  //    transform eliminates that intermediate canvas entirely.
+  const totalTiles = gridW * gridH
+  let fetchedTiles = 0
+  onProgress?.(`Zoom ${zoom} — fetching tiles… 0 / ${totalTiles}`)
+
   outCtx.save()
   outCtx.translate(paperWidthPx / 2, paperHeightPx / 2)
   outCtx.scale(scaleX, scaleY)
   outCtx.rotate(-angle)
-  outCtx.drawImage(stitchCanvas, -cx, -cy)
+  outCtx.translate(-cx, -cy)
+
+  const tileJobs: (() => Promise<void>)[] = []
+  for (let tx = tileXMin; tx <= tileXMax; tx++) {
+    for (let ty = tileYMin; ty <= tileYMax; ty++) {
+      const url = tileUrl(config, false, zoom, tx, ty)
+      const px = (tx - tileXMin) * drawSize,
+        py = (ty - tileYMin) * drawSize
+      tileJobs.push(() =>
+        fetchTile(url).then((img) => {
+          if (img) outCtx.drawImage(img, px, py, drawSize, drawSize)
+          onProgress?.(`Zoom ${zoom} — fetching tiles… ${++fetchedTiles} / ${totalTiles}`)
+        })
+      )
+    }
+  }
+  await fetchTilesConcurrent(tileJobs, TILE_CONCURRENCY)
   outCtx.restore()
 
+  // Levels adjustment on the output canvas.
+  if (enhanceContrast && config.printBlackPoint !== undefined) {
+    onProgress?.('Adjusting levels…')
+    const lo = config.printBlackPoint,
+      range = 255 - lo
+    const imgData = outCtx.getImageData(0, 0, paperWidthPx, paperHeightPx)
+    const d = imgData.data
+    for (let i = 0; i < d.length; i += 4) {
+      d[i] = Math.round(Math.max(0, (((d[i] ?? 0) - lo) / range) * 255))
+      d[i + 1] = Math.round(Math.max(0, (((d[i + 1] ?? 0) - lo) / range) * 255))
+      d[i + 2] = Math.round(Math.max(0, (((d[i + 2] ?? 0) - lo) / range) * 255))
+    }
+    outCtx.putImageData(imgData, 0, 0)
+  }
+
   // --- 7. Draw pins, legend, compass onto the output canvas ---
+  onProgress?.('Drawing overlays…')
   function geoToOutputPx(lat: number, lng: number): [number, number] {
     const [sx, sy] = geoToStitchPx(lat, lng)
     const dx = sx - cx,
@@ -1258,9 +1307,10 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
   drawRoutes(outCtx, routes, hiddenRouteIds, geoToOutputPx, paperWidthPx, paperHeightPx)
   drawPins(outCtx, pins, hiddenPinIds, geoToOutputPx, paperWidthPx, paperHeightPx)
   drawCaptions(outCtx, captions, hiddenCaptionIds, geoToOutputPx, paperWidthPx, paperHeightPx)
-  drawInfoBox(outCtx, mapTitle, mapArea, legendPins ?? pinsInArea, legendRoutes ?? routesInArea, angle, corners, scaleUnit, includeLegend, includeCompass, includeScale, blankLabels, paperWidthPx, paperHeightPx, overlayCorner, pins)
+  drawInfoBox(outCtx, mapTitle, mapArea, legendPins ?? pinsInArea, legendRoutes ?? routesInArea, angle, corners, scaleUnit, includeLegend, includeCompass, includeScale, blankLabels, paperWidthPx, paperHeightPx, overlayCorner, legendScale, legendX ?? null, legendY ?? null, pins)
 
   // --- 8. Return PNG bytes ---
+  onProgress?.(`Encoding PNG (${paperWidthPx}×${paperHeightPx})…`)
   return new Promise<Uint8Array>((resolve, reject) => {
     outCanvas.toBlob((blob) => {
       if (!blob) {
@@ -1528,7 +1578,7 @@ async function renderLegendPagesToPng(c: LegendPageContent, paperWidthPt: number
 }
 
 export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
-  const { corners, angle, mapStyle, mapTitle, mapArea = '', pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, includeLegend, legendSeparatePage = false, legendBlankLabels = false, includeCompass, includeScale, scaleUnit, enhanceContrast, fastExport = false, paperWidthPt, paperHeightPt, gridCols = 1, gridRows = 1, onProgress } = opts
+  const { corners, angle, mapStyle, mapTitle, mapArea = '', pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, includeLegend, legendSeparatePage = false, legendBlankLabels = false, legendScale = 1, legendX = null, legendY = null, includeCompass, includeScale, scaleUnit, enhanceContrast, exportQuality = 'standard', paperWidthPt, paperHeightPt, gridCols = 1, gridRows = 1, onProgress } = opts
 
   // When the legend lives on its own page, keep it off the map overlay (compass/scale stay).
   const onMapLegend = includeLegend && !legendSeparatePage
@@ -1565,8 +1615,9 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
       const cellScale = includeScale && isInfoCell
 
       const prefix = totalPages > 1 ? `Page ${pageNum} of ${totalPages} — ` : ''
-      const pngBytes = await renderPageToPng(cellCorners, angle, config, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, cellLegend, cellCompass, cellScale, scaleUnit, enhanceContrast, fastExport, mapTitle, mapArea, legendBlankLabels, cellLegend ? fullAreaLegendPins : undefined, cellLegend ? fullAreaLegendRoutes : undefined, (msg) => onProgress?.(`${prefix}${msg}`))
+      const pngBytes = await renderPageToPng(cellCorners, angle, config, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, cellLegend, cellCompass, cellScale, scaleUnit, enhanceContrast, exportQuality, mapTitle, mapArea, legendBlankLabels, legendScale, legendX, legendY, cellLegend ? fullAreaLegendPins : undefined, cellLegend ? fullAreaLegendRoutes : undefined, (msg) => onProgress?.(`${prefix}${msg}`))
 
+      onProgress?.(`${prefix}Embedding image…`)
       const pdfImage = await pdfDoc.embedPng(pngBytes)
       const page = pdfDoc.addPage([paperWidthPt, paperHeightPt])
       page.drawImage(pdfImage, { x: 0, y: 0, width: paperWidthPt, height: paperHeightPt })
@@ -1591,7 +1642,7 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
     const legendPins = pins.filter((p) => p.name && !hiddenPinIds.has(p.id) && inArea(p.lat, p.lng)).map((pin) => ({ pin, index: seq.get(pin.id) }))
     const legendRoutes = routes.filter((r) => r.name && !hiddenRouteIds.has(r.id) && r.points.some((p) => inArea(p.lat, p.lng)))
 
-    if (legendPins.length > 0 || legendRoutes.length > 0) {
+    if (legendPins.length > 0 || legendRoutes.length > 0 || mapTitle || mapArea) {
       onProgress?.('Rendering legend…')
       const legendPages = await renderLegendPagesToPng({ title: mapTitle, area: mapArea, pins: legendPins, routes: legendRoutes, unit: scaleUnit, blankLabels: legendBlankLabels }, paperWidthPt, paperHeightPt)
       for (const png of legendPages) {

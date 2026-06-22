@@ -75,8 +75,8 @@ function previewUrl(style: MapStyle): string {
         <span :class="sectionLabelClass" style="margin-bottom: 0">Display</span>
         <div class="flex items-center gap-1">
           <!-- Distance units (km/mi) — drives the scale bar, route distances, and PDF scale -->
-          <div class="flex h-7 rounded border border-gray-300 dark:border-zinc-700 overflow-hidden">
-            <button v-for="u in ['km', 'mi'] as const" :key="u" :title="`Show distances in ${u === 'km' ? 'kilometers' : 'miles'}`" :class="`px-2 text-xs font-medium cursor-pointer transition-colors ${u === 'mi' ? 'border-l border-gray-300 dark:border-zinc-700' : ''} ${mapUnits === u ? 'bg-cyan-500 text-white hover:bg-cyan-600' : 'text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800'}`" @click="mapUnits = u">{{ u }}</button>
+          <div class="mf-seg">
+            <button v-for="u in ['km', 'mi'] as const" :key="u" :title="`Show distances in ${u === 'km' ? 'kilometers' : 'miles'}`" :class="['mf-seg-btn', mapUnits === u && 'mf-seg-btn--active']" @click="mapUnits = u">{{ u }}</button>
           </div>
           <button :disabled="!labelsApplicable" :title="!labelsApplicable ? 'Labels are baked into this style' : showLabels ? 'Hide map labels' : 'Show map labels'" :class="['mf-ibtn w-7 h-7', labelsApplicable && showLabels && 'mf-ibtn--active']" @click="emit('labels-change', !showLabels)">
             <Type :size="13" />
