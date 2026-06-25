@@ -82,7 +82,7 @@ export function useRoutes(options: { initialRoutes: Route[]; leafletMap: Shallow
     const route: Route = {
       id,
       name: '',
-      color: defaults.color ?? '#06b6d4',
+      color: defaults.color ?? '#0d9488',
       ...(defaults.lineStyle ? { lineStyle: defaults.lineStyle } : {}),
       ...(defaults.waypointStyle ? { waypointStyle: defaults.waypointStyle } : {}),
       ...(defaults.waypointSize ? { waypointSize: defaults.waypointSize } : {}),

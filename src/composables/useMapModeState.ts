@@ -47,7 +47,6 @@ export function useMapModeState({ isPlacingPin, isPlacingCaption, isAdjustingPri
       stopPlacing()
       stopPlacingCaption()
       if (isDrawingRoute.value) stopDrawing()
-      clearSelection()
       printAreaVisibility.value = 'visible'
     } else if (printBounds.value) {
       printAreaVisibility.value = 'opaque'

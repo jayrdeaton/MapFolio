@@ -25,7 +25,7 @@ const numFontSize = computed(() => {
   return '8px'
 })
 const BUBBLE_EMOJI_SIZE: Record<PinDotSize, string> = { xs: '14px', s: '16px', m: '20px', l: '24px', xl: '30px' }
-const emojiFontSize = computed(() => props.preview ? '14px' : BUBBLE_EMOJI_SIZE[resolvedSize.value])
+const emojiFontSize = computed(() => (props.preview ? '14px' : BUBBLE_EMOJI_SIZE[resolvedSize.value]))
 const dotRingBox = computed(() => (props.color === 'transparent' ? 'none' : '0 0 0 2px #ffffff'))
 const dotFilter = computed(() => (props.color === 'transparent' ? undefined : 'drop-shadow(0 1px 4px rgba(0,0,0,0.3))'))
 const numColor = computed(() => (isDarkColor(props.color) ? '#ffffff' : '#1f2937'))
@@ -36,16 +36,13 @@ const numColor = computed(() => (isDarkColor(props.color) ? '#ffffff' : '#1f2937
     <!-- Emoji bubble mode -->
     <div v-if="emoji" :style="color !== 'transparent' ? { filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.3))' } : undefined" class="flex flex-col items-center">
       <div :class="['pin-bubble', preview ? 'pin-bubble--preview' : '', color === 'transparent' ? 'pin-bubble--clear' : '']" :style="color !== 'transparent' ? { background: color } : undefined">
-        <span class="pin-emoji" :style="{ fontSize: emojiFontSize, ...(color === 'transparent' ? { filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.4))' } : {}) }">{{ emoji }}</span>
+        <span class="pin-emoji" :style="{ fontSize: emojiFontSize, width: emojiFontSize, height: emojiFontSize, ...(color === 'transparent' ? { filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.4))' } : {}) }">{{ emoji }}</span>
       </div>
       <div v-if="color !== 'transparent'" class="pin-bubble-tip" :style="{ borderTopColor: color }" />
     </div>
     <!-- Dot mode -->
     <template v-else>
-      <div
-        :class="['pin-dot', `pin-dot--${resolvedSize}`, `pin-dot--${resolvedShape}`]"
-        :style="{ background: color, boxShadow: dotRingBox, filter: dotFilter }"
-      >
+      <div :class="['pin-dot', `pin-dot--${resolvedSize}`, `pin-dot--${resolvedShape}`]" :style="{ background: color, boxShadow: dotRingBox, filter: dotFilter }">
         <span
           v-if="numberVisible"
           :style="{

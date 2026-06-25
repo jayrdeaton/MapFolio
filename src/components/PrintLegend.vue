@@ -48,8 +48,7 @@ const namedRoutes = computed(() => (props.routes ?? []).filter((r) => r.name))
             <div v-if="blankLabels" class="print-legend-blank" />
             <div v-else class="print-legend-name">{{ route.name }}</div>
             <div v-if="!blankLabels" class="print-legend-desc">
-              {{ formatDistance(routeDistanceM(route.points)) }} · {{ route.points.length }}
-              {{ route.points.length === 1 ? 'waypoint' : 'waypoints' }}
+              {{ formatDistance(routeDistanceM(route.points)) }}
             </div>
           </div>
         </div>

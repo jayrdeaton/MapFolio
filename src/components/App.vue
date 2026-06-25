@@ -4,16 +4,18 @@ import { LMap } from '@vue-leaflet/vue-leaflet'
 import L from 'leaflet'
 
 import CaptionForm from '@/components/CaptionForm.vue'
+import MapForm from '@/components/MapForm.vue'
 import type { SearchLocation } from '@/components/MapSearch.vue'
 import PinForm from '@/components/PinForm.vue'
+import PrintAreaForm from '@/components/PrintAreaForm.vue'
 import PrintPreviewModal from '@/components/PrintPreviewModal.vue'
 import RouteForm from '@/components/RouteForm.vue'
 import RouteLayer from '@/components/RouteLayer.vue'
 import WaypointPill from '@/components/WaypointPill.vue'
 import { dedupeLegendPins, legendBoxFractions } from '@/composables/useMapExport'
 import { useRubberBand } from '@/composables/useRubberBand'
-import type { Caption, MapStyle, Pin, PinDotShape, PinDotSize, Route } from '@/types'
-import { captionPlaceholder, decodeShareState, emojiToName, routePlaceholder } from '@/utils'
+import type { Caption, MapStyle, Pin, PinDotShape, PinDotSize, PrintArea, Route } from '@/types'
+import { captionPlaceholder, decodeShareState, emojiToName, printAreaPlaceholder, routePlaceholder } from '@/utils'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
@@ -30,7 +32,7 @@ function closeInfo() {
 
 // ── Multi-map state ───────────────────────────────────────────────────────────
 
-const { maps, activeId, activeMap, updateActiveMap, createMap, switchMap, deleteMap, duplicateMap, exportMapData, importFromShare, importMapFromData } = useMaps()
+const { maps, activeId, activeMap, updateActiveMap, patchMap, createMap, switchMap, deleteMap, duplicateMap, exportMapData, importFromShare, importMapFromData, reorderMaps } = useMaps()
 
 // ── Initial state: share link creates a new map ───────────────────────────────
 
@@ -77,7 +79,6 @@ const showSearch = ref(false)
 const isLocating = ref(false)
 
 // ── Placement / interaction mode state ───────────────────────────────────────
-// Declared before composables so clearPrintBounds (passed to useMapManager) can close over them.
 
 const isPlacingPin = ref(false)
 const placingPinCount = ref(0)
@@ -86,7 +87,6 @@ const placingCaptionCount = ref(0)
 // The caption dropped most recently in placing mode — made "active" without going through
 // selection, so the placing pill (and its angle-snap toggle) stays open.
 const lastPlacedCaptionId = ref<number | null>(null)
-const isAdjustingPrintArea = ref(false)
 
 function stopPlacing() {
   isPlacingPin.value = false
@@ -164,20 +164,65 @@ const editingPinIndex = computed(() => {
 const editingRoutePlaceholder = computed(() => (editingRouteRef.value && !editingRouteRef.value.name ? routePlaceholder(editingRouteRef.value, routes.value) : undefined))
 const editingCaptionPlaceholder = computed(() => (editingCaption.value && !editingCaption.value.text ? captionPlaceholder(editingCaption.value, captions.value) : undefined))
 
-const { printBounds, printCorners, printAngle, printAreaVisibility, printHistory, isDownloadingPdf, isPreviewOpen, previewBlobUrl, isAutoArea, autoArea, printPaper, printOrientation, printAspectRatio, overlayCorner, selectPrintPreset, resnapPrintArea, fitToPrintArea, fitPrintAreaToElements, handleBoundsSet, openPreview, downloadFromPreview, closePreview, restoreSettings } = usePrintExport({ leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, units: mapUnits, angleSnapEnabled, showNotification, printSettings })
+const printAreas = computed<PrintArea[]>(() => activeMap.value.printAreas ?? [])
+function updatePrintAreas(areas: PrintArea[]) {
+  updateActiveMap({ printAreas: areas })
+}
+
+const { activePrintAreaId, activePrintArea, printBounds, printAspectRatio, overlayCorner, isDownloadingPdf, isPreviewOpen, previewBlobUrl, autoArea, addPrintArea, deletePrintArea, selectPrintArea, deselectPrintArea, patchPrintArea, flipPrintAreaOrientation, fitToPrintArea, fitPrintAreaToElements, handleBoundsSet, openPreview, cancelExport, downloadFromPreview, closePreview } = usePrintExport({ leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, units: mapUnits, angleSnapEnabled, showNotification, printSettings, printAreas, updatePrintAreas })
+
+// isAdjustingPrintArea syncs with activePrintAreaId for backwards compat with composables
+// that read/write it (useMapModeState, useKeyboardShortcuts, useSelectionActions).
+const isAdjustingPrintArea = ref(false)
+watch(activePrintAreaId, (id) => {
+  isAdjustingPrintArea.value = id !== null
+})
+watch(isAdjustingPrintArea, (v) => {
+  if (!v && activePrintAreaId.value !== null) deselectPrintArea()
+})
+
+// Dummy ref: useMapModeState writes visibility here; we compute per-area visibility in template.
+const dummyPrintVisibility = ref<'visible' | 'opaque' | 'hidden'>('visible')
+
+// MapForm state
+const editingMapId = ref<string | null>(null)
+const editingMapData = computed(() => maps.value.find((m) => m.id === editingMapId.value) ?? null)
+
+function handleMapFormSave(name: string, area: string) {
+  if (editingMapId.value) patchMap(editingMapId.value, { name, area })
+  editingMapId.value = null
+}
+
+function handleMapFormDelete() {
+  if (!editingMapId.value || !editingMapData.value) return
+  const m = editingMapData.value
+  const id = editingMapId.value
+  editingMapId.value = null
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      const parts: string[] = []
+      if (m.pins.length) parts.push(`${m.pins.length} pin${m.pins.length === 1 ? '' : 's'}`)
+      if (m.routes.length) parts.push(`${m.routes.length} route${m.routes.length === 1 ? '' : 's'}`)
+      if (m.captions?.length) parts.push(`${m.captions.length} caption${m.captions.length === 1 ? '' : 's'}`)
+      const detail = parts.length ? `\n\nThis will also permanently delete ${parts.join(', ')}.` : ''
+      if (!window.confirm(`Delete "${m.name}"?${detail}\n\nThis is permanent and cannot be undone.`)) return
+      doDeleteMap(id)
+    })
+  )
+}
+
+// PrintAreaForm state
+const showPrintAreaForm = ref(false)
+const editingPrintArea = ref<PrintArea | null>(null)
+const editingPrintAreaPlaceholder = computed(() => (editingPrintArea.value && !editingPrintArea.value.title ? printAreaPlaceholder(editingPrintArea.value.id, printAreas.value, mapName.value) : undefined))
 
 const history = useHistory({
   pins,
   routes,
   captions,
   showNotification,
-  printCorners,
-  printAngle,
-  legendX: printSettings.legendX,
-  legendY: printSettings.legendY,
-  legendScale: printSettings.legendScale,
-  restorePrintArea: (corners, angle) => printAreaDrawerRef.value?.initFromCorners(corners, angle),
-  clearPrintArea: () => clearPrintBoundsRaw()
+  printAreas,
+  updatePrintAreas
 })
 _historyPush = history.push
 const { canUndo, canRedo, undo, redo, clear: clearHistory } = history
@@ -198,6 +243,18 @@ const pinsLinkedToSelectedRoutes = computed(() => {
   return ids
 })
 
+// useMapModeState must only see pin/route/caption selection — print area selection must be
+// invisible to it, otherwise the hasSelection watcher kills isAdjustingPrintArea the moment
+// a print area row is selected, and the clearSelection watcher wipes selectedPrintAreaIds
+// the moment the adjusting state turns on.
+const hasNonPrintSelection = computed(() => selection.selectedPinIds.value.size > 0 || selection.selectedRouteIds.value.size > 0 || selection.selectedCaptionIds.value.size > 0 || selection.selectedWaypointKey.value !== null)
+function clearNonPrintSelection() {
+  selection.selectedPinIds.value = new Set()
+  selection.selectedRouteIds.value = new Set()
+  selection.selectedCaptionIds.value = new Set()
+  selection.selectedWaypointKey.value = null
+}
+
 useMapModeState({
   isPlacingPin,
   placingPinCount,
@@ -209,9 +266,9 @@ useMapModeState({
   stopDrawing,
   stopPlacing,
   stopPlacingCaption,
-  hasSelection: selection.hasSelection,
-  clearSelection: selection.clearSelection,
-  printAreaVisibility,
+  hasSelection: hasNonPrintSelection,
+  clearSelection: clearNonPrintSelection,
+  printAreaVisibility: dummyPrintVisibility,
   printBounds
 })
 
@@ -322,10 +379,12 @@ function stopZoomRepeat() {
   }
 }
 
-const { handleClipCopyPin, handleClipCutPin, handleClipCopyRoute, handleClipCutRoute, handleClipCopyCaption, handleClipCutCaption, handlePaste, pasteAtCenter } = useClipboardActions({
+const { handleClipCopyPin, handleClipCutPin, handleClipCopyRoute, handleClipCutRoute, handleClipCopyCaption, handleClipCutCaption, handleClipCopyPrintArea, handleClipCutPrintArea, handlePaste, pasteAtCenter } = useClipboardActions({
   pins,
   routes,
   captions,
+  printAreas,
+  updatePrintAreas,
   mapClipboard,
   activeMapId: activeId,
   history,
@@ -338,11 +397,13 @@ const { handleClipCopyPin, handleClipCutPin, handleClipCopyRoute, handleClipCutR
   fetchPinAddress
 })
 
-const { selectedPins, selectedRoutes, selectedCaptions, allSelectedHidden, handleSelectionToggleVisibility, handleSelectPin, handleSelectRoute, handleSelectCaption, handleSelectPrintArea, handleSelectionEdit, handleSelectionFit, handleSelectionCopy, handleSelectionCut, handleSelectionDelete, handleSelectWaypoint, handleWaypointDelete } = useSelectionActions({
+const { selectedPins, selectedRoutes, selectedCaptions, selectedPrintAreas, allSelectedHidden, handleSelectionToggleVisibility, handleSelectPin, handleSelectRoute, handleSelectCaption, handleSelectionEdit, handleSelectionFit, handleSelectionCopy, handleSelectionCut, handleSelectionDelete, handleSelectWaypoint, handleWaypointDelete } = useSelectionActions({
   selection,
   pins,
   routes,
   captions,
+  printAreas,
+  updatePrintAreas,
   mapClipboard,
   activeMapId: activeId,
   history,
@@ -354,6 +415,7 @@ const { selectedPins, selectedRoutes, selectedCaptions, allSelectedHidden, handl
   openEditPin,
   openEditRoute,
   openEditCaption,
+  openEditPrintArea: handlePrintAreaEdit,
   isAdjustingPrintArea,
   leafletMap,
   removePoint
@@ -372,37 +434,62 @@ const { band: rubberBand } = useRubberBand(leafletMap, isInteracting, (bounds) =
 // Subtitle shown on the print: the user's entered area, or the geocoded suggestion as a fallback.
 const effectiveArea = computed(() => mapArea.value || autoArea.value)
 
-// Footprint of the PDF info box (legend/compass/scale), as fractions of the print
-// area's width, so PrintAreaDrawer can preview how much space it will occupy.
-// Approximates the in-area item set by the axis-aligned print bounds. Null = nothing to show.
-const legendBox = computed(() => {
+// Named pins/routes inside the active print area bounds — drives legend content indicators.
+const legendCounts = computed(() => {
   const bounds = printBounds.value
   if (!bounds) return null
-  // In "separate page" mode the legend leaves the map; only compass/scale stay on it.
-  const onMapLegend = printSettings.legend.value && !printSettings.legendSeparatePage.value
-  // Mirror the export: numbered pins are unique; emoji pins with the same emoji+name fold together.
-  const namedPins = onMapLegend ? dedupeLegendPins(pins.value.filter((p) => p.name && bounds.contains([p.lat, p.lng])).map((p) => ({ pin: p, index: p.showNumber ? p.id : undefined }))) : []
-  const namedRoutes = onMapLegend ? routes.value.filter((r) => r.name && r.points.some((pt) => bounds.contains([pt.lat, pt.lng]))) : []
-  return legendBoxFractions({
-    hasTitle: onMapLegend && printSettings.legendTitle.value && !!mapName.value,
-    hasArea: onMapLegend && printSettings.legendArea.value && !!effectiveArea.value,
-    includeCompass: printSettings.compass.value,
-    includeScale: printSettings.scale.value,
-    pins: namedPins.map(({ pin }) => ({ hasDescription: !!pin.description })),
-    routeCount: namedRoutes.length
-  }, printSettings.legendScale.value)
+  const pinCount = dedupeLegendPins(
+    pins.value.filter((p) => p.name && bounds.contains([p.lat, p.lng])).map((p) => ({ pin: p, index: p.showNumber ? p.id : undefined }))
+  ).length
+  const routeCount = routes.value.filter((r) => r.name && r.points.some((pt) => bounds.contains([pt.lat, pt.lng]))).length
+  return { pins: pinCount, routes: routeCount }
 })
 
-const printAreaDrawerRef = ref<{ initFromCorners: (corners: [number, number][], angle: number) => void } | null>(null)
-const routeLayerRef = ref<InstanceType<typeof RouteLayer> | null>(null)
+// Passed to the active PrintAreaDrawer so the on-map legend preview reflects current settings.
+const activeLegendSettings = computed(() => {
+  const area = activePrintArea.value
+  if (!printBounds.value || !area) return undefined
+  return {
+    legend: area.legend ?? true,
+    separatePage: area.legendSeparatePage ?? false,
+    title: area.legendTitle ?? true,
+    titleText: mapName.value,
+    area: area.legendArea ?? true,
+    areaText: effectiveArea.value ?? '',
+    pins: area.legendPins ?? true,
+    routes: area.legendRoutes ?? true,
+    pinCount: legendCounts.value?.pins ?? 0,
+    routeCount: legendCounts.value?.routes ?? 0,
+    compass: area.compass ?? true,
+    scale: area.scale ?? true
+  }
+})
 
-function restoreFromHistory(entry: import('@/composables/usePrintExport').PrintHistoryEntry) {
-  restoreSettings(entry)
-  nextTick(() => {
-    printAreaDrawerRef.value?.initFromCorners(entry.corners, entry.angle)
-    fitToPrintArea()
-  })
-}
+// Footprint of the PDF info box for the active print area — shown as an overlay in the drawer.
+const legendBox = computed(() => {
+  const bounds = printBounds.value
+  const area = activePrintArea.value
+  if (!bounds || !area) return null
+  const masterOn = area.legend ?? true
+  if (!masterOn) return null
+  const onMapPins = (area.legendPins ?? true) && !(area.legendSeparatePage ?? false)
+  const onMapRoutes = (area.legendRoutes ?? true) && !(area.legendSeparatePage ?? false)
+  const namedPins = onMapPins ? dedupeLegendPins(pins.value.filter((p) => p.name && bounds.contains([p.lat, p.lng])).map((p) => ({ pin: p, index: p.showNumber ? p.id : undefined }))) : []
+  const namedRoutes = onMapRoutes ? routes.value.filter((r) => r.name && r.points.some((pt) => bounds.contains([pt.lat, pt.lng]))) : []
+  return legendBoxFractions(
+    {
+      hasTitle: (area.legendTitle ?? true) && !!mapName.value,
+      hasArea: (area.legendArea ?? true) && !!effectiveArea.value,
+      includeCompass: area.compass ?? true,
+      includeScale: area.scale ?? true,
+      pins: namedPins.map(({ pin }) => ({ hasDescription: !!pin.description })),
+      routeCount: namedRoutes.length
+    },
+    area.legendScale ?? 1
+  )
+})
+
+const routeLayerRef = ref<InstanceType<typeof RouteLayer> | null>(null)
 
 const { copyShareLink } = useShareClipboard({
   pins,
@@ -446,7 +533,7 @@ const { showMapsPanel, saveState, doSwitchMap, doCreateMap, doDeleteMap, doDupli
   resetPins,
   resetRoutes,
   resetCaptions,
-  clearPrintBounds
+  clearPrintBounds: deselectPrintArea
 })
 
 // PWA file handler: when the installed app is launched by opening a .json/.geojson
@@ -542,33 +629,60 @@ function handleUnlinkSelectedPin() {
   }
 }
 
-function clearPrintBoundsRaw() {
-  printBounds.value = null
-  isAdjustingPrintArea.value = false
-}
-
-function clearPrintBounds() {
-  history.push('remove print area')
-  clearPrintBoundsRaw()
-}
-
-function activatePrintArea() {
+function handleAddPrintArea() {
   selection.clearSelection()
-  if (!printBounds.value) {
-    history.push('add print area')
-    selectPrintPreset(printPaper.value ?? 'letter', printOrientation.value ?? 'portrait')
+  history.push('add print area')
+  addPrintArea({ paper: printSettings.stickyPaper.value, orientation: printSettings.stickyOrientation.value })
+  activeFab.value = null
+}
+
+function handlePrintAreaSave(area: PrintArea) {
+  history.push('edit print area')
+  patchPrintArea(area.id, area)
+  printSettings.stickyPaper.value = area.paper
+  printSettings.stickyOrientation.value = area.orientation
+  showPrintAreaForm.value = false
+  editingPrintArea.value = null
+}
+
+function handlePrintAreaDelete() {
+  if (!editingPrintArea.value) return
+  history.push('delete print area')
+  deletePrintArea(editingPrintArea.value.id)
+  showPrintAreaForm.value = false
+  editingPrintArea.value = null
+}
+
+function handlePrintAreaEdit(id: string) {
+  const area = printAreas.value.find((a) => a.id === id)
+  if (!area) return
+  editingPrintArea.value = area
+  showPrintAreaForm.value = true
+}
+
+function handleSelectPrintArea(id: string, additive: boolean) {
+  leafletMap.value?.closePopup()
+  const hasOtherSelection = hasNonPrintSelection.value || selection.selectedPrintAreaIds.value.size > 0 || activePrintAreaId.value !== null
+  if (additive && hasOtherSelection) {
+    // Additive → transition into (or extend) SelectionPill multiselect
+    const next = new Set(selection.selectedPrintAreaIds.value)
+    if (activePrintAreaId.value) next.add(activePrintAreaId.value)
+    deselectPrintArea()
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    selection.selectedPrintAreaIds.value = next
+  } else {
+    // Regular click, or additive with nothing selected yet → activate (PrintPill + handles)
+    selection.clearSelection()
+    selectPrintArea(id)
   }
-  isAdjustingPrintArea.value = true
 }
 
-function handleSelectPreset(paper: import('@/composables/usePrintExport').PaperSize, orientation: import('@/composables/usePrintExport').Orientation) {
-  history.push(printBounds.value ? 'resize print area' : 'add print area')
-  selectPrintPreset(paper, orientation)
-}
-
-function handleResnapPrintArea() {
-  if (printBounds.value) history.push('resize print area')
-  resnapPrintArea()
+function handlePrintAreaDownload() {
+  const id = activePrintAreaId.value ?? [...selection.selectedPrintAreaIds.value][0]
+  if (!id) return
+  if (!activePrintAreaId.value) selectPrintArea(id)
+  openPreview()
 }
 
 function handleFitPrintAreaToElements() {
@@ -582,6 +696,10 @@ function reorderPins(newPins: Pin[]) {
 function reorderRoutes(newRoutes: Route[]) {
   history.push('reorder routes')
   routes.value = newRoutes
+}
+function reorderPrintAreas(newAreas: PrintArea[]) {
+  history.push('reorder prints')
+  updatePrintAreas(newAreas)
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
@@ -723,7 +841,10 @@ function handlePinDelete() {
 // ── Context menus ─────────────────────────────────────────────────────────────
 
 function removePrintArea() {
-  clearPrintBounds()
+  if (activePrintAreaId.value) {
+    history.push('remove print area')
+    deletePrintArea(activePrintAreaId.value)
+  }
   selection.clearSelection()
 }
 
@@ -922,8 +1043,19 @@ useKeyboardShortcuts({
   toggleSelectionVisibility: handleSelectionToggleVisibility,
   editSelection: handleSelectionEdit,
   fitSelection: handleSelectionFit,
-  activatePrintArea,
-  clearPrintBounds,
+  activatePrintArea: handleAddPrintArea,
+  clearPrintBounds: deselectPrintArea,
+  deleteActivePrintArea: removePrintArea,
+  toggleActivePrintAreaVisibility: () => {
+    if (!activePrintArea.value) return
+    const hide = !activePrintArea.value.hidden
+    history.push(hide ? 'hide' : 'show')
+    patchPrintArea(activePrintArea.value.id, { hidden: hide })
+  },
+  editActivePrintArea: () => {
+    if (activePrintArea.value) handlePrintAreaEdit(activePrintArea.value.id)
+  },
+  fitActivePrintArea: fitToPrintArea,
   startPlacingPin: () => {
     isPlacingPin.value = true
   },
@@ -1014,13 +1146,13 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
 
     <!-- ── Map ──────────────────────────────────────────────────────────── -->
     <div class="flex-1 min-h-0 relative map-print-container">
-      <div v-if="printSettings.legendTitle.value" class="print-map-title">{{ mapName }}</div>
-      <div v-if="printSettings.legendArea.value && effectiveArea" class="print-map-area">{{ effectiveArea }}</div>
+      <div v-if="activePrintArea?.legendTitle ?? true" class="print-map-title">{{ mapName }}</div>
+      <div v-if="(activePrintArea?.legendArea ?? true) && effectiveArea" class="print-map-area">{{ effectiveArea }}</div>
 
       <LMap :zoom="initialZoom" :center="initialCenter" :use-global-leaflet="false" :max-zoom="mapMaxZoom" :zoom-control="false" style="height: 100%; width: 100%" @ready="onMapReady" @click="handleMapClick" />
 
       <!-- Rubber-band selection rectangle -->
-      <div v-if="rubberBand" class="absolute pointer-events-none no-print" :style="{ left: `${rubberBand.x}px`, top: `${rubberBand.y}px`, width: `${rubberBand.w}px`, height: `${rubberBand.h}px`, zIndex: 600, border: '1.5px dashed #06b6d4', background: 'rgba(6,182,212,0.08)', borderRadius: '2px' }" />
+      <div v-if="rubberBand" class="absolute pointer-events-none no-print" :style="{ left: `${rubberBand.x}px`, top: `${rubberBand.y}px`, width: `${rubberBand.w}px`, height: `${rubberBand.h}px`, zIndex: 600, border: '1.5px dashed #0d9488', background: 'rgba(13,148,136,0.08)', borderRadius: '2px' }" />
 
       <svg v-if="drawingPreviewLine" class="absolute inset-0 w-full h-full pointer-events-none no-print" style="z-index: 500; overflow: visible">
         <line :x1="drawingPreviewLine.x1" :y1="drawingPreviewLine.y1" :x2="drawingPreviewLine.x2" :y2="drawingPreviewLine.y2" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="5,4" stroke-linecap="round" />
@@ -1028,7 +1160,33 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
       </svg>
 
       <template v-if="leafletMap && clusterGroup">
-        <PrintAreaDrawer ref="printAreaDrawerRef" :map="leafletMap" :print-bounds="printBounds" :aspect-ratio="printAspectRatio" :snap-enabled="angleSnapEnabled" :grid-cols="Number(printSettings.grid.value.split('x')[0]) || 1" :grid-rows="Number(printSettings.grid.value.split('x')[1]) || 1" :overlay-corner="overlayCorner" :legend-box="legendBox" :legend-x="printSettings.legendX.value" :legend-y="printSettings.legendY.value" :visibility="printAreaVisibility" :selected="isAdjustingPrintArea" @bounds-set="handleBoundsSet" @select="handleSelectPrintArea" @context="openPrintAreaContextMenu" @legend-move="(x, y) => { printSettings.legendX.value = x; printSettings.legendY.value = y }" @legend-scale="(s) => { printSettings.legendScale.value = s }" @legend-reset="() => { history.push('reset legend position'); printSettings.legendX.value = null; printSettings.legendY.value = null }" @drag-start="(label) => history.push(label)" />
+        <PrintAreaDrawer
+          v-for="area in printAreas"
+          :key="area.id"
+          :map="leafletMap"
+          :corners="area.corners"
+          :angle="area.angle"
+          :aspect-ratio="activePrintAreaId === area.id ? printAspectRatio : null"
+          :snap-enabled="angleSnapEnabled"
+          :grid-cols="activePrintAreaId === area.id ? Number(area.grid.split('x')[0]) || 1 : 1"
+          :grid-rows="activePrintAreaId === area.id ? Number(area.grid.split('x')[1]) || 1 : 1"
+          :overlay-corner="activePrintAreaId === area.id ? overlayCorner : undefined"
+          :legend-box="activePrintAreaId === area.id ? legendBox : null"
+          :legend-settings="activePrintAreaId === area.id ? activeLegendSettings : undefined"
+          :legend-x="activePrintAreaId === area.id ? (area.legendX ?? null) : undefined"
+          :legend-y="activePrintAreaId === area.id ? (area.legendY ?? null) : undefined"
+          :legend-corner="activePrintAreaId === area.id ? (area.legendCorner ?? null) : undefined"
+          :visibility="area.hidden ? 'hidden' : activePrintAreaId === area.id ? 'visible' : 'opaque'"
+          :selected="selection.selectedPrintAreaIds.value.has(area.id)"
+          @bounds-set="(info) => handleBoundsSet(area.id, info)"
+          @select="(shiftHeld) => handleSelectPrintArea(area.id, shiftHeld)"
+          @context="openPrintAreaContextMenu"
+          @legend-move="(x, y) => patchPrintArea(area.id, { legendX: x, legendY: y, legendCorner: null })"
+          @legend-scale="(s) => patchPrintArea(area.id, { legendScale: s })"
+          @legend-corner="(c) => patchPrintArea(area.id, { legendX: null, legendY: null, legendCorner: c })"
+          @legend-reset="() => { history.push('reset legend position'); patchPrintArea(area.id, { legendX: null, legendY: null, legendCorner: null }) }"
+          @drag-start="(label) => history.push(label)"
+        />
         <PinMarker v-for="(pin, i) in pins" :key="pin.id" :render-index="i" :pin="pin" :map="leafletMap" :layer="showClusters ? clusterGroup : undefined" :hidden="hiddenPinIds.has(pin.id)" :dot-size="stickyDotSize" :locked="linkedPinIds.has(pin.id)" :drawing="isDrawingRoute" :find-snap="findWaypointSnapForPin" :pin-index="pinNumberedIndex.get(pin.id)" :selected="selection.selectedPinIds.value.has(pin.id) || pinsLinkedToSelectedRoutes.has(pin.id)" :linked-to-selected-route="false" @delete="deletePinWithCleanup" @hide="togglePinVisibility" @drag-start="handlePinDragStart" @drag-move="handlePinDragMove" @move="handlePinMoveOnDrop" @edit="openEditPin" @copy="(coords) => showNotification(`Copied: ${coords}`)" @clip-copy="handleClipCopyPin" @clip-cut="handleClipCutPin" @place-waypoint="(lat, lng, pinId) => addPoint(lat, lng, pinId)" @select="handlePinSelect" @context-locked="handleLockedPinContext" />
         <CaptionMarker v-for="(caption, i) in captions" :key="caption.id" :render-index="i" :caption="caption" :map="leafletMap" :hidden="hiddenCaptionIds.has(caption.id)" :selected="selection.selectedCaptionIds.value.has(caption.id) || editingCaption?.id === caption.id || activeCaptionId === caption.id" :is-dark="isDark" :placeholder="caption.text ? undefined : captionPlaceholder(caption, captions)" @delete="handleDeleteCaption" @hide="toggleCaptionVisibility" @move-start="onCaptionMoveStart" @move="onCaptionMove" @edit="openEditCaption" @clip-copy="handleClipCopyCaption" @clip-cut="handleClipCutCaption" @select="handleSelectCaption" />
         <CaptionRotateHandle v-if="activeCaption && !hiddenCaptionIds.has(activeCaption.id)" :caption="activeCaption" :map="leafletMap" :angle-snap="angleSnapEnabled" @rotate-start="onCaptionRotateStart" @rotate="onCaptionRotate" />
@@ -1036,7 +1194,7 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
         <RouteLayer v-if="routes.length > 0" ref="routeLayerRef" :routes="routes" :hidden-route-ids="hiddenRouteIds" :map="leafletMap" :drawing-route-id="isDrawingRoute ? (drawingRoute?.id ?? null) : null" :drawing-anchor-index="isDrawingRoute ? drawingAnchorIndex : null" :pins="pins" :snap-enabled="routeSnapEnabled" :hidden-pin-ids="hiddenPinIds" :angle-snap-enabled="angleSnapEnabled" :selected-route-ids="selection.selectedRouteIds.value" :selected-waypoint-key="selection.selectedWaypointKey.value" @remove-point="removePoint" @move-point="handleMovePoint" @move-route="handleMoveRoute" @select-route="handleSelectRoute" @select-waypoint="handleSelectWaypoint" @context-route="handleContextRoute" @context-waypoint="onContextWaypoint" />
       </template>
 
-      <PrintLegend :title="printSettings.legendTitle.value ? mapName : ''" :area="printSettings.legendArea.value ? effectiveArea : ''" :pins="pins" :routes="routes" :blank-labels="printSettings.legendBlankLabels.value" />
+      <PrintLegend :title="(activePrintArea?.legendTitle ?? true) ? mapName : ''" :area="(activePrintArea?.legendArea ?? true) ? effectiveArea : ''" :pins="pins" :routes="routes" :blank-labels="activePrintArea?.legendBlankLabels ?? false" />
 
       <!-- Placing indicator -->
       <Transition name="mf-fade">
@@ -1055,12 +1213,40 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
 
       <!-- Print area adjusting indicator -->
       <Transition name="mf-fade">
-        <PrintPill v-if="isAdjustingPrintArea && printBounds" :snap-enabled="angleSnapEnabled" :is-downloading-pdf="isDownloadingPdf" @update:snap-enabled="angleSnapEnabled = $event" @fit="handleFitPrintAreaToElements" @download="openPreview" @done="isAdjustingPrintArea = false" />
+        <PrintPill
+          v-if="activePrintArea && printBounds"
+          :area-name="activePrintArea.title || printAreaPlaceholder(activePrintArea.id, printAreas, mapName)"
+          :snap-enabled="angleSnapEnabled"
+          :orientation="activePrintArea.orientation"
+          :is-hidden="!!activePrintArea.hidden"
+          :is-downloading-pdf="isDownloadingPdf"
+          @update:snap-enabled="angleSnapEnabled = $event"
+          @update:orientation="
+            (o) => {
+              // Pin the current corner so it survives the flip (overlayCorner recomputes after corners change).
+              const pinnedCorner = activePrintArea!.legendCorner ?? overlayCorner
+              patchPrintArea(activePrintArea!.id, { orientation: o, legendX: null, legendY: null, legendCorner: pinnedCorner })
+              flipPrintAreaOrientation()
+              printSettings.stickyOrientation.value = o
+            }
+          "
+          @fit="handleFitPrintAreaToElements"
+          @edit="handlePrintAreaEdit(activePrintArea.id)"
+          @hide="patchPrintArea(activePrintArea.id, { hidden: !activePrintArea.hidden })"
+          @delete="
+            () => {
+              history.push('delete print area')
+              deletePrintArea(activePrintArea!.id)
+            }
+          "
+          @download="openPreview"
+          @done="deselectPrintArea"
+        />
       </Transition>
 
-      <!-- Selection pill: pins / routes / captions -->
+      <!-- Selection pill: pins / routes / captions / print areas -->
       <Transition name="mf-fade">
-        <SelectionPill v-if="(selectedPins.length > 0 || selectedRoutes.length > 0 || selectedCaptions.length > 0) && !isPlacingPin && !isPlacingCaption && !isDrawingRoute && !isAdjustingPrintArea" :selected-pins="selectedPins" :selected-routes="selectedRoutes" :selected-captions="selectedCaptions" :all-pins="pins" :all-routes="routes" :all-captions="captions" :all-selected-hidden="allSelectedHidden" :single-pin-linked="selectedPins.length === 1 && linkedPinIds.has(selectedPins[0]!.id)" :pin-numbers="pinNumberedIndex" @clear="selection.clearSelection()" @edit="handleSelectionEdit" @unlink="handleUnlinkSelectedPin" @copy="handleSelectionCopy" @cut="handleSelectionCut" @delete="handleSelectionDelete" @toggle-visibility="handleSelectionToggleVisibility" />
+        <SelectionPill v-if="(selectedPins.length > 0 || selectedRoutes.length > 0 || selectedCaptions.length > 0 || selectedPrintAreas.length > 0) && !isPlacingPin && !isPlacingCaption && !isDrawingRoute && !isAdjustingPrintArea" :selected-pins="selectedPins" :selected-routes="selectedRoutes" :selected-captions="selectedCaptions" :selected-print-areas="selectedPrintAreas" :all-pins="pins" :all-routes="routes" :all-captions="captions" :all-print-areas="printAreas" :map-name="mapName" :all-selected-hidden="allSelectedHidden" :single-pin-linked="selectedPins.length === 1 && linkedPinIds.has(selectedPins[0]!.id)" :pin-numbers="pinNumberedIndex" @clear="selection.clearSelection()" @edit="handleSelectionEdit" @unlink="handleUnlinkSelectedPin" @copy="handleSelectionCopy" @cut="handleSelectionCut" @delete="handleSelectionDelete" @toggle-visibility="handleSelectionToggleVisibility" />
       </Transition>
 
       <!-- Waypoint pill -->
@@ -1094,7 +1280,7 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
       <!-- Maps panel -->
       <Transition name="mf-panel">
         <div v-if="showMapsPanel" class="absolute left-4 top-4 z-1100 w-80 max-w-[calc(100vw-80px)] bg-white dark:bg-zinc-900 rounded-xl shadow-xl border border-gray-200 dark:border-zinc-800 overflow-y-auto flex flex-col max-h-[80vh] no-print">
-          <MapsPanel :maps="maps" :active-id="activeId" @switch="doSwitchMap" @create="doCreateMap" @duplicate="doDuplicateMap" @delete="doDeleteMap" @export="exportMapData" @copy-link="(o) => copyShareLink(o.layers)" @import="mapImportFileRef?.click()" @close="showMapsPanel = false" />
+          <MapsPanel :maps="maps" :active-id="activeId" @switch="doSwitchMap" @edit="editingMapId = $event" @create="doCreateMap" @duplicate="doDuplicateMap" @delete="doDeleteMap" @export="exportMapData" @copy-link="(o) => copyShareLink(o.layers)" @import="mapImportFileRef?.click()" @close="showMapsPanel = false" @reorder="reorderMaps" />
         </div>
       </Transition>
 
@@ -1104,7 +1290,7 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
       <!-- Map Style panel -->
       <Transition name="mf-panel">
         <div v-if="activeFab === 'style'" :class="panelClass">
-          <SettingsPanel v-model:map-name="mapName" v-model:map-area="mapArea" v-model:show-coords="showCoords" v-model:show-scale="showScale" v-model:show-zoom="showZoom" v-model:map-units="mapUnits" v-model:route-snap="routeSnapEnabled" v-model:angle-snap="angleSnapEnabled" :map-style="mapStyle" :show-labels="showLabels" :is-dark="isDark" :preview-tile="previewTile" :is-auto-area="isAutoArea" :auto-area="autoArea" @style-change="mapStyle = $event" @labels-change="showLabels = $event" />
+          <SettingsPanel v-model:show-coords="showCoords" v-model:show-scale="showScale" v-model:show-zoom="showZoom" v-model:map-units="mapUnits" v-model:route-snap="routeSnapEnabled" v-model:angle-snap="angleSnapEnabled" :map-style="mapStyle" :show-labels="showLabels" :is-dark="isDark" :preview-tile="previewTile" @style-change="mapStyle = $event" @labels-change="showLabels = $event" />
         </div>
       </Transition>
 
@@ -1112,36 +1298,43 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
       <Transition name="mf-panel">
         <div v-if="activeFab === 'export'" :class="panelClass">
           <PrintPanel
-            v-model:print-paper="printPaper"
-            v-model:print-orientation="printOrientation"
-            v-model:print-grid="printSettings.grid.value"
-            v-model:include-legend="printSettings.legend.value"
-            v-model:legend-separate-page="printSettings.legendSeparatePage.value"
-            v-model:legend-title="printSettings.legendTitle.value"
-            v-model:legend-area="printSettings.legendArea.value"
-            v-model:legend-blank-labels="printSettings.legendBlankLabels.value"
-            v-model:include-compass="printSettings.compass.value"
-            v-model:include-scale="printSettings.scale.value"
             v-model:enhance-contrast="printSettings.contrast.value"
             v-model:export-quality="printSettings.exportQuality.value"
-            v-model:print-area-visibility="printAreaVisibility"
-            :print-bounds="printBounds"
-            :print-aspect-ratio="printAspectRatio"
+            :print-areas="printAreas"
+            :active-print-area-id="activePrintAreaId"
+            :selected-print-area-ids="[...selection.selectedPrintAreaIds.value]"
+            :all-print-areas-hidden="printAreas.length > 0 && printAreas.every((a) => a.hidden)"
             :is-downloading-pdf="isDownloadingPdf"
             :map-style="mapStyle"
-            :print-history="printHistory"
-            @select-preset="handleSelectPreset"
-            @start-adjusting="
+            :map-name="mapName"
+            :map-subtitle="effectiveArea"
+            @add-area="handleAddPrintArea"
+            @select-area="(id, additive) => handleSelectPrintArea(id, additive)"
+            @edit-area="handlePrintAreaEdit"
+            @toggle-visibility="(id) => patchPrintArea(id, { hidden: !printAreas.find((a) => a.id === id)?.hidden })"
+            @toggle-all-visibility="
               () => {
-                isAdjustingPrintArea = true
-                activeFab = null
+                const hide = !printAreas.every((a) => a.hidden)
+                updatePrintAreas(printAreas.map((a) => ({ ...a, hidden: hide })))
               }
             "
-            @resnap-print-area="handleResnapPrintArea"
-            @fit-to-print-area="fitToPrintArea"
-            @clear-print-bounds="clearPrintBounds"
-            @download-pdf="openPreview"
-            @restore-from-history="restoreFromHistory"
+            @fit-to-view="fitToPrintArea"
+            @copy-area="handleClipCopyPrintArea"
+            @cut-area="handleClipCutPrintArea"
+            @delete-area="
+              (id) => {
+                history.push('delete print area')
+                deletePrintArea(id)
+              }
+            "
+            @clear-all="
+              () => {
+                history.push('delete all print areas')
+                updatePrintAreas([])
+              }
+            "
+            @reorder="reorderPrintAreas"
+            @download-pdf="handlePrintAreaDownload"
           />
         </div>
       </Transition>
@@ -1306,7 +1499,6 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
             >
               <Plus :size="13" />
             </button>
-            <div class="h-6 flex items-center justify-center border-b border-gray-200/60 dark:border-zinc-700/60 text-xs font-mono tabular-nums text-gray-500 dark:text-zinc-400 select-none">{{ previewView.zoom }}</div>
             <button
               :disabled="atMinZoom"
               :class="['h-7 flex items-center justify-center transition-colors select-none', atMinZoom ? 'text-gray-300 dark:text-zinc-600 cursor-not-allowed' : 'text-gray-500 dark:text-zinc-400 hover:bg-gray-100/80 dark:hover:bg-zinc-800/80 cursor-pointer']"
@@ -1346,7 +1538,7 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
       </Transition>
 
       <!-- FAB stack -->
-      <MapFabStack :active-fab="activeFab" :focus-mode="focusMode" :pin-count="pins.length - hiddenPinIds.size" :route-count="routes.length - hiddenRouteIds.size" :caption-count="captions.length - hiddenCaptionIds.size" :all-pins-hidden="allPinsHidden" :all-routes-hidden="allRoutesHidden" :all-captions-hidden="allCaptionsHidden" :has-print-area="!!printBounds" @toggle="toggleFab" @toggle-focus="toggleFocusMode" />
+      <MapFabStack :active-fab="activeFab" :focus-mode="focusMode" :pin-count="pins.length - hiddenPinIds.size" :route-count="routes.length - hiddenRouteIds.size" :caption-count="captions.length - hiddenCaptionIds.size" :all-pins-hidden="allPinsHidden" :all-routes-hidden="allRoutesHidden" :all-captions-hidden="allCaptionsHidden" :print-area-count="printAreas.filter((a) => !a.hidden).length" @toggle="toggleFab" @toggle-focus="toggleFocusMode" />
 
       <!-- Bottom-right nav helpers (locate + fit-all), above the attribution -->
       <Transition name="mf-focus-right">
@@ -1391,11 +1583,44 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
       <CaptionForm ref="captionFormRef" :show="!!editingCaption" :editing-caption="editingCaption" :text-placeholder="editingCaptionPlaceholder" @save="handleCaptionSave" @delete="handleCaptionDelete" @close="closeCaptionSheet" />
     </Transition>
 
+    <!-- ── Print Area form sheet ─────────────────────────────────────────── -->
+    <Transition name="mf-fade">
+      <div
+        v-if="showPrintAreaForm"
+        class="fixed inset-0 z-1700 bg-black/30 no-print"
+        @click="showPrintAreaForm = false; editingPrintArea = null"
+      />
+    </Transition>
+    <Transition name="mf-sheet">
+      <PrintAreaForm
+        :show="showPrintAreaForm"
+        :editing-area="editingPrintArea"
+        :name-placeholder="editingPrintAreaPlaceholder"
+        :map-title="mapName"
+        :map-subtitle="effectiveArea"
+        @save="handlePrintAreaSave"
+        @delete="handlePrintAreaDelete"
+        @close="showPrintAreaForm = false; editingPrintArea = null"
+      />
+    </Transition>
+
+    <!-- ── Map form sheet ──────────────────────────────────────────────────── -->
+    <Transition name="mf-fade">
+      <div v-if="editingMapId" class="fixed inset-0 z-1700 bg-black/30 no-print" @click="editingMapId = null" />
+    </Transition>
+    <Transition name="mf-sheet">
+      <MapForm :show="editingMapId !== null" :editing-map="editingMapData" :auto-area="autoArea" :can-delete="maps.length > 1" @save="handleMapFormSave" @delete="handleMapFormDelete" @close="editingMapId = null" />
+    </Transition>
+
     <!-- ── Welcome modal ──────────────────────────────────────────────────── -->
     <WelcomeModal :show="showInfo" @close="closeInfo" />
 
+    <!-- Export overlay — blocks all UI interaction during PDF export. The notification pill
+         (z-2000) stays above this so the cancel button remains clickable. -->
+    <div v-if="isDownloadingPdf" class="fixed inset-0 z-1500 cursor-wait" />
+
     <!-- ── Toasts ─────────────────────────────────────────────────────────── -->
-    <AppToasts :notification="notification" :address-resolve-prog="addressResolveProg" />
+    <AppToasts :notification="notification" :address-resolve-prog="addressResolveProg" :on-cancel="isDownloadingPdf ? cancelExport : null" />
 
     <!-- Hidden file input: map import (MapFolio JSON or GeoJSON) -->
     <input ref="mapImportFileRef" type="file" accept=".json,.geojson" class="hidden" @change="handleMapImportFile" />

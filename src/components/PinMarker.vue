@@ -1,8 +1,24 @@
+<script lang="ts">
+// Module-level: shared across all PinMarker instances so pins shown in the same
+// reactive flush get sequential indices (0, 1, 2, ...) regardless of their global position.
+let _showBatchCount = 0
+let _showBatchRafId: ReturnType<typeof requestAnimationFrame> | null = null
+
+function nextShowIndex(): number {
+  if (_showBatchRafId !== null) cancelAnimationFrame(_showBatchRafId)
+  _showBatchRafId = requestAnimationFrame(() => {
+    _showBatchCount = 0
+    _showBatchRafId = null
+  })
+  return _showBatchCount++
+}
+</script>
+
 <script setup lang="ts">
 import L from 'leaflet'
 
 import type { Pin, PinDotShape, PinDotSize } from '@/types'
-import { isDarkColor } from '@/utils'
+import { isAdditiveEvent, isDarkColor } from '@/utils'
 
 // Leaflet's internal Draggable, reached to re-anchor the drag origin on snap enter/exit.
 // Not exposed by @types/leaflet, but stable across the snap re-anchoring path used below.
@@ -26,18 +42,18 @@ const SCISSORS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height=
 const BUBBLE_EMOJI_SIZE: Record<PinDotSize, number> = { xs: 14, s: 16, m: 20, l: 24, xl: 30 }
 const BUBBLE_GEO: Record<PinDotSize, { iconH: number; anchorY: number }> = {
   xs: { iconH: 33, anchorY: 29 },
-  s:  { iconH: 35, anchorY: 31 },
-  m:  { iconH: 39, anchorY: 35 },
-  l:  { iconH: 43, anchorY: 39 },
-  xl: { iconH: 49, anchorY: 45 },
+  s: { iconH: 35, anchorY: 31 },
+  m: { iconH: 39, anchorY: 35 },
+  l: { iconH: 43, anchorY: 39 },
+  xl: { iconH: 49, anchorY: 45 }
 }
 // Clear (transparent) bubble: no tip, anchor at bubble bottom (emojiSize+12 / emojiSize+8).
 const BUBBLE_GEO_CLEAR: Record<PinDotSize, { iconH: number; anchorY: number }> = {
   xs: { iconH: 26, anchorY: 22 },
-  s:  { iconH: 28, anchorY: 24 },
-  m:  { iconH: 32, anchorY: 28 },
-  l:  { iconH: 36, anchorY: 32 },
-  xl: { iconH: 42, anchorY: 38 },
+  s: { iconH: 28, anchorY: 24 },
+  m: { iconH: 32, anchorY: 28 },
+  l: { iconH: 36, anchorY: 32 },
+  xl: { iconH: 42, anchorY: 38 }
 }
 
 // Dot-only geometry. anchorY extended +6px above dot, iconH +16px total
@@ -119,11 +135,11 @@ function buildIcon() {
 
   if (hasEmoji) {
     const isClear = props.pin.color === 'transparent'
-    const bubbleSize: PinDotSize = props.pin.dotSize ?? 'm'
+    const bubbleSize: PinDotSize = (props.pin.dotSize != null && props.pin.dotSize in BUBBLE_GEO ? props.pin.dotSize : undefined) ?? 'm'
     const { iconH, anchorY } = (isClear ? BUBBLE_GEO_CLEAR : BUBBLE_GEO)[bubbleSize]
     const emojiPx = BUBBLE_EMOJI_SIZE[bubbleSize]
     const bubbleCls = isClear ? 'pin-bubble pin-bubble--clear' : 'pin-bubble'
-    const emojiStyle = `font-size:${emojiPx}px;${isClear ? 'filter:drop-shadow(0 1px 3px rgba(0,0,0,0.4))' : ''}`
+    const emojiStyle = `font-size:${emojiPx}px;width:${emojiPx}px;height:${emojiPx}px;${isClear ? 'filter:drop-shadow(0 1px 3px rgba(0,0,0,0.4))' : ''}`
     const bubbleStyle = isClear ? '' : `background:${props.pin.color}`
     const tip = isClear ? '' : `<div class="pin-bubble-tip" style="border-top-color:${props.pin.color}"></div>`
     const wrapFilter = isClear ? '' : 'filter:drop-shadow(0 1px 4px rgba(0,0,0,0.3))'
@@ -136,7 +152,7 @@ function buildIcon() {
     })
   }
 
-  const size = props.pin.dotSize ?? props.dotSize ?? 'm'
+  const size: PinDotSize = (props.pin.dotSize != null && props.pin.dotSize in DOT_GEO ? props.pin.dotSize : undefined) ?? props.dotSize ?? 'm'
   const dotShape: PinDotShape = props.pin.dotShape ?? 'circle'
   const { iconH, anchorY } = DOT_GEO[size]
   const isTransparentDot = props.pin.color === 'transparent'
@@ -295,7 +311,7 @@ function createMarker() {
     if (props.drawing) {
       onDrawingClick()
     } else if (!props.pending) {
-      emit('select', props.pin, e.originalEvent.metaKey || e.originalEvent.ctrlKey)
+      emit('select', props.pin, isAdditiveEvent(e.originalEvent))
     }
   })
 
@@ -437,8 +453,26 @@ watch(
   () => props.hidden,
   (hide) => {
     if (!marker) return
-    if (hide) target().removeLayer(marker)
-    else marker.addTo(target())
+    if (hide) {
+      target().removeLayer(marker)
+    } else {
+      // Rebuild stored icon without animation (hasAnimated is already true → no animStyle),
+      // then manually apply a fresh staggered animation. nextShowIndex() returns 0, 1, 2, ...
+      // across all pins shown in the same Vue flush, so 4 selected pins shown together always
+      // animate as 0→1→2→3 regardless of their position in the global pins array.
+      marker.setIcon(buildIcon())
+      marker.addTo(target())
+      const showIndex = nextShowIndex()
+      const icon = marker.getElement()
+      if (icon) {
+        const inner = icon.querySelector<HTMLElement>('.pin-marker')
+        if (inner) {
+          inner.style.animation = `pin-in 200ms ease-out ${Math.min(showIndex * 25, 600)}ms both`
+          inner.classList.toggle('pin-marker--selected', !!props.selected)
+          inner.classList.toggle('pin-marker--route-linked', !!props.linkedToSelectedRoute)
+        }
+      }
+    }
   }
 )
 

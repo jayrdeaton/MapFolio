@@ -90,7 +90,7 @@ function save() {
   emit('save', updated, resolvedEmoji, newPinColor.value, newPinDotSize.value, newPinDotShape.value)
 }
 
-const inputClass = 'w-full py-1.5 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20'
+const inputClass = 'w-full py-1.5 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20'
 const sectionLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibold text-xs uppercase tracking-wide'
 const btnBase = 'px-3 py-2 rounded text-sm font-medium transition-colors flex items-center gap-1.5 cursor-pointer'
 
@@ -132,30 +132,26 @@ defineExpose({ save })
 
           <!-- Mode toggle -->
           <div class="flex gap-1.5 mb-2">
-            <button :class="['flex-1 py-1.5 rounded border text-sm font-medium transition-colors cursor-pointer', activeEmoji ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400' : 'border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800']" @click="switchToEmoji">
-              Bubble
-            </button>
-            <button :class="['flex-1 py-1.5 rounded border text-sm font-medium transition-colors cursor-pointer', !activeEmoji ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400' : 'border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800']" @click="switchToDot">
-              Dot
-            </button>
+            <button :class="['flex-1 py-1.5 rounded border text-sm font-medium transition-colors cursor-pointer', activeEmoji ? 'border-teal-600 bg-teal-50 dark:bg-teal-950/30 text-teal-600 dark:text-teal-400' : 'border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800']" @click="switchToEmoji">Bubble</button>
+            <button :class="['flex-1 py-1.5 rounded border text-sm font-medium transition-colors cursor-pointer', !activeEmoji ? 'border-teal-600 bg-teal-50 dark:bg-teal-950/30 text-teal-600 dark:text-teal-400' : 'border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800']" @click="switchToDot">Dot</button>
           </div>
 
           <!-- Emoji bubble options -->
           <template v-if="activeEmoji !== undefined && activeEmoji !== ''">
             <div class="flex flex-wrap gap-0.5 mb-2">
-              <button :class="['w-8 h-8 text-xs font-semibold rounded cursor-pointer flex items-center justify-center transition-all shrink-0', showCustomInput || customEmoji.trim() ? 'ring-2 ring-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400' : 'text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-800']" title="Custom emoji" @click="showCustomInput = !showCustomInput">Aa</button>
+              <button :class="['w-8 h-8 text-xs font-semibold rounded cursor-pointer flex items-center justify-center transition-all shrink-0', showCustomInput || customEmoji.trim() ? 'ring-2 ring-teal-600 bg-teal-50 dark:bg-teal-950/30 text-teal-600 dark:text-teal-400' : 'text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-800']" title="Custom emoji" @click="showCustomInput = !showCustomInput">Aa</button>
               <template v-if="showCustomInput">
-                <input v-model="customEmoji" type="text" placeholder="Any text or emoji…" class="flex-1 min-w-0 h-8 ml-1 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20" autofocus @keydown.enter="showCustomInput = false" />
+                <input v-model="customEmoji" type="text" placeholder="Any text or emoji…" class="flex-1 min-w-0 h-8 ml-1 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20" autofocus @keydown.enter="showCustomInput = false" />
               </template>
               <template v-else>
-                <button v-for="emoji in showAllEmojis ? DEFAULT_EMOJIS : DEFAULT_EMOJIS.slice(0, 10)" :key="emoji" :class="['w-8 h-8 text-base rounded cursor-pointer transition-all flex items-center justify-center', newPinEmoji === emoji && !customEmoji.trim() ? 'ring-2 ring-cyan-500 bg-cyan-50 dark:bg-cyan-950/30' : 'hover:bg-gray-100 dark:hover:bg-zinc-800']" @click="selectEmoji(emoji)">
+                <button v-for="emoji in showAllEmojis ? DEFAULT_EMOJIS : DEFAULT_EMOJIS.slice(0, 10)" :key="emoji" :class="['w-8 h-8 text-base rounded cursor-pointer transition-all flex items-center justify-center', newPinEmoji === emoji && !customEmoji.trim() ? 'ring-2 ring-teal-600 bg-teal-50 dark:bg-teal-950/30' : 'hover:bg-gray-100 dark:hover:bg-zinc-800']" @click="selectEmoji(emoji)">
                   {{ emoji }}
                 </button>
                 <button class="w-8 h-8 text-xs rounded cursor-pointer flex items-center justify-center font-medium text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-800" @click="showAllEmojis = !showAllEmojis">{{ showAllEmojis ? '−' : '···' }}</button>
               </template>
             </div>
             <div class="flex gap-1.5 mb-2">
-              <button v-for="s in ['xs', 's', 'm', 'l', 'xl']" :key="s" :class="['flex-1 py-2 rounded border text-xs font-medium transition-colors cursor-pointer', newPinDotSize === s ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400' : 'border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800']" @click="newPinDotSize = s as PinDotSize">{{ s.toUpperCase() }}</button>
+              <button v-for="s in ['xs', 's', 'm', 'l', 'xl']" :key="s" :class="['flex-1 py-2 rounded border text-xs font-medium transition-colors cursor-pointer', newPinDotSize === s ? 'border-teal-600 bg-teal-50 dark:bg-teal-950/30 text-teal-600 dark:text-teal-400' : 'border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800']" @click="newPinDotSize = s as PinDotSize">{{ s.toUpperCase() }}</button>
             </div>
             <ColorPicker v-model="newPinColor" />
           </template>
@@ -170,7 +166,7 @@ defineExpose({ save })
 
         <div class="flex gap-2">
           <button :class="`${btnBase} justify-center px-4 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-950/50`" @click="emit('delete')"><Trash2 :size="15" /> Delete</button>
-          <button :class="`${btnBase} flex-1 justify-center bg-cyan-500 text-white hover:bg-cyan-600`" @click="save">Save</button>
+          <button :class="`${btnBase} flex-1 justify-center bg-teal-600 text-white hover:bg-teal-700`" @click="save">Save</button>
         </div>
       </div>
     </div>

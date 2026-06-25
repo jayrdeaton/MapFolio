@@ -28,12 +28,12 @@ useElementLongPress(rowRef, openMenu)
 </script>
 
 <template>
-  <div ref="rowRef" :class="['group flex items-center gap-2 px-4 py-1.5 transition-all', selected ? 'bg-cyan-50 dark:bg-cyan-900/20' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/60', hidden ? 'opacity-40' : '']" @mousedown="($event.shiftKey || $event.metaKey || $event.ctrlKey) && $event.preventDefault()" @contextmenu.prevent="openMenu($event.clientX, $event.clientY)">
+  <div ref="rowRef" :class="['group flex items-center gap-2 px-4 py-1.5 transition-all', selected ? 'bg-teal-50 dark:bg-teal-900/20' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/60', hidden ? 'opacity-40' : '']" @mousedown="($event.shiftKey || $event.metaKey || $event.ctrlKey) && $event.preventDefault()" @contextmenu.prevent="openMenu($event.clientX, $event.clientY)">
     <button class="pin-drag-handle text-base leading-none shrink-0 cursor-grab active:cursor-grabbing hover:scale-125 transition-transform" :title="pin.name ? `Select ${pin.name}` : 'Select pin'" @click="emit('select', pin, $event.shiftKey, $event.metaKey || $event.ctrlKey)">
       <PinPreview :emoji="pin.emoji" :color="pin.color" :dot-size="pin.dotSize" :dot-shape="pin.dotShape" :show-number="pin.showNumber" :number="number" preview />
     </button>
     <div class="flex-1 min-w-0 cursor-pointer" :title="pin.name ? `Select ${pin.name}` : 'Select pin'" @click="emit('select', pin, $event.shiftKey, $event.metaKey || $event.ctrlKey)">
-      <div class="text-sm font-medium truncate transition-colors" :class="pin.name ? 'text-gray-800 dark:text-zinc-200 group-hover:text-cyan-500 dark:group-hover:text-cyan-400' : 'text-gray-400 dark:text-zinc-500 italic'">{{ pin.name || placeholder || 'Unnamed' }}</div>
+      <div class="text-sm font-medium truncate transition-colors" :class="pin.name ? 'text-gray-800 dark:text-zinc-200 group-hover:text-teal-600 dark:group-hover:text-teal-400' : 'text-gray-400 dark:text-zinc-500 italic'">{{ pin.name || placeholder || 'Unnamed' }}</div>
       <div v-if="pin.description" class="text-xs text-gray-400 dark:text-zinc-500 truncate">{{ pin.description }}</div>
       <div class="text-xs text-gray-400 dark:text-zinc-500 font-mono tabular-nums">{{ pin.lat.toFixed(4) }}, {{ pin.lng.toFixed(4) }}</div>
       <div v-if="pin.address" class="text-xs text-gray-400 dark:text-zinc-500 truncate">{{ pin.address }}</div>

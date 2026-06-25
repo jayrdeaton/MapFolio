@@ -28,6 +28,10 @@ export function useKeyboardShortcuts(options: {
   fitSelection: () => void
   activatePrintArea: () => void
   clearPrintBounds: () => void
+  deleteActivePrintArea: () => void
+  toggleActivePrintAreaVisibility: () => void
+  editActivePrintArea: () => void
+  fitActivePrintArea: () => void
   startPlacingPin: () => void
   startNewRoute: () => void
   startPlacingCaption: () => void
@@ -80,11 +84,15 @@ export function useKeyboardShortcuts(options: {
         options.stopDrawing()
         return
       }
+      if (options.isAdjustingPrintArea.value) {
+        options.clearPrintBounds()
+        return
+      }
       return
     }
     const target = e.target as HTMLElement
     const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
-    // Delete / Backspace removes the current selection or clears the print area.
+    // Delete / Backspace removes the current selection or the active print area.
     if (!inInput && (e.key === 'Delete' || e.key === 'Backspace')) {
       if (options.hasSelection.value) {
         e.preventDefault()
@@ -93,24 +101,45 @@ export function useKeyboardShortcuts(options: {
       }
       if (options.isAdjustingPrintArea.value) {
         e.preventDefault()
-        options.clearPrintBounds()
+        options.deleteActivePrintArea()
         return
       }
     }
-    if (!inInput && !e.metaKey && !e.ctrlKey && e.key === 'h' && options.hasSelection.value) {
-      e.preventDefault()
-      options.toggleSelectionVisibility()
-      return
+    if (!inInput && !e.metaKey && !e.ctrlKey && e.key === 'h') {
+      if (options.hasSelection.value) {
+        e.preventDefault()
+        options.toggleSelectionVisibility()
+        return
+      }
+      if (options.isAdjustingPrintArea.value) {
+        e.preventDefault()
+        options.toggleActivePrintAreaVisibility()
+        return
+      }
     }
-    if (!inInput && !e.metaKey && !e.ctrlKey && e.key === 'e' && options.hasSelection.value) {
-      e.preventDefault()
-      options.editSelection()
-      return
+    if (!inInput && !e.metaKey && !e.ctrlKey && e.key === 'e') {
+      if (options.hasSelection.value) {
+        e.preventDefault()
+        options.editSelection()
+        return
+      }
+      if (options.isAdjustingPrintArea.value) {
+        e.preventDefault()
+        options.editActivePrintArea()
+        return
+      }
     }
-    if (!inInput && !e.metaKey && !e.ctrlKey && e.key === 'f' && options.hasSelection.value) {
-      e.preventDefault()
-      options.fitSelection()
-      return
+    if (!inInput && !e.metaKey && !e.ctrlKey && e.key === 'f') {
+      if (options.hasSelection.value) {
+        e.preventDefault()
+        options.fitSelection()
+        return
+      }
+      if (options.isAdjustingPrintArea.value) {
+        e.preventDefault()
+        options.fitActivePrintArea()
+        return
+      }
     }
     if (!inInput && !e.metaKey && !e.ctrlKey && e.key === 'a') {
       e.preventDefault()

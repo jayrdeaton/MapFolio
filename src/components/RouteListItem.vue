@@ -34,7 +34,7 @@ useElementLongPress(rowRef, openMenu)
 </script>
 
 <template>
-  <div ref="rowRef" :class="['group flex items-center gap-2 px-4 py-1.5 transition-all', selected ? 'bg-cyan-50 dark:bg-cyan-900/20' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/60', hidden ? 'opacity-40' : '']" @mousedown="($event.shiftKey || $event.metaKey || $event.ctrlKey) && $event.preventDefault()" @contextmenu.prevent="openMenu($event.clientX, $event.clientY)">
+  <div ref="rowRef" :class="['group flex items-center gap-2 px-4 py-1.5 transition-all', selected ? 'bg-teal-50 dark:bg-teal-900/20' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/60', hidden ? 'opacity-40' : '']" @mousedown="($event.shiftKey || $event.metaKey || $event.ctrlKey) && $event.preventDefault()" @contextmenu.prevent="openMenu($event.clientX, $event.clientY)">
     <!-- Style preview / drag handle -->
     <div class="route-drag-handle shrink-0 cursor-grab active:cursor-grabbing" title="Drag to reorder">
       <RoutePreview :color="route.color" :line-style="route.lineStyle ?? 'solid'" :waypoint-style="route.waypointStyle ?? 'circle'" :waypoint-size="route.waypointSize ?? 'm'" :waypoint-show-number="route.waypointShowNumber" preview />
@@ -42,7 +42,7 @@ useElementLongPress(rowRef, openMenu)
 
     <!-- Name + distance -->
     <div class="flex-1 min-w-0 cursor-pointer" :title="`Select ${route.name || 'route'}`" @click="emit('select', route, $event.shiftKey, $event.metaKey || $event.ctrlKey)">
-      <div class="text-sm font-medium truncate transition-colors" :class="route.name ? 'text-gray-800 dark:text-zinc-200 group-hover:text-cyan-500 dark:group-hover:text-cyan-400' : 'text-gray-400 dark:text-zinc-500 italic'">{{ route.name || placeholder || 'Unnamed route' }}</div>
+      <div class="text-sm font-medium truncate transition-colors" :class="route.name ? 'text-gray-800 dark:text-zinc-200 group-hover:text-teal-600 dark:group-hover:text-teal-400' : 'text-gray-400 dark:text-zinc-500 italic'">{{ route.name || placeholder || 'Unnamed route' }}</div>
       <div class="text-xs text-gray-400 dark:text-zinc-500">
         {{ distLabel }}<span v-if="route.points.length > 0"> · {{ route.points.length }} pts</span>
       </div>

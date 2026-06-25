@@ -2,6 +2,7 @@
 import L from 'leaflet'
 
 import type { Pin, Route, RouteWaypointSize, RouteWaypointStyle } from '@/types'
+import { isAdditiveEvent } from '@/utils'
 
 const WP_SIZE: Record<RouteWaypointSize, { r: number; sqHalf: number; fontSize: number; hitR: number }> = {
   xs: { r: 4, sqHalf: 4, fontSize: 5, hitR: 8 },
@@ -256,7 +257,7 @@ function onLineClick(e: MouseEvent, routeId: number) {
   }
   pendingTapLine = null
   if (props.drawingRouteId !== null) return
-  emit('select-route', routeId, e.metaKey || e.ctrlKey)
+  emit('select-route', routeId, isAdditiveEvent(e))
 }
 
 function onLineContextMenu(e: MouseEvent, routeId: number) {
@@ -372,7 +373,7 @@ function onPointerUp(e: PointerEvent) {
     } else {
       // Tap on line — select route and suppress native click
       pendingTapLine = dragState.value.routeId
-      emit('select-route', dragState.value.routeId, e.metaKey || e.ctrlKey)
+      emit('select-route', dragState.value.routeId, isAdditiveEvent(e))
     }
   }
   cleanupDrag()
@@ -463,7 +464,7 @@ onUnmounted(() => {
           <feMorphology in="SourceAlpha" operator="dilate" radius="4" result="outer" />
           <feMorphology in="SourceAlpha" operator="dilate" radius="2" result="inner" />
           <feComposite in="outer" in2="inner" operator="out" result="ring" />
-          <feFlood flood-color="#06b6d4" flood-opacity="0.6" result="color" />
+          <feFlood flood-color="#0d9488" flood-opacity="0.6" result="color" />
           <feComposite in="color" in2="ring" operator="in" result="coloredRing" />
           <feMerge>
             <feMergeNode in="coloredRing" />
@@ -474,7 +475,7 @@ onUnmounted(() => {
           <feMorphology in="SourceAlpha" operator="dilate" radius="5" result="outer" />
           <feMorphology in="SourceAlpha" operator="dilate" radius="2" result="inner" />
           <feComposite in="outer" in2="inner" operator="out" result="ring" />
-          <feFlood flood-color="#06b6d4" result="color" />
+          <feFlood flood-color="#0d9488" result="color" />
           <feComposite in="color" in2="ring" operator="in" result="coloredRing" />
           <feMerge>
             <feMergeNode in="coloredRing" />
@@ -548,7 +549,7 @@ onUnmounted(() => {
               .map(([x, y]) => `${x},${y}`)
               .join(' ')
           "
-          stroke="#06b6d4"
+          stroke="#0d9488"
           stroke-width="10"
           fill="none"
           stroke-linecap="round"
@@ -589,7 +590,7 @@ onUnmounted(() => {
           :data-route-id="route.id"
           :data-wp-idx="i"
           :style="
-            drawingRouteId === route.id || wpStyle(route) !== 'none' || selectedRouteIds?.has(route.id) || selectedWaypointKey?.routeId === route.id || route.points[i]?.pinId !== undefined
+            drawingRouteId === route.id || wpStyle(route) !== 'none' || selectedRouteIds?.has(route.id) || selectedWaypointKey?.routeId === route.id || route.points[i]?.pinId !== undefined || wpStyle(route) === 'none'
               ? {
                   pointerEvents: 'auto',
                   touchAction: 'none',
@@ -601,7 +602,7 @@ onUnmounted(() => {
           @click.stop="onWaypointClick($event, route.id, i)"
           @contextmenu.prevent.stop="onWaypointContextMenu($event, route.id, i)"
         >
-          <template v-if="drawingRouteId === route.id || wpStyle(route) !== 'none' || selectedRouteIds?.has(route.id) || selectedWaypointKey?.routeId === route.id || route.points[i]?.pinId !== undefined">
+          <template v-if="drawingRouteId === route.id || wpStyle(route) !== 'none' || selectedRouteIds?.has(route.id) || selectedWaypointKey?.routeId === route.id || route.points[i]?.pinId !== undefined || wpStyle(route) === 'none'">
             <!-- Hit area — for locked waypoints (pinId set), extend to cover the full pin marker
                  width (iconSize [40,*] = ±20 px from center). The default hitR for smaller sizes
                  can fall short of that, leaving a gap where caption or map background captures
@@ -620,8 +621,9 @@ onUnmounted(() => {
             <!-- Diamond -->
             <rect v-else-if="wpStyle(route) === 'diamond' && route.points[i]?.pinId === undefined" :x="x - WP_SIZE[route.waypointSize ?? 'm'].sqHalf * 0.75" :y="y - WP_SIZE[route.waypointSize ?? 'm'].sqHalf * 0.75" :width="WP_SIZE[route.waypointSize ?? 'm'].sqHalf * 1.5" :height="WP_SIZE[route.waypointSize ?? 'm'].sqHalf * 1.5" rx="1.5" :fill="waypointColor(route, i)" stroke="white" stroke-width="2" :transform="`rotate(45 ${x} ${y})`" :filter="selectedWaypointKey?.routeId === route.id && selectedWaypointKey?.pointIndex === i ? 'url(#mf-wp-sel-active)' : selectedRouteIds?.has(route.id) ? 'url(#mf-wp-sel)' : undefined" />
 
-            <!-- Ghost dot: none-style unlinked waypoint when route or any waypoint in it is selected -->
-            <circle v-else-if="(selectedRouteIds?.has(route.id) || selectedWaypointKey?.routeId === route.id) && wpStyle(route) === 'none' && route.points[i]?.pinId === undefined && drawingRouteId !== route.id" :cx="x" :cy="y" :r="selectedWaypointKey?.routeId === route.id && selectedWaypointKey?.pointIndex === i ? 7 : 5" fill="none" :stroke="route.color" :stroke-width="selectedWaypointKey?.routeId === route.id && selectedWaypointKey?.pointIndex === i ? 2 : 1.5" :stroke-dasharray="selectedWaypointKey?.routeId === route.id && selectedWaypointKey?.pointIndex === i ? undefined : '3 2'" stroke-opacity="0.85" style="pointer-events: none" />
+            <!-- Ghost dot: none-style unlinked waypoint when route or any waypoint in it is selected.
+                 Active selected waypoint: larger cyan dotted ring. Others: small dashed route-color dot. -->
+            <circle v-else-if="(selectedRouteIds?.has(route.id) || selectedWaypointKey?.routeId === route.id) && wpStyle(route) === 'none' && route.points[i]?.pinId === undefined && drawingRouteId !== route.id" :cx="x" :cy="y" :r="selectedWaypointKey?.routeId === route.id && selectedWaypointKey?.pointIndex === i ? 8 : 5" fill="none" :stroke="selectedWaypointKey?.routeId === route.id && selectedWaypointKey?.pointIndex === i ? '#0d9488' : route.color" :stroke-width="selectedWaypointKey?.routeId === route.id && selectedWaypointKey?.pointIndex === i ? 2 : 1.5" stroke-dasharray="3 2" :stroke-opacity="selectedWaypointKey?.routeId === route.id && selectedWaypointKey?.pointIndex === i ? 1 : 0.85" style="pointer-events: none" />
 
             <!-- Number overlay — hidden when a pin is linked -->
             <text v-if="(drawingRouteId === route.id || wpShowNumber(route)) && route.points[i]?.pinId === undefined" :x="x" :y="y" text-anchor="middle" dominant-baseline="central" :font-size="WP_SIZE[route.waypointSize ?? 'm'].fontSize" fill="white" font-weight="bold" style="user-select: none; pointer-events: none">{{ i + 1 }}</text>

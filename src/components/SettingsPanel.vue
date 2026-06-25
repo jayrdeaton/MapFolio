@@ -9,16 +9,12 @@ const props = defineProps<{
   showLabels: boolean
   isDark: boolean
   previewTile: { z: number; x: number; y: number }
-  isAutoArea: boolean
-  autoArea: string
 }>()
 const emit = defineEmits<{
   'style-change': [style: MapStyle]
   'labels-change': [value: boolean]
 }>()
 
-const mapName = defineModel<string>('mapName', { required: true })
-const mapArea = defineModel<string>('mapArea', { required: true })
 const showCoords = defineModel<boolean>('showCoords', { required: true })
 const showScale = defineModel<boolean>('showScale', { required: true })
 const showZoom = defineModel<boolean>('showZoom', { required: true })
@@ -26,7 +22,6 @@ const mapUnits = defineModel<'km' | 'mi'>('mapUnits', { required: true })
 const routeSnap = defineModel<boolean>('routeSnap', { required: true })
 const angleSnap = defineModel<boolean>('angleSnap', { required: true })
 
-const inputClass = 'w-full py-1.5 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20'
 const sectionLabelClass = 'block text-gray-500 dark:text-zinc-400 font-semibold text-xs uppercase tracking-wide'
 
 const STYLES: MapStyle[] = ['clean', 'minimal', 'standard', 'satellite', 'terrain']
@@ -44,26 +39,18 @@ function previewUrl(style: MapStyle): string {
 <template>
   <div>
     <!-- Sticky header -->
-    <div class="sticky top-0 z-10 bg-gray-50 dark:bg-zinc-800 px-4 pt-4 pb-3 space-y-3">
+    <div class="sticky top-0 z-10 bg-gray-50 dark:bg-zinc-800 px-4 pt-4 pb-3">
       <div class="flex items-center justify-between">
         <span class="flex items-center gap-1.5 text-gray-500 dark:text-zinc-400 font-semibold text-xs uppercase tracking-wide"> <Settings :size="12" /> Settings </span>
-      </div>
-      <div>
-        <label for="mapName" :class="[sectionLabelClass, 'mb-1']">Title</label>
-        <input id="mapName" v-model="mapName" type="text" placeholder="My Map" :class="inputClass" />
-      </div>
-      <div>
-        <label for="mapArea" :class="[sectionLabelClass, 'mb-1']">Subtitle</label>
-        <input id="mapArea" v-model="mapArea" type="text" :placeholder="isAutoArea ? 'Detecting location…' : autoArea || 'e.g. Yellowstone, Wyoming'" :class="inputClass" />
       </div>
     </div>
 
     <!-- Style list -->
     <div class="py-1 border-t border-gray-100 dark:border-zinc-800">
-      <button v-for="style in STYLES" :key="style" :class="['group w-full flex items-center gap-3 px-4 py-3 text-left cursor-pointer transition-all', mapStyle === style ? 'bg-cyan-50 dark:bg-cyan-900/20' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/60']" @click="emit('style-change', style)">
+      <button v-for="style in STYLES" :key="style" :class="['group w-full flex items-center gap-3 px-4 py-3 text-left cursor-pointer transition-all', mapStyle === style ? 'bg-teal-50 dark:bg-teal-900/20' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/60']" @click="emit('style-change', style)">
         <img :src="previewUrl(style)" alt="" loading="lazy" class="w-20 h-20 rounded object-cover shrink-0 border border-gray-200 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800" />
         <div class="min-w-0">
-          <div :class="['text-sm font-medium leading-tight transition-colors', mapStyle === style ? 'text-cyan-500' : 'text-gray-800 dark:text-zinc-200 group-hover:text-cyan-500 dark:group-hover:text-cyan-400']">{{ MAP_STYLE_CONFIGS[style].name }}</div>
+          <div :class="['text-sm font-medium leading-tight transition-colors', mapStyle === style ? 'text-teal-600' : 'text-gray-800 dark:text-zinc-200 group-hover:text-teal-600 dark:group-hover:text-teal-400']">{{ MAP_STYLE_CONFIGS[style].name }}</div>
           <div class="text-xs text-gray-400 dark:text-zinc-500 mt-0.5 leading-tight">{{ MAP_STYLE_CONFIGS[style].description }}</div>
         </div>
       </button>

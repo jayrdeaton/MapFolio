@@ -14,7 +14,7 @@ Vue 3 + Nuxt 4 + TypeScript + Tailwind CSS v4 interactive mapping app. Renamed f
 
 ## Accent color
 
-Cyan — `cyan-500` (`#06b6d4`) as primary. Derived from the icon.svg gradient midpoint (`sky-400 #38bdf8 → teal-400 #2dd4bf`). Used for buttons, focus rings, selected states, cluster bubbles, and print area rectangle.
+Teal — `teal-600` (`#0d9488`) as primary (matches Crumby's `#0f8b8d`). Used for buttons, focus rings, selected states, cluster bubbles, and print area rectangle. Dark mode lighter variant is `teal-400` (`#2dd4bf`).
 
 ## Dark mode
 

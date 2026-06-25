@@ -175,11 +175,11 @@ function build() {
   outer.appendChild(layer)
 
   stemEl = document.createElement('div')
-  stemEl.style.cssText = 'position:absolute;height:1px;background:rgba(6,182,212,0.7);transform-origin:0 50%;pointer-events:none;'
+  stemEl.style.cssText = 'position:absolute;height:1px;background:rgba(13,148,136,0.7);transform-origin:0 50%;pointer-events:none;'
   layer.appendChild(stemEl)
 
   knobEl = document.createElement('div')
-  knobEl.style.cssText = 'position:absolute;width:16px;height:16px;transform:translate(-50%,-50%);background:#06b6d4;border:2px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.45);pointer-events:auto;user-select:none;touch-action:none;'
+  knobEl.style.cssText = 'position:absolute;width:16px;height:16px;transform:translate(-50%,-50%);background:#0d9488;border:2px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.45);pointer-events:auto;user-select:none;touch-action:none;'
   knobEl.style.cursor = ROTATE_CURSOR
   knobEl.addEventListener('pointerdown', startDrag as EventListener, { passive: false })
   layer.appendChild(knobEl)
