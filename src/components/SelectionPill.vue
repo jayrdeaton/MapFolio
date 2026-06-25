@@ -1,19 +1,22 @@
 <script setup lang="ts">
-import { Copy, Eye, EyeOff, Link2Off, Pencil, Scissors, Trash2, X } from '@lucide/vue'
+import { Copy, Eye, EyeOff, Link2Off, Pencil, Printer, Scissors, Trash2, X } from '@lucide/vue'
 
 import CaptionPreview from '@/components/CaptionPreview.vue'
 import PinPreview from '@/components/PinPreview.vue'
 import RoutePreview from '@/components/RoutePreview.vue'
-import type { Caption, Pin, Route } from '@/types'
-import { captionPlaceholder, pinPlaceholder, routePlaceholder } from '@/utils'
+import type { Caption, Pin, PrintArea, Route } from '@/types'
+import { captionPlaceholder, pinPlaceholder, printAreaPlaceholder, routePlaceholder } from '@/utils'
 
 const props = defineProps<{
   selectedPins: Pin[]
   selectedRoutes: Route[]
   selectedCaptions: Caption[]
+  selectedPrintAreas: PrintArea[]
   allPins: Pin[]
   allRoutes: Route[]
   allCaptions: Caption[]
+  allPrintAreas: PrintArea[]
+  mapName: string
   allSelectedHidden: boolean
   singlePinLinked: boolean
   // pin.id → its displayed index (only pins with numbering on); shown in the single-pin preview.
@@ -30,10 +33,11 @@ const emit = defineEmits<{
   'toggle-visibility': []
 }>()
 
-const totalCount = computed(() => props.selectedPins.length + props.selectedRoutes.length + props.selectedCaptions.length)
+const totalCount = computed(() => props.selectedPins.length + props.selectedRoutes.length + props.selectedCaptions.length + props.selectedPrintAreas.length)
 const singlePin = computed(() => (totalCount.value === 1 && props.selectedPins.length === 1 ? props.selectedPins[0] : null))
 const singleRoute = computed(() => (totalCount.value === 1 && props.selectedRoutes.length === 1 ? props.selectedRoutes[0] : null))
 const singleCaption = computed(() => (totalCount.value === 1 && props.selectedCaptions.length === 1 ? props.selectedCaptions[0] : null))
+const singlePrintArea = computed(() => (totalCount.value === 1 && props.selectedPrintAreas.length === 1 ? props.selectedPrintAreas[0] : null))
 
 const hasHideable = computed(() => totalCount.value > 0)
 </script>
@@ -58,13 +62,19 @@ const hasHideable = computed(() => totalCount.value > 0)
       <span class="truncate max-w-36 sm:max-w-48">{{ singleCaption.text || captionPlaceholder(singleCaption, allCaptions) }}</span>
     </template>
 
+    <!-- Single print area -->
+    <template v-else-if="singlePrintArea">
+      <Printer :size="14" class="shrink-0 text-gray-500 dark:text-zinc-400" />
+      <span class="truncate max-w-36 sm:max-w-48">{{ singlePrintArea.title || printAreaPlaceholder(singlePrintArea.id, allPrintAreas, mapName) }}</span>
+    </template>
+
     <!-- Multi-select -->
     <template v-else>
       <span>{{ totalCount }} selected</span>
     </template>
 
     <!-- Edit (single only) -->
-    <button v-if="singlePin || singleRoute || singleCaption" :title="singlePin ? 'Edit Pin' : singleRoute ? 'Edit Route' : 'Edit Caption'" class="w-6 h-6 flex items-center justify-center rounded text-gray-400 dark:text-zinc-400 hover:text-gray-600 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors shrink-0" @click.stop="emit('edit')">
+    <button v-if="singlePin || singleRoute || singleCaption || singlePrintArea" :title="singlePin ? 'Edit Pin' : singleRoute ? 'Edit Route' : singleCaption ? 'Edit Caption' : 'Edit Print Area'" class="w-6 h-6 flex items-center justify-center rounded text-gray-400 dark:text-zinc-400 hover:text-gray-600 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors shrink-0" @click.stop="emit('edit')">
       <Pencil :size="13" />
     </button>
 

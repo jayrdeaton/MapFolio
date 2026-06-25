@@ -55,7 +55,7 @@ function save() {
   emit('save', updated, color.value, size.value, background.value)
 }
 
-const inputClass = 'w-full py-1.5 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20'
+const inputClass = 'w-full py-1.5 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20'
 const sectionLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibold text-xs uppercase tracking-wide'
 const btnBase = 'px-3 py-2 rounded text-sm font-medium transition-colors flex items-center gap-1.5 cursor-pointer'
 
@@ -89,14 +89,14 @@ defineExpose({ save })
         <div>
           <label :class="sectionLabelClass">Size</label>
           <div class="flex gap-1">
-            <button v-for="s in SIZES" :key="s" :class="['flex-1 py-1.5 rounded text-xs font-semibold uppercase transition-colors cursor-pointer border', size === s ? 'bg-cyan-500 text-white border-cyan-500' : 'bg-white dark:bg-zinc-950 text-gray-600 dark:text-zinc-300 border-gray-300 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800']" @click="size = s">{{ s }}</button>
+            <button v-for="s in SIZES" :key="s" :class="['flex-1 py-1.5 rounded text-xs font-semibold uppercase transition-colors cursor-pointer border', size === s ? 'bg-teal-600 text-white border-teal-600' : 'bg-white dark:bg-zinc-950 text-gray-600 dark:text-zinc-300 border-gray-300 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800']" @click="size = s">{{ s }}</button>
           </div>
         </div>
 
         <div>
           <div class="flex items-center justify-between mb-1.5">
             <label :class="sectionLabelClass" style="margin-bottom: 0">{{ background ? 'Background' : 'Color' }}</label>
-            <button :class="['relative w-10 h-6 rounded-full transition-colors cursor-pointer', background ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-zinc-700']" @click="toggleBackground">
+            <button :class="['relative w-10 h-6 rounded-full transition-colors cursor-pointer', background ? 'bg-teal-600' : 'bg-gray-300 dark:bg-zinc-700']" @click="toggleBackground">
               <span :class="['absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform', background && 'translate-x-4']" />
             </button>
           </div>
@@ -107,7 +107,7 @@ defineExpose({ save })
 
         <div class="flex gap-2">
           <button :class="`${btnBase} justify-center px-4 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-950/50`" @click="emit('delete')"><Trash2 :size="15" /> Delete</button>
-          <button :class="`${btnBase} flex-1 justify-center bg-cyan-500 text-white hover:bg-cyan-600`" @click="save">Save</button>
+          <button :class="`${btnBase} flex-1 justify-center bg-teal-600 text-white hover:bg-teal-700`" @click="save">Save</button>
         </div>
       </div>
     </div>

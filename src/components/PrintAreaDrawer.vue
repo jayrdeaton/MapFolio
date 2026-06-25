@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import L from 'leaflet'
+
+import { isAdditiveEvent } from '@/utils'
 const props = defineProps<{
   map: L.Map
-  printBounds: L.LatLngBounds | null
+  corners: [number, number][] // [[lat,lng] × 4] NW→NE→SE→SW; empty = no area
+  angle: number
   aspectRatio: number | null
   snapEnabled: boolean
   gridCols?: number
@@ -10,10 +13,14 @@ const props = defineProps<{
   overlayCorner?: 0 | 1 | 2 | 3
   // Footprint of the PDF info box as fractions of the print area's width; null hides the preview.
   legendBox?: { wFrac: number; hFrac: number; mFrac: number } | null
+  legendSettings?: { legend: boolean; separatePage: boolean; title: boolean; titleText: string; area: boolean; areaText: string; pins: boolean; routes: boolean; pinCount: number; routeCount: number; compass: boolean; scale: boolean }
   // Explicit legend position: fraction of paper width (x) and height (y) for the box's top-left.
-  // null = auto-corner based on pin density.
+  // null = auto-corner based on pin density (or legendCorner if set).
   legendX?: number | null
   legendY?: number | null
+  // Pinned corner (0=TL,1=TR,2=BR,3=BL). Overrides overlayCorner when legendX/legendY are null.
+  // null = use overlayCorner (auto pin-density detection).
+  legendCorner?: 0 | 1 | 2 | 3 | null
   visibility?: 'visible' | 'opaque' | 'hidden'
   selected?: boolean
 }>()
@@ -33,6 +40,8 @@ const emit = defineEmits<{
   // Legend direct-manipulation: position (fractions of paper w/h) and scale multiplier.
   'legend-move': [xFrac: number, yFrac: number]
   'legend-scale': [scale: number]
+  // Drag ended with the legend snapped to a print-area corner — store that corner instead of fracs.
+  'legend-corner': [corner: 0 | 1 | 2 | 3]
   'legend-reset': []
   // Fired at the start of any user drag so the host can push an undo snapshot before state changes.
   'drag-start': [label: string]
@@ -94,9 +103,14 @@ let legendResizeCorner: 'br' | 'bl' | 'tl' | 'tr' = 'br'
 let isMounted = false
 let localRect: RectState | null = null
 let localCorners: L.LatLng[] = []
-let lastEmittedBounds: L.LatLngBounds | null = null
+let lastEmittedCorners: [number, number][] = []
 let isZooming = false
 let zoomObserver: MutationObserver | null = null
+
+function cornersMatch(a: [number, number][], b: [number, number][]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((p, i) => Math.abs(p[0]! - b[i]![0]!) < 1e-8 && Math.abs(p[1]! - b[i]![1]!) < 1e-8)
+}
 
 // ── Math ──────────────────────────────────────────────────────────────────────
 
@@ -159,13 +173,13 @@ function stopEventPropagation(e: Event) {
 // ── Build DOM ─────────────────────────────────────────────────────────────────
 
 function buildHandles() {
-  // Render inside a custom Leaflet pane (z-index 680: above markers/tooltips, below the popup
-  // pane at 700) so Leaflet popups and menus paint above the print area. Children are positioned
-  // with latLngToLayerPoint (see updateHandlePositions), the same approach RouteLayer uses. An
-  // external div at any z-index would lose to popups, which are trapped inside the map pane's
-  // transformed (and thus self-contained) stacking context.
+  // Render inside a custom Leaflet pane below the overlay pane (z-index 350: below routes at 400,
+  // captions at 430, markers at 600, and popups at 700) so pins/routes/captions remain clickable
+  // even when they overlap the print area. Children are positioned with latLngToLayerPoint (see
+  // updateHandlePositions), the same approach RouteLayer uses. An external div at any z-index
+  // would lose to popups, which are trapped inside the map pane's transformed stacking context.
   const pane = props.map.getPane('mfPrintPane') ?? props.map.createPane('mfPrintPane')
-  pane.style.zIndex = '680'
+  pane.style.zIndex = '350'
 
   handleLayer = document.createElement('div')
   // The pane sits at the map-pane origin (0,0 in layer coords); children carry layer-point lefts/tops.
@@ -174,7 +188,7 @@ function buildHandles() {
   pane.appendChild(handleLayer)
 
   rectEl = document.createElement('div')
-  rectEl.style.cssText = 'position:absolute;display:none;box-sizing:border-box;border:2px dashed #06b6d4;background:rgba(6,182,212,0.06);pointer-events:auto;cursor:move;touch-action:none;'
+  rectEl.style.cssText = 'position:absolute;display:none;box-sizing:border-box;border:2px dashed #0d9488;background:rgba(13,148,136,0.06);pointer-events:auto;cursor:move;touch-action:none;'
   rectEl.addEventListener(
     'pointerdown',
     (e: PointerEvent) => {
@@ -205,12 +219,14 @@ function buildHandles() {
   const EDGE_STYLES = [`left:${-EDGE_HIT / 2}px;right:${-EDGE_HIT / 2}px;top:${-EDGE_HIT / 2}px;height:${EDGE_HIT}px;`, `left:${-EDGE_HIT / 2}px;right:${-EDGE_HIT / 2}px;bottom:${-EDGE_HIT / 2}px;height:${EDGE_HIT}px;`, `top:${-EDGE_HIT / 2}px;bottom:${-EDGE_HIT / 2}px;left:${-EDGE_HIT / 2}px;width:${EDGE_HIT}px;`, `top:${-EDGE_HIT / 2}px;bottom:${-EDGE_HIT / 2}px;right:${-EDGE_HIT / 2}px;width:${EDGE_HIT}px;`]
   for (const edgeStyle of EDGE_STYLES) {
     const el = document.createElement('div')
-    el.style.cssText = `position:absolute;${edgeStyle}pointer-events:none;cursor:pointer;touch-action:none;`
-    el.addEventListener('pointerdown', onEdgeDown, { passive: false })
+    el.style.cssText = `position:absolute;${edgeStyle}pointer-events:none;cursor:pointer;`
+    // Use click (not pointerdown+capture) so a drag starting on the border passes through to
+    // Leaflet for panning. A real drag never fires click; a tap fires click → select.
+    el.addEventListener('click', (e: MouseEvent) => {
+      e.stopPropagation() // prevent map click from clearing the selection
+      emit('select', isAdditiveEvent(e))
+    })
     el.addEventListener('contextmenu', onContextMenu, { passive: false })
-    // Same as rectEl: keep the trailing native click from bubbling to the map, where it would
-    // immediately undo the select this strip just triggered (locked-mode re-select).
-    el.addEventListener('click', stopEventPropagation)
     el.addEventListener('dblclick', stopEventPropagation)
     rectEl.appendChild(el)
     edgeEls.push(el)
@@ -221,16 +237,12 @@ function buildHandles() {
   // Draggable to reposition; resize handle in bottom-right corner to scale.
   legendBoxEl = document.createElement('div')
   legendBoxEl.className = 'print-legend-footprint'
-  legendBoxEl.style.cssText = 'position:absolute;display:none;box-sizing:border-box;pointer-events:none;overflow:visible;align-items:center;justify-content:center;'
+  legendBoxEl.style.cssText = 'position:absolute;display:none;box-sizing:border-box;pointer-events:none;overflow:visible;'
   legendBoxEl.addEventListener('pointerdown', onLegendBoxDown, { passive: false })
   legendBoxEl.addEventListener('dblclick', onLegendDblClick)
-  const legendBoxLabel = document.createElement('span')
-  legendBoxLabel.className = 'print-legend-footprint-label'
-  legendBoxLabel.textContent = 'Legend'
-  legendBoxEl.appendChild(legendBoxLabel)
 
   legendResizeEl = document.createElement('div')
-  legendResizeEl.style.cssText = 'position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;display:none;background:#06b6d4;border:2px solid white;border-radius:2px;cursor:se-resize;touch-action:none;box-shadow:0 1px 3px rgba(0,0,0,.4);'
+  legendResizeEl.style.cssText = 'position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;display:none;background:#0d9488;border:2px solid white;border-radius:2px;cursor:se-resize;touch-action:none;box-shadow:0 1px 3px rgba(0,0,0,.4);'
   legendResizeEl.addEventListener('pointerdown', onLegendResizeDown, { passive: false })
   legendResizeEl.addEventListener('click', stopEventPropagation)
   legendBoxEl.appendChild(legendResizeEl)
@@ -240,12 +252,12 @@ function buildHandles() {
   handleLayer.appendChild(rectEl)
 
   rotateLineEl = document.createElement('div')
-  rotateLineEl.style.cssText = 'position:absolute;display:none;height:1px;background:rgba(6,182,212,0.55);transform-origin:0 50%;pointer-events:none;'
+  rotateLineEl.style.cssText = 'position:absolute;display:none;height:1px;background:rgba(13,148,136,0.55);transform-origin:0 50%;pointer-events:none;'
   handleLayer.appendChild(rotateLineEl)
 
   for (let i = 0; i < 4; i++) {
     const el = document.createElement('div')
-    el.style.cssText = `position:absolute;display:none;width:12px;height:12px;transform:translate(-50%,-50%);background:#06b6d4;border:2px solid white;border-radius:3px;cursor:${CORNER_CURSORS[i]};box-shadow:0 1px 4px rgba(0,0,0,.45);pointer-events:auto;user-select:none;touch-action:none;`
+    el.style.cssText = `position:absolute;display:none;width:12px;height:12px;transform:translate(-50%,-50%);background:#0d9488;border:2px solid white;border-radius:3px;cursor:${CORNER_CURSORS[i]};box-shadow:0 1px 4px rgba(0,0,0,.45);pointer-events:auto;user-select:none;touch-action:none;`
     const ci = i
     el.addEventListener(
       'pointerdown',
@@ -263,7 +275,7 @@ function buildHandles() {
   }
 
   rotateEl = document.createElement('div')
-  rotateEl.style.cssText = 'position:absolute;display:none;width:16px;height:16px;transform:translate(-50%,-50%);background:#06b6d4;border:2px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.45);pointer-events:auto;user-select:none;touch-action:none;'
+  rotateEl.style.cssText = 'position:absolute;display:none;width:16px;height:16px;transform:translate(-50%,-50%);background:#0d9488;border:2px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.45);pointer-events:auto;user-select:none;touch-action:none;'
   rotateEl.style.cursor = ROTATE_CURSOR
   rotateEl.addEventListener(
     'pointerdown',
@@ -293,10 +305,117 @@ function destroyHandles() {
   legendResizeCorner = 'br'
 }
 
+function rebuildLegendPreview(S: number) {
+  if (!legendBoxEl) return
+  // Clear content children (legendResizeEl is absolutely positioned and stays)
+  Array.from(legendBoxEl.children).forEach((c) => { if (c !== legendResizeEl) c.remove() })
+
+  const settings = props.legendSettings
+  const isDark = document.documentElement.classList.contains('dark')
+  const c = (light: string, dark: string) => (isDark ? dark : light)
+  const textCol = c('rgba(17,24,39,.9)', 'rgba(244,244,245,.9)')
+  const subCol = c('rgba(107,114,128,.9)', 'rgba(161,161,170,.9)')
+  const dotCol = c('rgba(107,114,128,.45)', 'rgba(161,161,170,.45)')
+  const divCol = c('rgba(0,0,0,.1)', 'rgba(255,255,255,.1)')
+  const scaleCol = c('rgba(17,24,39,.6)', 'rgba(244,244,245,.6)')
+  const compassCol = c('rgba(107,114,128,.55)', 'rgba(113,113,122,.7)')
+  const tealCol = c('rgba(15,118,110,.9)', 'rgba(45,212,191,.9)')
+
+  const mk = (tag: string, css: string): HTMLElement => { const el = document.createElement(tag); el.style.cssText = css; return el }
+  const pad = Math.max(3, Math.round(8 * S))
+  const gap = Math.max(1, Math.round(2 * S))
+  const compassSize = settings?.compass ? Math.max(8, Math.round(20 * S)) : 0
+
+  if (!settings) {
+    // No active area: centered "Legend" label
+    const wrap = mk('div', `position:absolute;inset:0;display:flex;align-items:center;justify-content:center;`)
+    const span = mk('span', `font-family:system-ui,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-size:${Math.max(6, Math.round(9 * S))}px;color:${tealCol};white-space:nowrap;`)
+    span.textContent = 'Legend'
+    wrap.appendChild(span)
+    legendBoxEl.insertBefore(wrap, legendResizeEl ?? null)
+    return
+  }
+
+  const masterOn = settings.legend
+  const onMap = masterOn && !settings.separatePage
+  const hasPins = onMap && settings.pins && settings.pinCount > 0
+  const hasRoutes = onMap && settings.routes && settings.routeCount > 0
+  const hasHeader = masterOn && (settings.title || settings.area)
+  const hasContent = hasPins || hasRoutes
+  const sepPins = masterOn && settings.separatePage && settings.pins && settings.pinCount > 0
+  const sepRoutes = masterOn && settings.separatePage && settings.routes && settings.routeCount > 0
+  const hasSepKeys = sepPins || sepRoutes
+  const rightPad = masterOn && settings.compass ? pad + compassSize + gap : pad
+
+  const wrap = mk('div', `position:absolute;inset:0;padding:${pad}px ${rightPad}px ${pad}px ${pad}px;display:flex;flex-direction:column;gap:${gap}px;overflow:hidden;box-sizing:border-box;`)
+
+  if (masterOn && settings.title && settings.titleText) {
+    const el = mk('div', `font-family:system-ui,sans-serif;font-weight:700;font-size:${Math.max(5, Math.round(11 * S))}px;color:${textCol};line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;`)
+    el.textContent = settings.titleText
+    wrap.appendChild(el)
+  }
+
+  if (masterOn && settings.area && settings.areaText) {
+    const el = mk('div', `font-family:system-ui,sans-serif;font-size:${Math.max(4, Math.round(8 * S))}px;color:${subCol};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;line-height:1.15;`)
+    el.textContent = settings.areaText
+    wrap.appendChild(el)
+  }
+
+  if (hasContent) {
+    if (hasHeader) wrap.appendChild(mk('div', `height:1px;background:${divCol};flex-shrink:0;margin:${Math.max(0, Math.round(S))}px 0;`))
+
+    if (hasPins) {
+      const row = mk('div', `display:flex;align-items:center;gap:${Math.max(1, Math.round(3 * S))}px;flex-shrink:0;`)
+      row.appendChild(mk('div', `width:${Math.max(3, Math.round(6 * S))}px;height:${Math.max(3, Math.round(6 * S))}px;border-radius:50%;background:${dotCol};flex-shrink:0;`))
+      const t = mk('span', `font-family:system-ui,sans-serif;font-size:${Math.max(4, Math.round(8 * S))}px;color:${subCol};white-space:nowrap;`)
+      t.textContent = `${settings.pinCount} Pin${settings.pinCount !== 1 ? 's' : ''}`
+      row.appendChild(t)
+      wrap.appendChild(row)
+    }
+
+    if (hasRoutes) {
+      const row = mk('div', `display:flex;align-items:center;gap:${Math.max(1, Math.round(3 * S))}px;flex-shrink:0;`)
+      row.appendChild(mk('div', `width:${Math.max(8, Math.round(16 * S))}px;height:${Math.max(1, Math.round(2 * S))}px;background:${dotCol};border-radius:1px;flex-shrink:0;`))
+      const t = mk('span', `font-family:system-ui,sans-serif;font-size:${Math.max(4, Math.round(8 * S))}px;color:${subCol};white-space:nowrap;`)
+      t.textContent = `${settings.routeCount} Route${settings.routeCount !== 1 ? 's' : ''}`
+      row.appendChild(t)
+      wrap.appendChild(row)
+    }
+  }
+
+  if (hasSepKeys) {
+    const hint = mk('div', `margin-top:auto;font-family:system-ui,sans-serif;font-size:${Math.max(4, Math.round(7 * S))}px;color:${subCol};white-space:nowrap;flex-shrink:0;opacity:0.75;border-top:1px dashed ${divCol};padding-top:${Math.max(1, Math.round(2 * S))}px;`)
+    hint.textContent = 'Keys → pg. 2'
+    wrap.appendChild(hint)
+  }
+
+  legendBoxEl.insertBefore(wrap, legendResizeEl ?? null)
+
+  if (masterOn && settings.scale) {
+    const barW = Math.max(24, Math.round(60 * S))
+    const barH = Math.max(2, Math.round(4 * S))
+    const bdr = `${Math.max(1, Math.round(S))}px solid ${scaleCol}`
+    const halfW = Math.round(barW / 2)
+    const scaleRow = mk('div', `position:absolute;bottom:${pad}px;left:${pad}px;right:${pad}px;display:flex;align-items:center;justify-content:center;`)
+    scaleRow.appendChild(mk('div', `width:${halfW}px;height:${barH}px;background:${scaleCol};border-top:${bdr};border-bottom:${bdr};border-left:${bdr};box-sizing:border-box;flex-shrink:0;`))
+    scaleRow.appendChild(mk('div', `width:${halfW}px;height:${barH}px;border-top:${bdr};border-bottom:${bdr};border-right:${bdr};box-sizing:border-box;flex-shrink:0;`))
+    legendBoxEl.insertBefore(scaleRow, legendResizeEl ?? null)
+  }
+
+  if (masterOn && settings.compass) {
+    const compass = mk('div', `position:absolute;top:${pad}px;right:${pad}px;width:${compassSize}px;height:${compassSize}px;border-radius:50%;border:${Math.max(1, Math.round(S))}px solid ${compassCol};display:flex;align-items:center;justify-content:center;box-sizing:border-box;`)
+    const n = mk('span', `font-family:system-ui,sans-serif;font-size:${Math.max(4, Math.round(7 * S))}px;font-weight:700;color:${compassCol};line-height:1;`)
+    n.textContent = 'N'
+    compass.appendChild(n)
+    legendBoxEl.insertBefore(compass, legendResizeEl ?? null)
+  }
+}
+
 function updateLegendBox() {
   if (!legendBoxEl) return
   const box = props.legendBox
-  const c = props.overlayCorner
+  // legendCorner (explicitly pinned by user) overrides the auto-detected overlayCorner.
+  const c = props.legendCorner ?? props.overlayCorner
   const v = props.visibility ?? 'visible'
   if (!box || c === undefined || !localRect || v === 'hidden') {
     legendBoxEl.style.display = 'none'
@@ -323,6 +442,8 @@ function updateLegendBox() {
     legendBoxEl.style.right = ''
     legendBoxEl.style.bottom = ''
   } else {
+    // Corner mode (pinned or auto): anchor the legend to the corner via right/bottom CSS so the
+    // box grows inward when its height changes — no drift regardless of content or orientation.
     const m = box.mFrac * rectW
     const isRight = c === 1 || c === 2
     const isBottom = c === 2 || c === 3
@@ -332,13 +453,12 @@ function updateLegendBox() {
     legendBoxEl.style.bottom = isBottom ? m + 'px' : ''
   }
 
-  const label = legendBoxEl.querySelector('.print-legend-footprint-label') as HTMLElement | null
-  if (label) label.style.fontSize = Math.max(6, Math.round(9 * S)) + 'px'
+  rebuildLegendPreview(S)
 
   const interactive = v === 'visible'
   legendBoxEl.style.pointerEvents = interactive ? 'auto' : 'none'
   legendBoxEl.style.cursor = interactive ? 'move' : 'default'
-  legendBoxEl.style.display = 'flex'
+  legendBoxEl.style.display = 'block'
 
   if (legendResizeEl) {
     legendResizeEl.style.display = interactive ? 'block' : 'none'
@@ -348,29 +468,33 @@ function updateLegendBox() {
       const m = box.mFrac * rectW
       let snappedCorner: 0 | 1 | 2 | 3 | null = null
       if (lx === null || lx === undefined || ly === null || ly === undefined) {
-        // Auto-corner mode — the overlay corner IS the snapped corner.
+        // Corner mode — c is the active corner.
         snappedCorner = c as 0 | 1 | 2 | 3
       } else {
-        const curL = lx * rectW, curT = ly * rectH
+        const curL = lx * rectW,
+          curT = ly * rectH
         const tol = 2
         const checks: [number, number, 0 | 1 | 2 | 3][] = [
           [m, m, 0],
           [rectW - boxW - m, m, 1],
           [rectW - boxW - m, rectH - boxH - m, 2],
-          [m, rectH - boxH - m, 3],
+          [m, rectH - boxH - m, 3]
         ]
         for (const [sl, st, ci] of checks) {
-          if (Math.abs(curL - sl) < tol && Math.abs(curT - st) < tol) { snappedCorner = ci; break }
+          if (Math.abs(curL - sl) < tol && Math.abs(curT - st) < tol) {
+            snappedCorner = ci
+            break
+          }
         }
       }
       // Caddy-corners: TL→BR, TR→BL, BR→TL, BL→TR, null→BR
       const HANDLE: ('br' | 'bl' | 'tl' | 'tr')[] = ['br', 'bl', 'tl', 'tr']
       const CURSORS = { br: 'se-resize', bl: 'sw-resize', tl: 'nw-resize', tr: 'ne-resize' }
       legendResizeCorner = snappedCorner !== null ? HANDLE[snappedCorner]! : 'br'
-      legendResizeEl.style.right  = (legendResizeCorner === 'br' || legendResizeCorner === 'tr') ? '-5px' : ''
-      legendResizeEl.style.left   = (legendResizeCorner === 'bl' || legendResizeCorner === 'tl') ? '-5px' : ''
-      legendResizeEl.style.bottom = (legendResizeCorner === 'br' || legendResizeCorner === 'bl') ? '-5px' : ''
-      legendResizeEl.style.top    = (legendResizeCorner === 'tl' || legendResizeCorner === 'tr') ? '-5px' : ''
+      legendResizeEl.style.right = legendResizeCorner === 'br' || legendResizeCorner === 'tr' ? '-5px' : ''
+      legendResizeEl.style.left = legendResizeCorner === 'bl' || legendResizeCorner === 'tl' ? '-5px' : ''
+      legendResizeEl.style.bottom = legendResizeCorner === 'br' || legendResizeCorner === 'bl' ? '-5px' : ''
+      legendResizeEl.style.top = legendResizeCorner === 'tl' || legendResizeCorner === 'tr' ? '-5px' : ''
       legendResizeEl.style.cursor = CURSORS[legendResizeCorner]
     }
   }
@@ -394,7 +518,7 @@ function legendCurrentPixelPos(): { left: number; top: number; boxW: number; box
     top = ly * rectH
   } else {
     const m = box.mFrac * rectW
-    const c = props.overlayCorner ?? 2
+    const c = props.legendCorner ?? props.overlayCorner ?? 2
     const isRight = c === 1 || c === 2
     const isBottom = c === 2 || c === 3
     left = isRight ? rectW - boxW - m : m
@@ -416,10 +540,10 @@ function onLegendBoxDown(startEvent: PointerEvent) {
   const m = box.mFrac * rectW
   // Positions of the four corner snap targets (top-left of legend box in local rect coords).
   const snapCorners = [
-    { left: m,                  top: m                  }, // TL
-    { left: rectW - boxW - m,   top: m                  }, // TR
-    { left: rectW - boxW - m,   top: rectH - boxH - m   }, // BR
-    { left: m,                  top: rectH - boxH - m   }, // BL
+    { left: m, top: m }, // TL
+    { left: rectW - boxW - m, top: m }, // TR
+    { left: rectW - boxW - m, top: rectH - boxH - m }, // BR
+    { left: m, top: rectH - boxH - m } // BL
   ]
   const snapThreshold = Math.min(rectW, rectH) * 0.12
   const angle = localRect.angle
@@ -442,8 +566,10 @@ function onLegendBoxDown(startEvent: PointerEvent) {
       moved = true
       ev.stopPropagation()
       // Convert screen delta → rect-local delta (unrotate by print area angle).
-      const cosA = Math.cos(angle), sinA = Math.sin(angle)
-      const dxS = ev.clientX - startClientX, dyS = ev.clientY - startClientY
+      const cosA = Math.cos(angle),
+        sinA = Math.sin(angle)
+      const dxS = ev.clientX - startClientX,
+        dyS = ev.clientY - startClientY
       const localDx = dxS * cosA + dyS * sinA
       const localDy = -dxS * sinA + dyS * cosA
       let newLeft = Math.max(0, Math.min(rectW - boxW, startLeft + localDx))
@@ -467,7 +593,14 @@ function onLegendBoxDown(startEvent: PointerEvent) {
       if (!moved) return
       const finalLeft = parseFloat(legendBoxEl!.style.left)
       const finalTop = parseFloat(legendBoxEl!.style.top)
-      emit('legend-move', finalLeft / rectW, finalTop / rectH)
+      // If the final position is exactly at a corner snap, store the corner index rather than
+      // explicit fractions — this keeps the legend anchored to the corner when content changes.
+      const snappedIdx = snapCorners.findIndex((sc) => Math.abs(finalLeft - sc.left) < 2 && Math.abs(finalTop - sc.top) < 2)
+      if (snappedIdx !== -1) {
+        emit('legend-corner', snappedIdx as 0 | 1 | 2 | 3)
+      } else {
+        emit('legend-move', finalLeft / rectW, finalTop / rectH)
+      }
     }
   )
 }
@@ -497,26 +630,31 @@ function onLegendResizeDown(startEvent: PointerEvent) {
   // For snapped resizes, we re-derive the exact corner position at each new scale so that
   // snap detection in updateLegendBox stays valid — preventing legendResizeCorner from flipping.
   let snappedAtStart: 0 | 1 | 2 | 3 | null = null
-  const lx0 = props.legendX, ly0 = props.legendY
+  const lx0 = props.legendX,
+    ly0 = props.legendY
   if (lx0 === null || lx0 === undefined || ly0 === null || ly0 === undefined) {
-    snappedAtStart = (props.overlayCorner ?? 0) as 0 | 1 | 2 | 3
+    snappedAtStart = (props.legendCorner ?? props.overlayCorner ?? 0) as 0 | 1 | 2 | 3
   } else {
-    const curL = lx0 * rectW, curT = ly0 * rectH
+    const curL = lx0 * rectW,
+      curT = ly0 * rectH
     const snapChecks: [number, number, 0 | 1 | 2 | 3][] = [
       [mStart, mStart, 0],
       [rectW - startBoxW - mStart, mStart, 1],
       [rectW - startBoxW - mStart, rectH - startBoxH - mStart, 2],
-      [mStart, rectH - startBoxH - mStart, 3],
+      [mStart, rectH - startBoxH - mStart, 3]
     ]
     for (const [sl, st, ci] of snapChecks) {
-      if (Math.abs(curL - sl) < 4 && Math.abs(curT - st) < 4) { snappedAtStart = ci; break }
+      if (Math.abs(curL - sl) < 4 && Math.abs(curT - st) < 4) {
+        snappedAtStart = ci
+        break
+      }
     }
   }
 
   const angle = localRect.angle
   const startClientX = startEvent.clientX
   const startClientY = startEvent.clientY
-  const resizeSign = (capturedCorner === 'bl' || capturedCorner === 'tl') ? -1 : 1
+  const resizeSign = capturedCorner === 'bl' || capturedCorner === 'tl' ? -1 : 1
   const CURSORS = { br: 'se-resize', bl: 'sw-resize', tl: 'nw-resize', tr: 'ne-resize' }
   setDragCursor(CURSORS[capturedCorner])
 
@@ -525,8 +663,10 @@ function onLegendResizeDown(startEvent: PointerEvent) {
     startEvent.pointerId,
     (ev) => {
       ev.stopPropagation()
-      const cosA = Math.cos(angle), sinA = Math.sin(angle)
-      const dxS = ev.clientX - startClientX, dyS = ev.clientY - startClientY
+      const cosA = Math.cos(angle),
+        sinA = Math.sin(angle)
+      const dxS = ev.clientX - startClientX,
+        dyS = ev.clientY - startClientY
       const localDx = dxS * cosA + dyS * sinA
       const newBoxW = Math.max(30, startBoxW + resizeSign * localDx)
       const newScale = Math.max(0.25, Math.min(2, (newBoxW / rectW) * (612 / 190)))
@@ -541,23 +681,47 @@ function onLegendResizeDown(startEvent: PointerEvent) {
         // Snapped resize: re-compute the exact corner position for the new scale so that
         // snap detection continues to pass on every pointermove (mFrac changes with scale,
         // so anchoring to the start pixel edge would drift out of snap tolerance).
-        if (capturedCorner === 'tl')      { newLeft = rectW - clampedW - newM; newTop = rectH - clampedH - newM }
-        else if (capturedCorner === 'tr') { newLeft = newM;                    newTop = rectH - clampedH - newM }
-        else if (capturedCorner === 'bl') { newLeft = rectW - clampedW - newM; newTop = newM }
-        else                              { newLeft = newM;                    newTop = newM } // br → TL corner
+        if (capturedCorner === 'tl') {
+          newLeft = rectW - clampedW - newM
+          newTop = rectH - clampedH - newM
+        } else if (capturedCorner === 'tr') {
+          newLeft = newM
+          newTop = rectH - clampedH - newM
+        } else if (capturedCorner === 'bl') {
+          newLeft = rectW - clampedW - newM
+          newTop = newM
+        } else {
+          newLeft = newM
+          newTop = newM
+        } // br → TL corner
       } else {
         // Free-floating: keep the anchor corner of the legend box at its start pixel position.
-        if (capturedCorner === 'tl')      { newLeft = startRight - clampedW; newTop = startBottom - clampedH }
-        else if (capturedCorner === 'tr') { newLeft = startLeft;             newTop = startBottom - clampedH }
-        else if (capturedCorner === 'bl') { newLeft = startRight - clampedW; newTop = startTop }
-        else                              { newLeft = startLeft;             newTop = startTop }
+        if (capturedCorner === 'tl') {
+          newLeft = startRight - clampedW
+          newTop = startBottom - clampedH
+        } else if (capturedCorner === 'tr') {
+          newLeft = startLeft
+          newTop = startBottom - clampedH
+        } else if (capturedCorner === 'bl') {
+          newLeft = startRight - clampedW
+          newTop = startTop
+        } else {
+          newLeft = startLeft
+          newTop = startTop
+        }
       }
       newLeft = Math.max(0, Math.min(rectW - clampedW, newLeft))
       newTop = Math.max(0, Math.min(rectH - clampedH, newTop))
       emit('legend-scale', newScale)
       emit('legend-move', newLeft / rectW, newTop / rectH)
     },
-    () => { setDragCursor(null) }
+    () => {
+      setDragCursor(null)
+      // If the resize started while the legend was snapped to a corner, emit legend-corner so the
+      // stored state is a corner index (not explicit fracs) — keeps the corner flush after future
+      // content changes.
+      if (snappedAtStart !== null) emit('legend-corner', snappedAtStart)
+    }
   )
 }
 
@@ -573,7 +737,7 @@ function updateGridLines() {
   const cols = props.gridCols ?? 1
   const rows = props.gridRows ?? 1
   if (cols <= 1 && rows <= 1) return
-  const lineStyle = 'position:absolute;pointer-events:none;background:rgba(6,182,212,0.5);'
+  const lineStyle = 'position:absolute;pointer-events:none;background:rgba(13,148,136,0.5);'
   for (let i = 1; i < cols; i++) {
     const el = document.createElement('div')
     el.className = 'grid-line'
@@ -665,7 +829,7 @@ function updateHandlePositions() {
     // Locked: the body passes events through to the map; only the outline strips stay live so
     // left/right click still hits the border. No resize/rotate handles.
     if (rectEl) {
-      rectEl.style.border = '1px dashed rgba(6,182,212,0.9)'
+      rectEl.style.border = '1px dashed rgba(13,148,136,0.9)'
       rectEl.style.background = 'transparent'
       rectEl.style.pointerEvents = 'none'
       rectEl.style.cursor = 'default'
@@ -684,8 +848,8 @@ function updateHandlePositions() {
     // through to pins/routes underneath (setHandlePassthrough). The outline strips are a
     // locked-mode affordance only, so disable them here and let the body own the whole area.
     if (rectEl) {
-      rectEl.style.border = '2px dashed #06b6d4'
-      rectEl.style.background = 'rgba(6,182,212,0.06)'
+      rectEl.style.border = '2px dashed #0d9488'
+      rectEl.style.background = 'rgba(13,148,136,0.06)'
       rectEl.style.pointerEvents = 'auto'
       rectEl.style.cursor = 'move'
     }
@@ -695,7 +859,7 @@ function updateHandlePositions() {
   }
 
   // Selection ring — shown in both visible and locked modes so a selected area always reads.
-  if (rectEl) rectEl.style.boxShadow = props.selected ? '0 0 0 2px #06b6d4, 0 0 10px rgba(6,182,212,0.45)' : 'none'
+  if (rectEl) rectEl.style.boxShadow = props.selected ? '0 0 0 2px #0d9488, 0 0 10px rgba(13,148,136,0.45)' : 'none'
 
   updateLegendBox()
 }
@@ -716,19 +880,8 @@ function applyRect(state: RectState) {
 function clearAll() {
   localRect = null
   localCorners = []
-  lastEmittedBounds = null
+  lastEmittedCorners = []
   updateHandlePositions()
-}
-
-// ── Init ──────────────────────────────────────────────────────────────────────
-
-function initFromBounds(bounds: L.LatLngBounds) {
-  const map = props.map
-  const center = bounds.getCenter()
-  const nePx = map.latLngToContainerPoint(bounds.getNorthEast())
-  const swPx = map.latLngToContainerPoint(bounds.getSouthWest())
-  applyRect({ center, halfW: (nePx.x - swPx.x) / 2, halfH: (swPx.y - nePx.y) / 2, angle: 0 })
-  emitBounds()
 }
 
 // ── Corner drag ───────────────────────────────────────────────────────────────
@@ -824,7 +977,7 @@ function onBodyDown(startEvent: PointerEvent) {
   const angle = localRect.angle
   const startX = startEvent.clientX
   const startY = startEvent.clientY
-  const shiftHeld = startEvent.shiftKey
+  const shiftHeld = isAdditiveEvent(startEvent)
   let moved = false
   map.dragging.disable()
   if (startEvent.pointerType !== 'touch') map.getContainer().style.cursor = 'move'
@@ -856,30 +1009,7 @@ function onBodyDown(startEvent: PointerEvent) {
   )
 }
 
-// ── Outline hit (locked mode) + context menu ───────────────────────────────────
-
-// Locked mode passes body events through to the map; the outline strips still select on a
-// click. No move/resize is possible while locked, so this only distinguishes click from drag.
-function onEdgeDown(startEvent: PointerEvent) {
-  if (startEvent.button !== 0) return
-  startEvent.preventDefault()
-  startEvent.stopPropagation()
-  const el = startEvent.currentTarget as HTMLElement
-  const startX = startEvent.clientX
-  const startY = startEvent.clientY
-  const shiftHeld = startEvent.shiftKey
-  let moved = false
-  startCapture(
-    el,
-    startEvent.pointerId,
-    (ev) => {
-      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > CLICK_SLOP) moved = true
-    },
-    () => {
-      if (!moved) emit('select', shiftHeld)
-    }
-  )
-}
+// ── Context menu ──────────────────────────────────────────────────────────────
 
 function onContextMenu(e: MouseEvent) {
   e.preventDefault()
@@ -896,8 +1026,8 @@ function emitContext(e: { clientX: number; clientY: number }) {
 function emitBounds() {
   if (isMounted && localCorners.length === 4 && localRect) {
     const bounds = L.latLngBounds(localCorners)
-    lastEmittedBounds = bounds
     const corners = localCorners.map((ll) => [ll.lat, ll.lng] as [number, number])
+    lastEmittedCorners = corners
     emit('bounds-set', { bounds, corners, angle: localRect.angle })
   }
 }
@@ -908,12 +1038,16 @@ watch(() => props.visibility, updateHandlePositions)
 watch(() => props.selected, updateHandlePositions)
 
 watch(
-  () => props.printBounds,
-  (bounds) => {
-    if (bounds && bounds === lastEmittedBounds) return
-    if (bounds) initFromBounds(bounds)
-    else clearAll()
-  }
+  () => [props.corners, props.angle] as const,
+  ([corners, angle]) => {
+    if (!isMounted) return
+    if (corners.length === 4) {
+      if (!cornersMatch(corners, lastEmittedCorners)) initFromCorners(corners, angle)
+    } else {
+      clearAll()
+    }
+  },
+  { deep: true }
 )
 
 watch(
@@ -924,8 +1058,13 @@ watch(
   () => props.overlayCorner,
   () => updateLegendBox()
 )
+watch(
+  () => props.legendCorner,
+  () => updateLegendBox()
+)
 watch(() => props.legendBox, updateLegendBox, { deep: true })
 watch(() => [props.legendX, props.legendY], updateLegendBox)
+watch(() => props.legendSettings, updateLegendBox, { deep: true })
 
 function setHandlePassthrough(pass: boolean) {
   const pe = pass ? 'none' : 'auto'
@@ -981,10 +1120,9 @@ function initFromCorners(corners: [number, number][], angle: number) {
   const p0 = map.latLngToContainerPoint(L.latLng(corners[0]![0], corners[0]![1]))
   const l = screenToLocal(p0, cp.x, cp.y, angle)
   applyRect({ center, halfW: Math.abs(l.x), halfH: Math.abs(l.y), angle })
-  emitBounds()
+  // Record props corners as "last emitted" so the watch doesn't re-fire after this init.
+  lastEmittedCorners = [...corners] as [number, number][]
 }
-
-defineExpose({ initFromCorners })
 
 onMounted(() => {
   isMounted = true
@@ -1005,7 +1143,7 @@ onMounted(() => {
     zoomObserver.observe(mapPane, { attributes: true, attributeFilter: ['class'] })
   }
 
-  if (props.printBounds) initFromBounds(props.printBounds)
+  if (props.corners.length === 4) initFromCorners(props.corners, props.angle)
   document.addEventListener('keydown', onAltDown)
   document.addEventListener('keyup', onAltUp)
 })
@@ -1015,7 +1153,6 @@ onUnmounted(() => {
   zoomObserver?.disconnect()
   zoomObserver = null
   destroyHandles()
-  props.map.getPane('mfPrintPane')?.remove()
   props.map.off('move', updateHandlePositions as L.LeafletEventHandlerFn)
   props.map.off('zoom', updateHandlePositions as L.LeafletEventHandlerFn)
   document.removeEventListener('keydown', onAltDown)

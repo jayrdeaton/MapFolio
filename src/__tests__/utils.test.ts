@@ -258,7 +258,7 @@ describe('parseGeoJsonRouteImport', () => {
         ])
       ])
     )
-    expect(result?.routes[0]!.color).toBe('#06b6d4')
+    expect(result?.routes[0]!.color).toBe('#0d9488')
   })
 
   it('defaults lineStyle to "solid" when missing', () => {

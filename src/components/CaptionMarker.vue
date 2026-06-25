@@ -3,7 +3,7 @@ import L from 'leaflet'
 
 import type { Caption } from '@/types'
 import { CAPTION_PX } from '@/types'
-import { isDarkColor } from '@/utils'
+import { isAdditiveEvent, isDarkColor } from '@/utils'
 
 const PENCIL_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`
 const TRASH_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`
@@ -55,10 +55,8 @@ function buildIcon() {
   const base = `font-size:${fontSize}px;font-weight:600;line-height:1.15;color:${textColor};white-space:pre;text-align:center;border-radius:4px;`
   const pillShadow = props.isDark ? '0 2px 6px rgba(0,0,0,0.6)' : '0 1px 4px rgba(0,0,0,0.2)'
   const pillBorder = props.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'
-  const skin = c.background
-    ? `background:${c.color};padding:${Math.round(fontSize * 0.18)}px ${Math.round(fontSize * 0.45)}px;border-radius:${Math.round(fontSize * 0.35)}px;box-shadow:${pillShadow};border:1px solid ${pillBorder};`
-    : `text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff;`
-  const ring = props.selected ? 'outline:2.5px solid #06b6d4;outline-offset:2px;' : ''
+  const skin = c.background ? `background:${c.color};padding:${Math.round(fontSize * 0.18)}px ${Math.round(fontSize * 0.45)}px;border-radius:${Math.round(fontSize * 0.35)}px;box-shadow:${pillShadow};border:1px solid ${pillBorder};` : `text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff;`
+  const ring = props.selected ? 'outline:2.5px solid #0d9488;outline-offset:2px;' : ''
   const animDelay = Math.min((props.renderIndex ?? 0) * 25, 600)
   const animStyle = hasAnimated ? '' : `animation:caption-in 250ms ease-out both;animation-delay:${animDelay}ms;`
   hasAnimated = true
@@ -190,7 +188,7 @@ function createMarker() {
 
   marker.on('click', (e: L.LeafletMouseEvent) => {
     e.originalEvent.stopPropagation()
-    emit('select', props.caption, e.originalEvent.metaKey || e.originalEvent.ctrlKey)
+    emit('select', props.caption, isAdditiveEvent(e.originalEvent))
   })
 
   marker.on('contextmenu', (e: L.LeafletMouseEvent) => {

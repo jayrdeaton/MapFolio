@@ -44,7 +44,7 @@ function cycleColorMode() {
 
     <div class="flex-1 flex items-center gap-1 justify-end">
       <!-- Mobile search toggle -->
-      <button class="sm:hidden p-1.5 rounded-lg transition-colors cursor-pointer" :class="showSearch ? 'bg-cyan-500 text-white hover:bg-cyan-600' : 'text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800'" :aria-label="showSearch ? 'Close search' : 'Search'" @click="emit('update:showSearch', !showSearch)">
+      <button class="sm:hidden p-1.5 rounded-lg transition-colors cursor-pointer" :class="showSearch ? 'bg-teal-600 text-white hover:bg-teal-700' : 'text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800'" :aria-label="showSearch ? 'Close search' : 'Search'" @click="emit('update:showSearch', !showSearch)">
         <Search :size="18" />
       </button>
 

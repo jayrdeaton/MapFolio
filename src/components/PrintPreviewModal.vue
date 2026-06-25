@@ -21,7 +21,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 
 <template>
   <Teleport to="body">
-    <div class="fixed inset-0 z-[2000] flex items-center justify-center p-4 no-print">
+    <div class="fixed inset-0 z-2000 flex items-center justify-center p-4 no-print">
       <div class="absolute inset-0 bg-black/60" @click="emit('close')" />
       <div class="relative z-10 flex flex-col bg-white dark:bg-zinc-900 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh]">
         <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-zinc-700 shrink-0">
@@ -33,7 +33,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
         </div>
         <div class="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-200 dark:border-zinc-700 shrink-0">
           <button class="px-3 py-1.5 text-sm rounded text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors cursor-pointer" @click="emit('close')">Close</button>
-          <button class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded font-medium bg-cyan-500 text-white hover:bg-cyan-600 transition-colors cursor-pointer" @click="emit('download')"><Download :size="14" /> Download</button>
+          <button class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded font-medium bg-teal-600 text-white hover:bg-teal-700 transition-colors cursor-pointer" @click="emit('download')"><Download :size="14" /> Download</button>
         </div>
       </div>
     </div>

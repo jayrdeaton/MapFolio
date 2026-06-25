@@ -2,38 +2,15 @@ import L from 'leaflet'
 import type { ShallowRef } from 'vue'
 
 import type { PrintAreaInfo } from '@/components/PrintAreaDrawer.vue'
-import type { Caption, MapStyle, Pin, Route } from '@/types'
+import type { Caption, MapStyle, Pin, PrintArea, PrintOrientation, PrintPaperSize, Route } from '@/types'
 
-import { exportMapToPdf } from './useMapExport'
 import type { ExportQuality } from './useMapExport'
-import type { PrintOrientation, PrintPaperSize } from './usePrintSettings'
+import { exportMapToPdf } from './useMapExport'
 
 export type PaperSize = PrintPaperSize
 export type Orientation = PrintOrientation
 
-export interface PrintHistoryEntry {
-  timestamp: number
-  corners: [number, number][]
-  angle: number
-  paper: PaperSize
-  orientation: Orientation
-  grid: string
-  snap: boolean
-  legend: boolean
-  separatePage?: boolean
-  compass: boolean
-  scale: boolean
-  contrast: boolean
-  exportQuality?: ExportQuality
-  legendScale?: number
-  legendX?: number | null
-  legendY?: number | null
-}
-
-const HISTORY_KEY = 'mapfolio_print_history'
-const HISTORY_MAX = 5
-
-export const PAPERS = ['letter', 'tabloid', 'a'] as const
+export const PAPERS: PaperSize[] = ['letter', 'tabloid', 'a']
 export const PAPER_LABELS: Record<PaperSize, string> = { letter: 'Letter', tabloid: 'Tabloid', a: 'A (ISO)' }
 export const ASPECT_RATIOS: Record<PaperSize, Record<Orientation, number>> = {
   letter: { portrait: 8.5 / 11, landscape: 11 / 8.5 },
@@ -46,6 +23,19 @@ const PAPER_PT: Record<PaperSize, Record<Orientation, [number, number]>> = {
   letter: { portrait: [612, 792], landscape: [792, 612] },
   tabloid: { portrait: [792, 1224], landscape: [1224, 792] },
   a: { portrait: [595, 842], landscape: [842, 595] }
+}
+
+const LETTER_REGIONS = new Set(['US', 'CA', 'MX', 'CO', 'VE', 'CL', 'PH'])
+function regionDefaultPaper(): PaperSize {
+  return LETTER_REGIONS.has((navigator.language.split('-')[1] ?? '').toUpperCase()) ? 'letter' : 'a'
+}
+
+export function defaultPrintAreaSettings(): Omit<PrintArea, 'id' | 'corners' | 'angle'> {
+  return {
+    paper: regionDefaultPaper(),
+    orientation: 'portrait',
+    grid: '1x1'
+  }
 }
 
 export function usePrintExport(options: {
@@ -63,62 +53,71 @@ export function usePrintExport(options: {
   angleSnapEnabled: Ref<boolean>
   showNotification: (message: string, type?: 'success' | 'error' | 'info') => void
   printSettings: {
-    paper: Ref<PrintPaperSize>
-    orientation: Ref<PrintOrientation>
-    grid: Ref<string>
-    legend: Ref<boolean>
-    legendSeparatePage: Ref<boolean>
-    legendTitle: Ref<boolean>
-    legendArea: Ref<boolean>
-    legendBlankLabels: Ref<boolean>
-    legendScale: Ref<number>
-    legendX: Ref<number | null>
-    legendY: Ref<number | null>
-    compass: Ref<boolean>
-    scale: Ref<boolean>
     contrast: Ref<boolean>
     exportQuality: Ref<ExportQuality>
   }
+  printAreas: Ref<PrintArea[]>
+  updatePrintAreas: (areas: PrintArea[]) => void
 }) {
-  const { leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, units, angleSnapEnabled, showNotification, printSettings } = options
+  const { leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, units, showNotification, printSettings, printAreas, updatePrintAreas } = options
 
-  const printBounds = shallowRef<L.LatLngBounds | null>(null)
-  const printCorners = ref<[number, number][]>([])
-  const printAngle = ref(0)
-  const printHistory = ref<PrintHistoryEntry[]>(JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]'))
-  const printAreaVisibility = ref<'visible' | 'opaque' | 'hidden'>((localStorage.getItem('mapfolio_print_visibility') as 'visible' | 'opaque' | 'hidden') ?? 'visible')
+  // ── Active area ───────────────────────────────────────────────────────────────
 
-  watch(printAreaVisibility, (v) => localStorage.setItem('mapfolio_print_visibility', v))
-  const overlayCorner = ref<0 | 1 | 2 | 3>(2)
-  const isDownloadingPdf = ref(false)
-  const isPreviewOpen = ref(false)
-  const previewBlobUrl = ref<string | null>(null)
-  const isAutoArea = ref(false)
-  // Geocoded suggestion shown as the Subtitle placeholder — never written into the
-  // map's stored `area`. Effective subtitle = user-entered area || this suggestion.
-  const autoArea = ref('')
+  const activePrintAreaId = ref<string | null>(null)
 
-  const printPaper = ref<PaperSize | null>(printSettings.paper.value)
-  const printOrientation = ref<Orientation | null>(printSettings.orientation.value)
+  const activePrintArea = computed(() => printAreas.value.find((a) => a.id === activePrintAreaId.value) ?? null)
 
-  watch(printPaper, (v) => {
-    if (v) printSettings.paper.value = v
-  })
-  watch(printOrientation, (v) => {
-    if (v) printSettings.orientation.value = v
+  // When the active map changes (printAreas array is replaced), deselect if active area is gone.
+  watch(printAreas, (areas) => {
+    if (activePrintAreaId.value && !areas.find((a) => a.id === activePrintAreaId.value)) {
+      activePrintAreaId.value = null
+    }
   })
 
-  const parsedGrid = computed<[number, number]>(() => {
-    const [c, r] = printSettings.grid.value.split('x').map(Number)
-    return [c || 1, r || 1]
+  // Derived from the active area's corners + settings
+  const printCorners = computed(() => activePrintArea.value?.corners ?? [])
+  const printAngle = computed(() => activePrintArea.value?.angle ?? 0)
+
+  const printBounds = computed<L.LatLngBounds | null>(() => {
+    const c = printCorners.value
+    if (c.length !== 4) return null
+    return L.latLngBounds(c.map(([lat, lng]) => L.latLng(lat, lng)))
   })
 
   const printAspectRatio = computed<number | null>(() => {
-    if (!printPaper.value || !printOrientation.value) return null
-    const [cols, rows] = parsedGrid.value
-    const base = ASPECT_RATIOS[printPaper.value][printOrientation.value]
-    return (base * cols) / rows
+    const area = activePrintArea.value
+    if (!area) return null
+    const [cols, rows] = area.grid.split('x').map(Number)
+    const base = ASPECT_RATIOS[area.paper][area.orientation]
+    return (base * (cols || 1)) / (rows || 1)
   })
+
+  const overlayCorner = ref<0 | 1 | 2 | 3>(2)
+
+  // Recompute the least-pin-populated corner whenever the active area's corners change.
+  watch(
+    printCorners,
+    () => {
+      overlayCorner.value = computeOverlayCorner()
+    },
+    { deep: true }
+  )
+
+  // ── Preview / download ────────────────────────────────────────────────────────
+
+  const isDownloadingPdf = ref(false)
+  let exportAbortController: AbortController | null = null
+
+  function cancelExport() {
+    exportAbortController?.abort()
+  }
+  const isPreviewOpen = ref(false)
+  const previewBlobUrl = ref<string | null>(null)
+
+  // ── Auto-area geocoding ───────────────────────────────────────────────────────
+
+  const isAutoArea = ref(false)
+  const autoArea = ref('')
 
   async function geocodeCenter(lat: number, lng: number) {
     isAutoArea.value = true
@@ -135,9 +134,6 @@ export function usePrintExport(options: {
     }
   }
 
-  // Detect the subtitle suggestion from the print area center (what's actually being
-  // printed), falling back to the current map view. Only while the user hasn't set a
-  // subtitle. Debounced + deduped by ~0.1° (~11km) so panning doesn't spam Nominatim.
   let areaTimer: ReturnType<typeof setTimeout> | null = null
   let lastGeocodeKey = ''
   function scheduleAreaDetect() {
@@ -173,6 +169,12 @@ export function usePrintExport(options: {
     }
   })
 
+  // ── CRUD ──────────────────────────────────────────────────────────────────────
+
+  function patchPrintArea(id: string, patch: Partial<PrintArea>) {
+    updatePrintAreas(printAreas.value.map((a) => (a.id === id ? { ...a, ...patch } : a)))
+  }
+
   function calculatePrintBounds(widthToHeight: number): L.LatLngBounds {
     const map = leafletMap.value!
     const container = map.getContainer()
@@ -191,16 +193,88 @@ export function usePrintExport(options: {
     return L.latLngBounds(map.containerPointToLatLng(L.point(cx - pw / 2, cy + ph / 2)), map.containerPointToLatLng(L.point(cx + pw / 2, cy - ph / 2)))
   }
 
-  function selectPrintPreset(paper: PaperSize, orientation: Orientation) {
-    if (!leafletMap.value) return
-    printPaper.value = paper
-    printOrientation.value = orientation
-    printBounds.value = calculatePrintBounds(printAspectRatio.value ?? ASPECT_RATIOS[paper][orientation])
+  function boundsToCorners(bounds: L.LatLngBounds): [number, number][] {
+    return [
+      [bounds.getNorth(), bounds.getWest()],
+      [bounds.getNorth(), bounds.getEast()],
+      [bounds.getSouth(), bounds.getEast()],
+      [bounds.getSouth(), bounds.getWest()]
+    ]
+  }
+
+  function addPrintArea(overrides?: { paper?: PaperSize; orientation?: Orientation }): PrintArea {
+    if (!leafletMap.value) throw new Error('no map')
+    const defaults = defaultPrintAreaSettings()
+    const paper = overrides?.paper ?? defaults.paper
+    const orientation = overrides?.orientation ?? defaults.orientation
+    const ratio = ASPECT_RATIOS[paper][orientation]
+    const bounds = calculatePrintBounds(ratio)
+    const corners = boundsToCorners(bounds)
+    const area: PrintArea = {
+      id: crypto.randomUUID(),
+      corners,
+      angle: 0,
+      ...defaults,
+      paper,
+      orientation
+    }
+    updatePrintAreas([...printAreas.value, area])
+    activePrintAreaId.value = area.id
+    return area
+  }
+
+  function deletePrintArea(id: string) {
+    updatePrintAreas(printAreas.value.filter((a) => a.id !== id))
+    if (activePrintAreaId.value === id) activePrintAreaId.value = null
+  }
+
+  function selectPrintArea(id: string) {
+    activePrintAreaId.value = id
+  }
+
+  function deselectPrintArea() {
+    activePrintAreaId.value = null
+  }
+
+  // ── Spatial ops ───────────────────────────────────────────────────────────────
+
+  function flipPrintAreaOrientation() {
+    const area = activePrintArea.value
+    if (!leafletMap.value || !area || area.corners.length !== 4) return
+    const map = leafletMap.value
+    const { corners, angle } = area
+    const cosA = Math.cos(angle),
+      sinA = Math.sin(angle)
+    const latC = (corners[0]![0] + corners[2]![0]) / 2
+    const lngC = (corners[0]![1] + corners[2]![1]) / 2
+    const cp = map.latLngToContainerPoint(L.latLng(latC, lngC))
+    const p0 = map.latLngToContainerPoint(L.latLng(corners[0]![0], corners[0]![1]))
+    const dx = p0.x - cp.x,
+      dy = p0.y - cp.y
+    const halfW = Math.abs(dx * cosA + dy * sinA)
+    const halfH = Math.abs(-dx * sinA + dy * cosA)
+    const newCorners = (
+      [
+        [-halfH, -halfW],
+        [halfH, -halfW],
+        [halfH, halfW],
+        [-halfH, halfW]
+      ] as [number, number][]
+    ).map(([lx, ly]) => {
+      const ll = map.containerPointToLatLng(L.point(cp.x + lx * cosA - ly * sinA, cp.y + lx * sinA + ly * cosA))
+      return [ll.lat, ll.lng] as [number, number]
+    })
+    patchPrintArea(area.id, { corners: newCorners })
   }
 
   function resnapPrintArea() {
-    if (!leafletMap.value || !printPaper.value || !printOrientation.value) return
-    printBounds.value = calculatePrintBounds(printAspectRatio.value ?? ASPECT_RATIOS[printPaper.value][printOrientation.value])
+    const area = activePrintArea.value
+    if (!leafletMap.value || !area) return
+    const [cols, rows] = area.grid.split('x').map(Number)
+    const base = ASPECT_RATIOS[area.paper][area.orientation]
+    const ratio = (base * (cols || 1)) / (rows || 1)
+    const bounds = calculatePrintBounds(ratio)
+    patchPrintArea(area.id, { corners: boundsToCorners(bounds), angle: 0 })
   }
 
   function fitToPrintArea() {
@@ -217,7 +291,8 @@ export function usePrintExport(options: {
   }
 
   function fitPrintAreaToElements() {
-    if (!leafletMap.value) return
+    const area = activePrintArea.value
+    if (!leafletMap.value || !area) return
     const map = leafletMap.value
     const pts: L.Point[] = []
     for (const p of pins.value) {
@@ -249,7 +324,6 @@ export function usePrintExport(options: {
     maxX += PAD
     maxY += PAD
 
-    // Single-pin case: ensure minimum dimensions
     if (maxX - minX < PAD * 2) {
       const mx = (minX + maxX) / 2
       minX = mx - PAD
@@ -266,7 +340,9 @@ export function usePrintExport(options: {
     const cx = (minX + maxX) / 2
     const cy = (minY + maxY) / 2
 
-    const ratio = printAspectRatio.value
+    const [cols, rows] = area.grid.split('x').map(Number)
+    const base = ASPECT_RATIOS[area.paper][area.orientation]
+    const ratio = (base * (cols || 1)) / (rows || 1)
     if (ratio !== null) {
       if (halfW / halfH > ratio) halfH = halfW / ratio
       else halfW = halfH * ratio
@@ -274,7 +350,8 @@ export function usePrintExport(options: {
 
     const sw = map.containerPointToLatLng(L.point(cx - halfW, cy + halfH))
     const ne = map.containerPointToLatLng(L.point(cx + halfW, cy - halfH))
-    printBounds.value = L.latLngBounds(sw, ne)
+    const bounds = L.latLngBounds(sw, ne)
+    patchPrintArea(area.id, { corners: boundsToCorners(bounds), angle: 0 })
     map.fitBounds(
       [
         [sw.lat, sw.lng],
@@ -285,8 +362,9 @@ export function usePrintExport(options: {
   }
 
   function computeOverlayCorner(): 0 | 1 | 2 | 3 {
-    if (printCorners.value.length !== 4) return 2
-    const [nw, ne, se, sw] = printCorners.value as [[number, number], [number, number], [number, number], [number, number]]
+    const corners = printCorners.value
+    if (corners.length !== 4) return 2
+    const [nw, ne, se, sw] = corners as [[number, number], [number, number], [number, number], [number, number]]
     const west = Math.min(nw[1], sw[1])
     const east = Math.max(ne[1], se[1])
     const south = Math.min(sw[0], se[0])
@@ -316,104 +394,76 @@ export function usePrintExport(options: {
     return best
   }
 
-  function saveToHistory() {
-    if (!printPaper.value || !printOrientation.value || printCorners.value.length !== 4) return
-    const entry: PrintHistoryEntry = {
-      timestamp: Date.now(),
-      corners: [...printCorners.value] as [number, number][],
-      angle: printAngle.value,
-      paper: printPaper.value,
-      orientation: printOrientation.value,
-      grid: printSettings.grid.value,
-      snap: angleSnapEnabled.value,
-      legend: printSettings.legend.value,
-      separatePage: printSettings.legendSeparatePage.value,
-      compass: printSettings.compass.value,
-      scale: printSettings.scale.value,
-      contrast: printSettings.contrast.value,
-      exportQuality: printSettings.exportQuality.value,
-      legendScale: printSettings.legendScale.value,
-      legendX: printSettings.legendX.value,
-      legendY: printSettings.legendY.value
-    }
-    printHistory.value = [entry, ...printHistory.value].slice(0, HISTORY_MAX)
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(printHistory.value))
+  // ── Bounds update from drawer ─────────────────────────────────────────────────
+
+  function handleBoundsSet(id: string, info: PrintAreaInfo) {
+    patchPrintArea(id, { corners: info.corners, angle: info.angle })
   }
 
-  function restoreSettings(entry: PrintHistoryEntry) {
-    printPaper.value = entry.paper
-    printOrientation.value = entry.orientation
-    printSettings.grid.value = entry.grid
-    angleSnapEnabled.value = entry.snap
-    printSettings.legend.value = entry.legend
-    printSettings.legendSeparatePage.value = entry.separatePage ?? false
-    printSettings.compass.value = entry.compass
-    // Coerce legacy string entries ('off' | 'km' | 'mi') to the new boolean toggle.
-    printSettings.scale.value = entry.scale !== false && (entry.scale as unknown) !== 'off'
-    printSettings.contrast.value = entry.contrast
-    printSettings.exportQuality.value = entry.exportQuality ?? 'standard'
-    printSettings.legendScale.value = entry.legendScale ?? 1
-    printSettings.legendX.value = entry.legendX ?? null
-    printSettings.legendY.value = entry.legendY ?? null
-  }
-
-  function handleBoundsSet(info: PrintAreaInfo) {
-    printBounds.value = info.bounds
-    printCorners.value = info.corners
-    printAngle.value = info.angle
-    overlayCorner.value = computeOverlayCorner()
-  }
+  // ── PDF export ────────────────────────────────────────────────────────────────
 
   async function openPreview() {
+    const area = activePrintArea.value
     if (isDownloadingPdf.value) return
-    if (!printBounds.value || printCorners.value.length !== 4 || !printPaper.value || !printOrientation.value) {
-      showNotification('Set a print area first', 'error')
+    if (!area || area.corners.length !== 4) {
+      showNotification('Select a print area first', 'error')
       return
     }
+    exportAbortController = new AbortController()
     isDownloadingPdf.value = true
     showNotification('Building PDF…', 'info')
     try {
-      const [pw, ph] = PAPER_PT[printPaper.value][printOrientation.value]
-      const [gridCols, gridRows] = parsedGrid.value
+      const [pw, ph] = PAPER_PT[area.paper][area.orientation]
+      const [gridCols, gridRows] = area.grid.split('x').map(Number)
       const pdfBytes = await exportMapToPdf({
-        corners: printCorners.value,
-        angle: printAngle.value,
+        corners: area.corners,
+        angle: area.angle,
         mapStyle: mapStyle.value,
-        mapTitle: printSettings.legendTitle.value ? mapName.value : '',
-        mapArea: printSettings.legendArea.value ? mapArea.value || autoArea.value : '',
+        mapTitle: (area.legend ?? true) && (area.legendTitle ?? true) ? area.title || mapName.value : '',
+        mapArea: (area.legend ?? true) && (area.legendArea ?? true) ? area.subtitle || mapArea.value || autoArea.value : '',
         pins: pins.value,
         hiddenPinIds: hiddenPinIds.value,
         routes: routes.value,
         hiddenRouteIds: hiddenRouteIds.value,
         captions: captions.value,
         hiddenCaptionIds: hiddenCaptionIds.value,
-        includeLegend: printSettings.legend.value,
-        legendSeparatePage: printSettings.legendSeparatePage.value,
-        legendBlankLabels: printSettings.legendBlankLabels.value,
-        legendScale: printSettings.legendScale.value,
-        legendX: printSettings.legendX.value,
-        legendY: printSettings.legendY.value,
-        includeCompass: printSettings.compass.value,
-        includeScale: printSettings.scale.value,
+        legend: area.legend ?? true,
+        legendPins: area.legendPins ?? true,
+        legendRoutes: area.legendRoutes ?? true,
+        legendSeparatePage: area.legendSeparatePage ?? false,
+        legendBlankLabels: area.legendBlankLabels ?? false,
+        legendScale: area.legendScale ?? 1,
+        legendX: area.legendX ?? null,
+        legendY: area.legendY ?? null,
+        markerScale: area.markerScale ?? 1,
+        includeCompass: area.compass ?? true,
+        includeScale: area.scale ?? true,
         scaleUnit: units.value,
         enhanceContrast: printSettings.contrast.value,
         exportQuality: printSettings.exportQuality.value,
+        overlayCorner: area.legendCorner ?? overlayCorner.value,
         paperWidthPt: pw,
         paperHeightPt: ph,
-        gridCols,
-        gridRows,
-        onProgress: (msg) => showNotification(msg, 'info')
+        gridCols: gridCols || 1,
+        gridRows: gridRows || 1,
+        onProgress: (msg) => showNotification(msg, 'info'),
+        signal: exportAbortController.signal
       })
       const blob = new Blob([pdfBytes as Uint8Array<ArrayBuffer>], { type: 'application/pdf' })
       if (previewBlobUrl.value) URL.revokeObjectURL(previewBlobUrl.value)
       previewBlobUrl.value = URL.createObjectURL(blob)
       isPreviewOpen.value = true
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[MapFolio] PDF export error:', e)
-      showNotification('Export failed - check console', 'error')
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        showNotification('Export cancelled', 'info')
+      } else {
+        // eslint-disable-next-line no-console
+        console.error('[MapFolio] PDF export error:', e)
+        showNotification('Export failed - check console', 'error')
+      }
     } finally {
       isDownloadingPdf.value = false
+      exportAbortController = null
     }
   }
 
@@ -423,7 +473,6 @@ export function usePrintExport(options: {
     a.href = previewBlobUrl.value
     a.download = `${mapName.value || 'mapfolio'}.pdf`
     a.click()
-    saveToHistory()
     showNotification('PDF downloaded')
     closePreview()
   }
@@ -437,29 +486,31 @@ export function usePrintExport(options: {
   }
 
   return {
-    printBounds,
+    activePrintAreaId,
+    activePrintArea,
     printCorners,
     printAngle,
-    printAreaVisibility,
-    printHistory,
+    printBounds,
+    printAspectRatio,
+    overlayCorner,
     isDownloadingPdf,
     isPreviewOpen,
     previewBlobUrl,
     isAutoArea,
     autoArea,
-    printPaper,
-    printOrientation,
-    parsedGrid,
-    printAspectRatio,
-    overlayCorner,
-    selectPrintPreset,
+    addPrintArea,
+    deletePrintArea,
+    selectPrintArea,
+    deselectPrintArea,
+    patchPrintArea,
+    flipPrintAreaOrientation,
     resnapPrintArea,
     fitToPrintArea,
     fitPrintAreaToElements,
     handleBoundsSet,
     openPreview,
+    cancelExport,
     downloadFromPreview,
-    closePreview,
-    restoreSettings
+    closePreview
   }
 }

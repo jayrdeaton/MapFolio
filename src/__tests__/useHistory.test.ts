@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
 import { useHistory } from '@/composables/useHistory'
-import type { Caption, Pin, Route } from '@/types'
+import type { Caption, Pin, PrintArea, Route } from '@/types'
 
 function makePin(id: number): Pin {
-  return { id, name: `Pin ${id}`, description: '', emoji: '📍', color: '#06b6d4', lat: id, lng: id }
+  return { id, name: `Pin ${id}`, description: '', emoji: '📍', color: '#0d9488', lat: id, lng: id }
 }
 
 function makeRoute(id: number): Route {
@@ -16,13 +16,34 @@ function makeCaption(id: number): Caption {
   return { id, text: `Caption ${id}`, lat: id, lng: id, color: '#000', size: 'm' }
 }
 
+function makePrintArea(n: number): PrintArea {
+  const d = n * 0.1
+  return {
+    id: `area-${n}`,
+    corners: [
+      [d, d],
+      [d, d + 1],
+      [d + 1, d + 1],
+      [d + 1, d]
+    ],
+    angle: 0,
+    paper: 'letter',
+    orientation: 'landscape',
+    grid: '1x1'
+  }
+}
+
 function setup() {
   const pins = ref<Pin[]>([makePin(1)])
   const routes = ref<Route[]>([makeRoute(1)])
   const captions = ref<Caption[]>([makeCaption(1)])
+  const printAreas = ref<PrintArea[]>([makePrintArea(1)])
+  const updatePrintAreas = vi.fn((areas: PrintArea[]) => {
+    printAreas.value = areas
+  })
   const notify = vi.fn()
-  const history = useHistory({ pins, routes, captions, showNotification: notify })
-  return { pins, routes, captions, notify, ...history }
+  const history = useHistory({ pins, routes, captions, showNotification: notify, printAreas, updatePrintAreas })
+  return { pins, routes, captions, printAreas, updatePrintAreas, notify, ...history }
 }
 
 describe('useHistory', () => {
@@ -189,6 +210,57 @@ describe('useHistory', () => {
       clear()
       expect(canUndo.value).toBe(false)
       expect(canRedo.value).toBe(false)
+    })
+  })
+
+  describe('print areas', () => {
+    it('restores deleted print area on undo', () => {
+      const { printAreas, updatePrintAreas, push, undo } = setup()
+      push('delete print area')
+      updatePrintAreas([])
+      expect(printAreas.value).toHaveLength(0)
+      undo()
+      expect(printAreas.value).toHaveLength(1)
+      expect(printAreas.value[0]!.id).toBe('area-1')
+    })
+
+    it('re-deletes print area on redo', () => {
+      const { printAreas, updatePrintAreas, push, undo, redo } = setup()
+      push('delete print area')
+      updatePrintAreas([])
+      undo()
+      redo()
+      expect(printAreas.value).toHaveLength(0)
+    })
+
+    it('restores added print area on undo (removes it)', () => {
+      const { printAreas, updatePrintAreas, push, undo } = setup()
+      push('add print area')
+      updatePrintAreas([...printAreas.value, makePrintArea(2)])
+      expect(printAreas.value).toHaveLength(2)
+      undo()
+      expect(printAreas.value).toHaveLength(1)
+    })
+
+    it('snapshots are deep copies (corner mutations do not corrupt snapshot)', () => {
+      const { printAreas, updatePrintAreas, push, undo } = setup()
+      push()
+      const originalCorner = printAreas.value[0]!.corners[0]!
+      updatePrintAreas([
+        {
+          ...printAreas.value[0]!,
+          corners: [
+            [99, 99],
+            [99, 100],
+            [100, 100],
+            [100, 99]
+          ]
+        }
+      ])
+      // mutate the corner that was in the snapshot
+      originalCorner[0] = 999
+      undo()
+      expect(printAreas.value[0]!.corners[0]![0]).toBe(0.1)
     })
   })
 })

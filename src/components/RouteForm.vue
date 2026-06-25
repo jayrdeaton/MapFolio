@@ -20,7 +20,7 @@ const emit = defineEmits<{
 }>()
 
 const name = ref('')
-const color = ref('#06b6d4')
+const color = ref('#0d9488')
 const lineStyle = ref<RouteLineStyle>('solid')
 const waypointStyle = ref<RouteWaypointStyle>('circle')
 const waypointShowNumber = ref(false)
@@ -64,7 +64,7 @@ function save() {
   emit('save', { ...props.editingRoute, name: name.value.trim(), color: color.value, lineStyle: lineStyle.value, waypointStyle: waypointStyle.value, waypointShowNumber: waypointShowNumber.value, waypointSize: waypointSize.value })
 }
 
-const inputClass = 'w-full py-1.5 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20'
+const inputClass = 'w-full py-1.5 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20'
 const sectionLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibold text-xs uppercase tracking-wide'
 const btnBase = 'px-3 py-2 rounded text-sm font-medium transition-colors flex items-center gap-1.5 cursor-pointer'
 
@@ -99,7 +99,7 @@ defineExpose({ save })
         <div>
           <label :class="sectionLabelClass">Line Style</label>
           <div class="grid grid-cols-4 gap-1.5">
-            <button v-for="s in LINE_STYLES" :key="s.value" :disabled="s.value === 'none' && waypointStyle === 'none'" :title="s.value === 'none' && waypointStyle === 'none' ? 'Enable waypoints first' : s.label" :class="['flex flex-col items-center gap-1.5 py-2 px-1 rounded border transition-colors', s.value === 'none' && waypointStyle === 'none' ? 'border-gray-200 dark:border-zinc-700 opacity-40 cursor-not-allowed' : lineStyle === s.value ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/30 cursor-pointer' : 'border-gray-200 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 cursor-pointer']" @click="!(s.value === 'none' && waypointStyle === 'none') && (lineStyle = s.value)">
+            <button v-for="s in LINE_STYLES" :key="s.value" :disabled="s.value === 'none' && waypointStyle === 'none'" :title="s.value === 'none' && waypointStyle === 'none' ? 'Enable waypoints first' : s.label" :class="['flex flex-col items-center gap-1.5 py-2 px-1 rounded border transition-colors', s.value === 'none' && waypointStyle === 'none' ? 'border-gray-200 dark:border-zinc-700 opacity-40 cursor-not-allowed' : lineStyle === s.value ? 'border-teal-600 bg-teal-50 dark:bg-teal-950/30 cursor-pointer' : 'border-gray-200 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 cursor-pointer']" @click="!(s.value === 'none' && waypointStyle === 'none') && (lineStyle = s.value)">
               <svg width="36" height="10" class="overflow-visible">
                 <template v-if="s.value === 'none'">
                   <line x1="2" y1="5" x2="34" y2="5" stroke="#d1d5db" stroke-width="1.5" stroke-dasharray="3 3" />
@@ -130,7 +130,7 @@ defineExpose({ save })
 
         <div class="flex gap-2">
           <button :class="`${btnBase} justify-center px-4 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-950/50`" @click="emit('delete')"><Trash2 :size="15" /> Delete</button>
-          <button :class="`${btnBase} flex-1 justify-center bg-cyan-500 text-white hover:bg-cyan-600`" @click="save">Save</button>
+          <button :class="`${btnBase} flex-1 justify-center bg-teal-600 text-white hover:bg-teal-700`" @click="save">Save</button>
         </div>
       </div>
     </div>

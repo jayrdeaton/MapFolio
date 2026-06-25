@@ -33,15 +33,15 @@ html.dark {
   color: #4b5563;
   cursor: pointer;
   transition: color 0.15s, background-color 0.15s, border-color 0.15s;
-  --ibtn-hover-fg: #0891b2; /* highlight (default): cyan */
-  --ibtn-hover-bg: #ecfeff;
-  --ibtn-hover-bd: #67e8f9;
+  --ibtn-hover-fg: #0f766e; /* highlight (default): teal */
+  --ibtn-hover-bg: #f0fdfa;
+  --ibtn-hover-bd: #5eead4;
 }
 .dark .mf-ibtn {
   color: #a1a1aa;
-  --ibtn-hover-fg: #22d3ee;
-  --ibtn-hover-bg: rgba(8, 145, 178, 0.18);
-  --ibtn-hover-bd: #0e7490;
+  --ibtn-hover-fg: #2dd4bf;
+  --ibtn-hover-bg: rgba(15, 118, 110, 0.18);
+  --ibtn-hover-bd: #0f766e;
 }
 .mf-hover-dim .mf-ibtn {
   --ibtn-hover-fg: #4b5563; /* dim: neutral darken, no accent */
@@ -76,25 +76,25 @@ html.dark {
    specificity just enough to beat the matching `.dark .mf-ibtn` /
    `.mf-outlined .mf-ibtn` base rule above — otherwise dark mode paints the icon
    grey (#a1a1aa) on the cyan fill and the border stays neutral. */
-.mf-ibtn--primary { color: #fff; background-color: #06b6d4; border-color: #06b6d4; }
+.mf-ibtn--primary { color: #fff; background-color: #0d9488; border-color: #0d9488; }
 .dark .mf-ibtn--primary { color: #fff; }
-.mf-outlined .mf-ibtn--primary { border-color: #06b6d4; }
-.dark.mf-outlined .mf-ibtn--primary { border-color: #06b6d4; }
-.mf-ibtn--primary:hover { color: #fff; background-color: #0891b2; border-color: #0891b2; }
+.mf-outlined .mf-ibtn--primary { border-color: #0d9488; }
+.dark.mf-outlined .mf-ibtn--primary { border-color: #0d9488; }
+.mf-ibtn--primary:hover { color: #fff; background-color: #0f766e; border-color: #0f766e; }
 .dark .mf-ibtn--primary:hover { color: #fff; }
-.mf-outlined .mf-ibtn--primary:hover { border-color: #0891b2; }
-.dark.mf-outlined .mf-ibtn--primary:hover { border-color: #0891b2; }
+.mf-outlined .mf-ibtn--primary:hover { border-color: #0f766e; }
+.dark.mf-outlined .mf-ibtn--primary:hover { border-color: #0f766e; }
 
 /* Active toggle (state = ON) → soft cyan: a tinted background + cyan glyph, no
    solid fill, so it reads as "lit" without competing with the primary button.
    No border outside `.mf-outlined`, so it stays flush when outlines are off.
    `.dark` rules lift specificity to beat `.dark .mf-ibtn` (the grey base). */
-.mf-ibtn--active { color: #0891b2; background-color: #cffafe; }
-.dark .mf-ibtn--active { color: #22d3ee; background-color: rgba(8, 145, 178, 0.22); }
-.mf-outlined .mf-ibtn--active { border-color: #67e8f9; }
-.dark.mf-outlined .mf-ibtn--active { border-color: #155e75; }
-.mf-ibtn--active:hover { color: #0e7490; background-color: #a5f3fc; }
-.dark .mf-ibtn--active:hover { color: #67e8f9; background-color: rgba(8, 145, 178, 0.32); }
+.mf-ibtn--active { color: #0f766e; background-color: #ccfbf1; }
+.dark .mf-ibtn--active { color: #2dd4bf; background-color: rgba(15, 118, 110, 0.22); }
+.mf-outlined .mf-ibtn--active { border-color: #5eead4; }
+.dark.mf-outlined .mf-ibtn--active { border-color: #134e4a; }
+.mf-ibtn--active:hover { color: #0f766e; background-color: #99f6e4; }
+.dark .mf-ibtn--active:hover { color: #5eead4; background-color: rgba(15, 118, 110, 0.32); }
 
 /* Disabled → inert, no hover response */
 .mf-ibtn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -129,9 +129,9 @@ html.dark {
 .mf-seg-btn:not(.mf-seg-btn--active):hover { background-color: #f3f4f6; }
 .dark .mf-seg-btn:not(.mf-seg-btn--active):hover { background-color: #27272a; }
 
-/* Active: mirrors mf-ibtn--active exactly — faint cyan bg + cyan glyph/text. */
-.mf-seg-btn--active { color: #0891b2; background-color: #cffafe; }
-.dark .mf-seg-btn--active { color: #22d3ee; background-color: rgba(8, 145, 178, 0.22); }
+/* Active: mirrors mf-ibtn--active exactly — faint teal bg + teal glyph/text. */
+.mf-seg-btn--active { color: #0f766e; background-color: #ccfbf1; }
+.dark .mf-seg-btn--active { color: #2dd4bf; background-color: rgba(15, 118, 110, 0.22); }
 .mf-ibtn:disabled:hover { color: #4b5563; background-color: transparent; border-color: transparent; }
 .dark .mf-ibtn:disabled:hover { color: #a1a1aa; }
 .mf-outlined .mf-ibtn:disabled:hover { border-color: #d1d5db; }
@@ -190,13 +190,13 @@ input, textarea, select {
 .marker-cluster-small,
 .marker-cluster-medium,
 .marker-cluster-large {
-  background-color: rgba(6, 182, 212, 0.18) !important;
+  background-color: rgba(13, 148, 136, 0.18) !important;
 }
 
 .marker-cluster-small div,
 .marker-cluster-medium div,
 .marker-cluster-large div {
-  background-color: rgba(6, 182, 212, 0.88) !important;
+  background-color: rgba(13, 148, 136, 0.88) !important;
   color: #fff !important;
   font-size: 12px !important;
   font-weight: 700 !important;
@@ -293,12 +293,12 @@ input, textarea, select {
 }
 
 .pin-marker--selected .pin-inner:not(.pin-inner--bubble) {
-  outline: 2px solid #06b6d4;
+  outline: 2px solid #0d9488;
   outline-offset: 4px;
   border-radius: 5px;
 }
 .pin-marker--selected .pin-bubble {
-  outline: 2px solid #06b6d4;
+  outline: 2px solid #0d9488;
   outline-offset: 2px;
 }
 
@@ -312,8 +312,10 @@ input, textarea, select {
 }
 
 .pin-emoji {
-  font-size: 20px;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Emoji bubble marker — white pill with a colored downward triangle tip */
@@ -321,7 +323,7 @@ input, textarea, select {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
+  padding: 2px;
   border-radius: 7px;
   flex-shrink: 0;
 }
@@ -494,21 +496,21 @@ input, textarea, select {
 }
 
 .pin-popup-btn.pin-popup-hide {
-  background: #06b6d4;
-  border-color: #22d3ee;
+  background: #0d9488;
+  border-color: #2dd4bf;
   color: #ffffff;
 }
 
 .pin-popup-btn.pin-popup-hide:hover {
-  background: #0891b2;
-  border-color: #22d3ee;
+  background: #0f766e;
+  border-color: #2dd4bf;
   color: #ffffff;
 }
 
 .pin-popup-btn.pin-popup-edit:hover {
-  background: #ecfeff;
-  border-color: #67e8f9;
-  color: #0891b2;
+  background: #f0fdfa;
+  border-color: #5eead4;
+  color: #0f766e;
 }
 
 .pin-popup-btn.pin-popup-delete:hover {
@@ -618,21 +620,21 @@ input, textarea, select {
 }
 
 .dark .pin-popup-btn.pin-popup-hide {
-  background: #06b6d4;
-  border-color: #22d3ee;
+  background: #0d9488;
+  border-color: #2dd4bf;
   color: #ffffff;
 }
 
 .dark .pin-popup-btn.pin-popup-hide:hover {
-  background: #0891b2;
-  border-color: #22d3ee;
+  background: #0f766e;
+  border-color: #2dd4bf;
   color: #ffffff;
 }
 
 .dark .pin-popup-btn.pin-popup-edit:hover {
-  background: rgba(6, 182, 212, 0.1);
-  border-color: #0891b2;
-  color: #22d3ee;
+  background: rgba(13, 148, 136, 0.1);
+  border-color: #0f766e;
+  color: #2dd4bf;
 }
 
 .dark .pin-popup-btn.pin-popup-delete:hover {
@@ -771,7 +773,7 @@ input, textarea, select {
 
 .print-legend-footprint {
   background: rgba(255, 255, 255, 0.55);
-  border: 1px dashed rgba(6, 182, 212, 0.9);
+  border: 1px dashed rgba(13, 148, 136, 0.9);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 }
 
@@ -780,17 +782,17 @@ input, textarea, select {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: rgba(8, 145, 178, 0.9);
+  color: rgba(15, 118, 110, 0.9);
   white-space: nowrap;
 }
 
 .dark .print-legend-footprint {
   background: rgba(24, 24, 27, 0.55);
-  border-color: rgba(34, 211, 238, 0.9);
+  border-color: rgba(45, 212, 191, 0.9);
 }
 
 .dark .print-legend-footprint-label {
-  color: rgba(34, 211, 238, 0.9);
+  color: rgba(45, 212, 191, 0.9);
 }
 
 /* ── Print map title (hidden on screen, shown when printing) ─────────────── */
@@ -817,7 +819,7 @@ input, textarea, select {
   top: 8px; left: 8px;
   width: 24px; height: 24px;
   border-radius: 50%;
-  border: 2px solid #06b6d4;
+  border: 2px solid #0d9488;
   animation: searchPulse 2s ease-out infinite;
   pointer-events: none;
 }
@@ -827,9 +829,9 @@ input, textarea, select {
   top: 12px; left: 12px;
   width: 16px; height: 16px;
   border-radius: 50%;
-  background: #06b6d4;
+  background: #0d9488;
   border: 2.5px solid white;
-  box-shadow: 0 1px 8px rgba(6, 182, 212, 0.55);
+  box-shadow: 0 1px 8px rgba(13, 148, 136, 0.55);
   animation: searchBounce 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 

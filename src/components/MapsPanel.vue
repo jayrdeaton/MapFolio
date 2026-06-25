@@ -13,6 +13,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   switch: [id: string]
+  edit: [id: string]
   create: [name: string]
   duplicate: [id: string]
   delete: [id: string]
@@ -20,6 +21,7 @@ const emit = defineEmits<{
   'copy-link': [opts: { layers: MapExportLayers }]
   import: []
   close: []
+  reorder: [maps: MapData[]]
 }>()
 
 const newMapName = ref('')
@@ -116,7 +118,7 @@ function doExport() {
 
 const sectionLabelClass = 'block text-gray-500 dark:text-zinc-400 font-semibold text-xs uppercase tracking-wide'
 const iconBtnClass = 'w-7 h-7 flex items-center justify-center rounded border border-gray-300 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors'
-const fieldClass = 'w-full py-1.5 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20'
+const fieldClass = 'w-full py-1.5 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20'
 const fieldLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibold text-xs uppercase tracking-wide'
 </script>
 
@@ -126,7 +128,7 @@ const fieldLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibo
     <div class="sticky top-0 z-10 bg-gray-50 dark:bg-zinc-800 px-4 pt-4 pb-2">
       <div class="flex items-center justify-between">
         <span class="flex items-center gap-1.5 text-gray-500 dark:text-zinc-400 font-semibold text-xs uppercase tracking-wide"><Map :size="12" /> Maps ({{ maps.length }})</span>
-        <button class="w-7 h-7 flex items-center justify-center rounded border border-cyan-400 bg-cyan-500 text-white hover:bg-cyan-600 cursor-pointer transition-colors" title="New map" @click="showNewInput = true">
+        <button class="w-7 h-7 flex items-center justify-center rounded border border-teal-400 bg-teal-600 text-white hover:bg-teal-700 cursor-pointer transition-colors" title="New map" @click="showNewInput = true">
           <Plus :size="13" />
         </button>
       </div>
@@ -136,8 +138,8 @@ const fieldLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibo
     <div class="py-1 space-y-3">
       <!-- New map input -->
       <div v-if="showNewInput" class="px-4 flex gap-1.5">
-        <input v-model="newMapName" placeholder="Map name…" class="flex-1 py-1.5 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20" autofocus @keydown.enter="submitNew" @keydown.escape="cancelNew" />
-        <button class="w-7 h-7 flex items-center justify-center rounded border border-cyan-400 bg-cyan-500 text-white hover:bg-cyan-600 cursor-pointer transition-colors shrink-0" title="Create" @click="submitNew">
+        <input v-model="newMapName" placeholder="Map name…" class="flex-1 py-1.5 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20" autofocus @keydown.enter="submitNew" @keydown.escape="cancelNew" />
+        <button class="w-7 h-7 flex items-center justify-center rounded border border-teal-400 bg-teal-600 text-white hover:bg-teal-700 cursor-pointer transition-colors shrink-0" title="Create" @click="submitNew">
           <Check :size="13" />
         </button>
         <button class="w-7 h-7 flex items-center justify-center rounded border border-gray-300 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors shrink-0" title="Cancel" @click="cancelNew">
@@ -147,7 +149,11 @@ const fieldLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibo
 
       <!-- Map list -->
       <div>
-        <MapListItem v-for="map in maps" :key="map.id" :map="map" :active="map.id === activeId" :can-delete="maps.length > 1" @switch="emit('switch', $event)" @duplicate="emit('duplicate', $event)" @delete="emit('delete', $event)" />
+        <VueDraggable :model-value="maps" item-key="id" handle=".map-drag-handle" :animation="150" ghost-class="opacity-40" @update:model-value="emit('reorder', $event)">
+          <template #item="{ element: map }">
+            <MapListItem :map="map" :active="map.id === activeId" :can-delete="maps.length > 1" @switch="emit('switch', $event)" @edit="emit('edit', $event)" @duplicate="emit('duplicate', $event)" @delete="emit('delete', $event)" />
+          </template>
+        </VueDraggable>
       </div>
     </div>
 
@@ -177,15 +183,15 @@ const fieldLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibo
           <span :class="fieldLabelClass">Include</span>
           <div class="space-y-1.5">
             <label :class="['flex items-center gap-2 text-sm', counts.pins === 0 ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed' : 'text-gray-800 dark:text-zinc-200 cursor-pointer']">
-              <input v-model="layers.pins" type="checkbox" :disabled="counts.pins === 0" class="accent-cyan-500" />
+              <input v-model="layers.pins" type="checkbox" :disabled="counts.pins === 0" class="accent-teal-600" />
               Pins <span class="text-gray-400 dark:text-zinc-500 tabular-nums">({{ counts.pins }})</span>
             </label>
             <label :class="['flex items-center gap-2 text-sm', counts.routes === 0 ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed' : 'text-gray-800 dark:text-zinc-200 cursor-pointer']">
-              <input v-model="layers.routes" type="checkbox" :disabled="counts.routes === 0" class="accent-cyan-500" />
+              <input v-model="layers.routes" type="checkbox" :disabled="counts.routes === 0" class="accent-teal-600" />
               Routes <span class="text-gray-400 dark:text-zinc-500 tabular-nums">({{ counts.routes }})</span>
             </label>
             <label :class="['flex items-center gap-2 text-sm', captionsDisabled ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed' : 'text-gray-800 dark:text-zinc-200 cursor-pointer']">
-              <input v-model="layers.captions" type="checkbox" :disabled="captionsDisabled" class="accent-cyan-500" />
+              <input v-model="layers.captions" type="checkbox" :disabled="captionsDisabled" class="accent-teal-600" />
               Captions <span class="text-gray-400 dark:text-zinc-500 tabular-nums">({{ counts.captions }})</span>
             </label>
           </div>
@@ -196,21 +202,21 @@ const fieldLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibo
           <span :class="fieldLabelClass">Format</span>
           <div class="space-y-1.5">
             <label class="flex items-center gap-2 text-sm text-gray-800 dark:text-zinc-200 cursor-pointer">
-              <input v-model="exportFormat" type="radio" value="json" class="accent-cyan-500" />
+              <input v-model="exportFormat" type="radio" value="json" class="accent-teal-600" />
               <span class="flex flex-col leading-tight">
                 <span>MapFolio JSON</span>
                 <span class="text-xs text-gray-400 dark:text-zinc-500">Full fidelity, re-importable</span>
               </span>
             </label>
             <label :class="['flex items-center gap-2 text-sm', geojsonDisabled ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed' : 'text-gray-800 dark:text-zinc-200 cursor-pointer']">
-              <input v-model="exportFormat" type="radio" value="geojson" :disabled="geojsonDisabled" class="accent-cyan-500" />
+              <input v-model="exportFormat" type="radio" value="geojson" :disabled="geojsonDisabled" class="accent-teal-600" />
               <span class="flex flex-col leading-tight">
                 <span>GeoJSON</span>
                 <span class="text-xs text-gray-400 dark:text-zinc-500">For other map tools{{ exportFormat === 'geojson' ? ' · no captions' : '' }}</span>
               </span>
             </label>
             <label :class="['flex items-center gap-2 text-sm', linkDisabled ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed' : 'text-gray-800 dark:text-zinc-200 cursor-pointer']">
-              <input v-model="exportFormat" type="radio" value="link" :disabled="linkDisabled" class="accent-cyan-500" />
+              <input v-model="exportFormat" type="radio" value="link" :disabled="linkDisabled" class="accent-teal-600" />
               <span class="flex flex-col leading-tight">
                 <span>Share link</span>
                 <span class="text-xs text-gray-400 dark:text-zinc-500">Opens in one tap · best for smaller maps</span>
@@ -222,7 +228,7 @@ const fieldLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibo
 
         <!-- Actions -->
         <div class="flex gap-1.5 pt-1">
-          <button class="flex-1 h-8 flex items-center justify-center gap-1.5 rounded border border-cyan-400 bg-cyan-500 text-white text-sm font-medium hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors" :disabled="actionDisabled" :title="linkTooLong ? 'Too large for a share link. Export a file instead.' : undefined" @click="doExport"><component :is="isLink ? Link : FileDown" :size="14" /> {{ isLink ? 'Copy link' : 'Export' }}</button>
+          <button class="flex-1 h-8 flex items-center justify-center gap-1.5 rounded border border-teal-400 bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors" :disabled="actionDisabled" :title="linkTooLong ? 'Too large for a share link. Export a file instead.' : undefined" @click="doExport"><component :is="isLink ? Link : FileDown" :size="14" /> {{ isLink ? 'Copy link' : 'Export' }}</button>
           <button class="px-3 h-8 rounded border border-gray-300 dark:border-zinc-700 text-sm text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors" @click="showExport = false">Cancel</button>
         </div>
       </div>

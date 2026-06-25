@@ -25,21 +25,38 @@ export interface MapExportOptions {
 // Idempotent — a no-op on already-clean data — so it can run on every load and
 // self-heals any duplicate-id state left by the old Date.now() id bug.
 // Returns the (possibly identical) map plus whether anything changed.
+const VALID_MAP_STYLES = new Set<string>(['clean', 'minimal', 'standard', 'satellite', 'terrain'])
+
 export function sanitizeMap(m: MapData): { map: MapData; changed: boolean } {
+  // Normalize fields that may be absent or invalid in old/imported maps before id repair.
+  let changed = false
+  if (!Array.isArray(m.pins) || !Array.isArray(m.routes) || !VALID_MAP_STYLES.has(m.mapStyle as string) || typeof m.showLabels !== 'boolean' || typeof m.showClusters !== 'boolean') {
+    m = {
+      ...m,
+      pins: Array.isArray(m.pins) ? m.pins : [],
+      routes: Array.isArray(m.routes) ? m.routes : [],
+      mapStyle: (VALID_MAP_STYLES.has(m.mapStyle as string) ? m.mapStyle : (m.mapStyle as string) === 'dark' ? 'minimal' : 'clean') as MapData['mapStyle'],
+      showLabels: typeof m.showLabels === 'boolean' ? m.showLabels : false,
+      showClusters: typeof m.showClusters === 'boolean' ? m.showClusters : true
+    }
+    changed = true
+  }
+
   const usedPinIds = new Set<number>()
   const idRemap = new Map<number, number>() // old pin id -> resolved pin id
   const pins: MapData['pins'] = []
-  let changed = false
 
+  const VALID_DOT_SIZES = new Set<string>(['xs', 's', 'm', 'l', 'xl'])
   for (const p of m.pins ?? []) {
     let id = p.id
     if (typeof id !== 'number' || usedPinIds.has(id)) id = uid()
     // An id-collision survivor is re-id'd but we do NOT record a remap — the
     // earlier holder keeps the original id, so existing route refs stay valid.
     usedPinIds.add(id)
-    if (id !== p.id) {
+    const dotSize = p.dotSize && VALID_DOT_SIZES.has(p.dotSize) ? p.dotSize : undefined
+    if (id !== p.id || dotSize !== p.dotSize) {
       changed = true
-      pins.push({ ...p, id })
+      pins.push({ ...p, id, dotSize })
     } else {
       pins.push(p)
     }
@@ -89,7 +106,15 @@ export function sanitizeMap(m: MapData): { map: MapData; changed: boolean } {
     return next
   })
 
-  return changed ? { map: { ...m, pins, routes, ...(captions ? { captions } : {}) }, changed } : { map: m, changed }
+  // Validate printAreas — strip any entries missing required fields.
+  let printAreas: MapData['printAreas']
+  if (Array.isArray(m.printAreas) && m.printAreas.length > 0) {
+    const valid = m.printAreas.filter((a) => a && typeof a.id === 'string' && Array.isArray(a.corners) && typeof a.angle === 'number' && typeof a.paper === 'string' && typeof a.orientation === 'string')
+    if (valid.length !== m.printAreas.length) changed = true
+    printAreas = valid.length > 0 ? valid : undefined
+  }
+
+  return changed ? { map: { ...m, pins, routes, ...(captions ? { captions } : {}), ...(printAreas !== undefined ? { printAreas } : {}) }, changed } : { map: m, changed }
 }
 
 function makeDefaultMap(overrides: Partial<MapData> = {}): MapData {
@@ -249,6 +274,11 @@ export function useMaps() {
     persist()
   }
 
+  function patchMap(id: string, patch: Partial<MapData>) {
+    maps.value = maps.value.map((m) => (m.id === id ? { ...m, ...patch } : m))
+    persist()
+  }
+
   function duplicateMap(id: string): MapData {
     const source = maps.value.find((m) => m.id === id)!
     const copy: MapData = { ...JSON.parse(JSON.stringify(source)), id: Date.now().toString(), name: `${source.name} (copy)` }
@@ -297,6 +327,11 @@ export function useMaps() {
     return m
   }
 
+  function reorderMaps(newMaps: MapData[]) {
+    maps.value = newMaps
+    persist()
+  }
+
   function importMapFromData(data: unknown): MapData | null {
     try {
       const source = data as Record<string, unknown>
@@ -333,6 +368,7 @@ export function useMaps() {
     activeId,
     activeMap,
     updateActiveMap,
+    patchMap,
     createMap,
     switchMap,
     deleteMap,
@@ -340,6 +376,7 @@ export function useMaps() {
     duplicateMap,
     exportMapData,
     importFromShare,
-    importMapFromData
+    importMapFromData,
+    reorderMaps
   }
 }

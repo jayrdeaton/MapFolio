@@ -1,4 +1,4 @@
-import type { Caption, Pin, Route } from '@/types'
+import type { Caption, Pin, PrintArea, Route } from '@/types'
 
 interface Selection {
   selectPin: (id: number, additive: boolean) => void
@@ -9,11 +9,12 @@ interface Selection {
   selectedPinIds: Ref<Set<number>>
   selectedRouteIds: Ref<Set<number>>
   selectedCaptionIds: Ref<Set<number>>
+  selectedPrintAreaIds: Ref<Set<string>>
   selectedWaypointKey: Ref<{ routeId: number; pointIndex: number } | null>
 }
 
 interface MapClipboard {
-  set: (pins: Pin[], routes: Route[], captions: Caption[], mapId?: string) => void
+  set: (pins: Pin[], routes: Route[], captions: Caption[], printAreas?: PrintArea[], mapId?: string) => void
 }
 
 interface UseSelectionActionsOptions {
@@ -21,6 +22,8 @@ interface UseSelectionActionsOptions {
   pins: Ref<Pin[]>
   routes: Ref<Route[]>
   captions: Ref<Caption[]>
+  printAreas: Ref<PrintArea[]>
+  updatePrintAreas: (areas: PrintArea[]) => void
   mapClipboard: MapClipboard
   activeMapId: Ref<string>
   history: { push: (label?: string) => void }
@@ -32,19 +35,20 @@ interface UseSelectionActionsOptions {
   openEditPin: (pin: Pin) => void
   openEditRoute: (route: Route) => void
   openEditCaption: (caption: Caption) => void
+  openEditPrintArea: (id: string) => void
   isAdjustingPrintArea: Ref<boolean>
   leafletMap: Ref<import('leaflet').Map | null>
   removePoint: (routeId: number, pointIndex: number) => void
 }
 
-export function useSelectionActions({ selection, pins, routes, captions, mapClipboard, activeMapId, history, cleanupOrphanedLinks, isDrawingRoute, stopDrawing, drawingRoute, showNotification, openEditPin, openEditRoute, openEditCaption, isAdjustingPrintArea, leafletMap, removePoint }: UseSelectionActionsOptions) {
+export function useSelectionActions({ selection, pins, routes, captions, printAreas, updatePrintAreas, mapClipboard, activeMapId, history, cleanupOrphanedLinks, isDrawingRoute, stopDrawing, drawingRoute, showNotification, openEditPin, openEditRoute, openEditCaption, openEditPrintArea, isAdjustingPrintArea: _isAdjustingPrintArea, leafletMap, removePoint }: UseSelectionActionsOptions) {
   const selectedPins = computed(() => pins.value.filter((p) => selection.selectedPinIds.value.has(p.id)))
   const selectedRoutes = computed(() => routes.value.filter((r) => selection.selectedRouteIds.value.has(r.id)))
   const selectedCaptions = computed(() => captions.value.filter((c) => selection.selectedCaptionIds.value.has(c.id)))
+  const selectedPrintAreas = computed(() => printAreas.value.filter((a) => selection.selectedPrintAreaIds.value.has(a.id)))
 
-  // True when every selected item is already hidden, so the pill's toggle reveals them instead.
   const allSelectedHidden = computed(() => {
-    const items = [...selectedPins.value, ...selectedRoutes.value, ...selectedCaptions.value]
+    const items = [...selectedPins.value, ...selectedRoutes.value, ...selectedCaptions.value, ...selectedPrintAreas.value]
     return items.length > 0 && items.every((i) => i.hidden)
   })
 
@@ -54,6 +58,7 @@ export function useSelectionActions({ selection, pins, routes, captions, mapClip
     if (selection.selectedPinIds.value.size) pins.value = pins.value.map((p) => (selection.selectedPinIds.value.has(p.id) ? { ...p, hidden: hide } : p))
     if (selection.selectedRouteIds.value.size) routes.value = routes.value.map((r) => (selection.selectedRouteIds.value.has(r.id) ? { ...r, hidden: hide } : r))
     if (selection.selectedCaptionIds.value.size) captions.value = captions.value.map((c) => (selection.selectedCaptionIds.value.has(c.id) ? { ...c, hidden: hide } : c))
+    if (selection.selectedPrintAreaIds.value.size) updatePrintAreas(printAreas.value.map((a) => (selection.selectedPrintAreaIds.value.has(a.id) ? { ...a, hidden: hide } : a)))
   }
 
   function handleSelectPin(pin: Pin, additive: boolean) {
@@ -71,29 +76,20 @@ export function useSelectionActions({ selection, pins, routes, captions, mapClip
     selection.selectCaption(caption.id, additive)
   }
 
-  function handleSelectPrintArea() {
-    if (isAdjustingPrintArea.value) return
-    leafletMap.value?.closePopup()
-    adjustPrintArea()
-  }
-
-  function adjustPrintArea() {
-    selection.clearSelection()
-    isAdjustingPrintArea.value = true
-  }
-
   function handleSelectionEdit() {
     const pin = selectedPins.value[0]
     const route = selectedRoutes.value[0]
     const caption = selectedCaptions.value[0]
+    const area = selectedPrintAreas.value[0]
     if (pin) openEditPin(pin)
     else if (route) openEditRoute(route)
     else if (caption) openEditCaption(caption)
+    else if (area) openEditPrintArea(area.id)
   }
 
   function handleSelectionCopy() {
-    mapClipboard.set(selectedPins.value, selectedRoutes.value, selectedCaptions.value, activeMapId.value)
-    const count = selectedPins.value.length + selectedRoutes.value.length + selectedCaptions.value.length
+    mapClipboard.set(selectedPins.value, selectedRoutes.value, selectedCaptions.value, selectedPrintAreas.value, activeMapId.value)
+    const count = selectedPins.value.length + selectedRoutes.value.length + selectedCaptions.value.length + selectedPrintAreas.value.length
     showNotification(`${count} item${count !== 1 ? 's' : ''} copied - ⌘V to paste`)
   }
 
@@ -101,7 +97,8 @@ export function useSelectionActions({ selection, pins, routes, captions, mapClip
     const pinsToCut = [...selectedPins.value]
     const routesToCut = [...selectedRoutes.value]
     const captionsToCut = [...selectedCaptions.value]
-    mapClipboard.set(pinsToCut, routesToCut, captionsToCut, activeMapId.value)
+    const areasToCut = [...selectedPrintAreas.value]
+    mapClipboard.set(pinsToCut, routesToCut, captionsToCut, areasToCut, activeMapId.value)
     history.push('cut')
     pinsToCut.forEach((p) => cleanupOrphanedLinks(p.id))
     pins.value = pins.value.filter((p) => !selection.selectedPinIds.value.has(p.id))
@@ -110,14 +107,15 @@ export function useSelectionActions({ selection, pins, routes, captions, mapClip
     })
     routes.value = routes.value.filter((r) => !selection.selectedRouteIds.value.has(r.id))
     captions.value = captions.value.filter((c) => !selection.selectedCaptionIds.value.has(c.id))
-    const count = pinsToCut.length + routesToCut.length + captionsToCut.length
+    if (areasToCut.length) updatePrintAreas(printAreas.value.filter((a) => !selection.selectedPrintAreaIds.value.has(a.id)))
+    const count = pinsToCut.length + routesToCut.length + captionsToCut.length + areasToCut.length
     showNotification(`${count} item${count !== 1 ? 's' : ''} cut - ⌘V to paste`)
     selection.clearSelection()
   }
 
   function handleSelectionFit() {
     if (!leafletMap.value) return
-    const latLngs: [number, number][] = [...selectedPins.value.map((p): [number, number] => [p.lat, p.lng]), ...selectedRoutes.value.flatMap((r) => r.points.map((pt): [number, number] => [pt.lat, pt.lng])), ...selectedCaptions.value.map((c): [number, number] => [c.lat, c.lng])]
+    const latLngs: [number, number][] = [...selectedPins.value.map((p): [number, number] => [p.lat, p.lng]), ...selectedRoutes.value.flatMap((r) => r.points.map((pt): [number, number] => [pt.lat, pt.lng])), ...selectedCaptions.value.map((c): [number, number] => [c.lat, c.lng]), ...selectedPrintAreas.value.flatMap((a) => a.corners.map((c): [number, number] => [c[0], c[1]]))]
     if (latLngs.length === 0) return
     leafletMap.value.fitBounds(latLngs, { padding: [60, 60], maxZoom: 16 })
   }
@@ -137,7 +135,8 @@ export function useSelectionActions({ selection, pins, routes, captions, mapClip
     const pinIds = selection.selectedPinIds.value
     const routeIds = selection.selectedRouteIds.value
     const captionIds = selection.selectedCaptionIds.value
-    const count = pinIds.size + routeIds.size + captionIds.size
+    const areaIds = selection.selectedPrintAreaIds.value
+    const count = pinIds.size + routeIds.size + captionIds.size + areaIds.size
     if (count === 0) {
       const wk = selection.selectedWaypointKey.value
       if (wk) handleWaypointDelete(wk.routeId, wk.pointIndex)
@@ -148,6 +147,7 @@ export function useSelectionActions({ selection, pins, routes, captions, mapClip
     pins.value = pins.value.filter((p) => !pinIds.has(p.id))
     routes.value = routes.value.filter((r) => !routeIds.has(r.id))
     captions.value = captions.value.filter((c) => !captionIds.has(c.id))
+    if (areaIds.size) updatePrintAreas(printAreas.value.filter((a) => !areaIds.has(a.id)))
     showNotification(`${count} item${count !== 1 ? 's' : ''} deleted`)
     selection.clearSelection()
   }
@@ -156,12 +156,12 @@ export function useSelectionActions({ selection, pins, routes, captions, mapClip
     selectedPins,
     selectedRoutes,
     selectedCaptions,
+    selectedPrintAreas,
     allSelectedHidden,
     handleSelectionToggleVisibility,
     handleSelectPin,
     handleSelectRoute,
     handleSelectCaption,
-    handleSelectPrintArea,
     handleSelectionEdit,
     handleSelectionFit,
     handleSelectionCopy,

@@ -4,7 +4,7 @@ import { sanitizeMap } from '@/composables/useMaps'
 import type { MapData, Pin, Route } from '@/types'
 
 function makePin(over: Partial<Pin> & Pick<Pin, 'id' | 'lat' | 'lng'>): Pin {
-  return { name: '', description: '', emoji: '📍', color: '#06b6d4', ...over }
+  return { name: '', description: '', emoji: '📍', color: '#0d9488', ...over }
 }
 
 function makeMap(over: Partial<MapData> = {}): MapData {

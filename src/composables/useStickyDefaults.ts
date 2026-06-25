@@ -2,19 +2,21 @@ import type { CaptionSize, PinDotShape, PinDotSize, RouteLineStyle, RouteWaypoin
 
 export function useStickyDefaults() {
   // ── Sticky pin defaults ───────────────────────────────────────────────────
-  const stickyEmoji = ref('📍')
-  const stickyColor = ref('#ffffff')
+  const stickyEmoji = ref(localStorage.getItem('mapfolio_sticky_emoji') || '📍')
+  const stickyColor = ref(localStorage.getItem('mapfolio_sticky_color') || '#ffffff')
   const rawDotSize = localStorage.getItem('mapfolio_sticky_dot_size') as PinDotSize | 'none' | null
   const stickyDotSize = ref<PinDotSize>(rawDotSize && rawDotSize !== 'none' ? rawDotSize : 'm')
   const stickyDotShape = ref<PinDotShape>((localStorage.getItem('mapfolio_sticky_dot_shape') as PinDotShape) || 'circle')
   const stickyShowNumber = ref(localStorage.getItem('mapfolio_sticky_show_number') === 'true')
 
+  watch(stickyEmoji, (v) => localStorage.setItem('mapfolio_sticky_emoji', v))
+  watch(stickyColor, (v) => localStorage.setItem('mapfolio_sticky_color', v))
   watch(stickyDotSize, (v) => localStorage.setItem('mapfolio_sticky_dot_size', v))
   watch(stickyDotShape, (v) => localStorage.setItem('mapfolio_sticky_dot_shape', v))
   watch(stickyShowNumber, (v) => localStorage.setItem('mapfolio_sticky_show_number', String(v)))
 
   // ── Sticky route defaults ─────────────────────────────────────────────────
-  const stickyRouteColor = ref(localStorage.getItem('mapfolio_sticky_route_color') || '#06b6d4')
+  const stickyRouteColor = ref(localStorage.getItem('mapfolio_sticky_route_color') || '#0d9488')
   const stickyRouteLineStyle = ref<RouteLineStyle | undefined>((localStorage.getItem('mapfolio_sticky_route_line_style') as RouteLineStyle) || undefined)
   const stickyRouteWaypointStyle = ref<RouteWaypointStyle | undefined>((localStorage.getItem('mapfolio_sticky_route_wp_style') as RouteWaypointStyle) || undefined)
   const stickyRouteWaypointSize = ref<RouteWaypointSize | undefined>((localStorage.getItem('mapfolio_sticky_route_wp_size') as RouteWaypointSize) || undefined)

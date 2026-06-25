@@ -18,6 +18,10 @@ Simplest format for spreadsheet users.
 - Import: detect lat/lng/name/description columns (flexible header matching)
 - Export: `name,description,emoji,color,lat,lng` header + one row per pin
 
+## Known Issues
+
+- **Ghost dot missing for waypoints linked to hidden pins**: when a route waypoint has a `pinId` and that pin is hidden, selecting the waypoint shows the SelectionPill but no dotted-circle selection indicator. Fix: pass `hiddenPinIds` into `RouteLayer` and update the ghost dot condition in `RouteLayer.vue:625` to show when `route.points[i].pinId` is in `hiddenPinIds`.
+
 ## Other ideas
 
 - **Drag-to-reorder pins** in the list panel

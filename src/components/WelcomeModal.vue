@@ -262,14 +262,14 @@ const emit = defineEmits<{ close: [] }>()
               </div>
             </div>
             <div>
-              <p class="text-xs font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-3">Print Area</p>
+              <p class="text-xs font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-3">Print</p>
               <div class="grid sm:grid-cols-2 gap-x-5 gap-y-2 text-sm">
                 <div class="flex items-start gap-2.5">
-                  <kbd class="shrink-0 text-xs bg-cyan-50 dark:bg-cyan-950/40 border border-cyan-200 dark:border-cyan-800 text-cyan-700 dark:text-cyan-300 px-1.5 py-0.5 rounded font-mono whitespace-nowrap">Shift</kbd>
+                  <kbd class="shrink-0 text-xs bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 px-1.5 py-0.5 rounded font-mono whitespace-nowrap">Shift</kbd>
                   <span class="text-gray-600 dark:text-zinc-400">Hold while rotating to toggle 15° snap</span>
                 </div>
                 <div class="flex items-start gap-2.5">
-                  <kbd class="shrink-0 text-xs bg-cyan-50 dark:bg-cyan-950/40 border border-cyan-200 dark:border-cyan-800 text-cyan-700 dark:text-cyan-300 px-1.5 py-0.5 rounded font-mono whitespace-nowrap">Option / Alt</kbd>
+                  <kbd class="shrink-0 text-xs bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 px-1.5 py-0.5 rounded font-mono whitespace-nowrap">Option / Alt</kbd>
                   <span class="text-gray-600 dark:text-zinc-400">Pan and zoom through handles without moving the area</span>
                 </div>
               </div>
@@ -279,7 +279,7 @@ const emit = defineEmits<{ close: [] }>()
 
         <!-- Footer -->
         <div class="px-6 pb-5 pt-3 border-t border-gray-100 dark:border-zinc-800 shrink-0">
-          <button class="w-full py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-semibold transition-colors cursor-pointer" @click="emit('close')">Get Started</button>
+          <button class="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold transition-colors cursor-pointer" @click="emit('close')">Get Started</button>
         </div>
       </div>
     </div>

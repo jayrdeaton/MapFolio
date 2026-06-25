@@ -2,8 +2,8 @@ import { PDFDocument } from 'pdf-lib'
 
 import type { Caption, MapStyle, MapStyleConfig, Pin, PinDotShape, PinDotSize, Route } from '@/types'
 import { CAPTION_PT, MAP_STYLE_CONFIGS } from '@/types'
-
 import { isDarkColor } from '@/utils'
+
 import { formatDistance, routeDistanceM } from './useRoutes'
 
 // Standard Web Mercator tile math
@@ -44,11 +44,11 @@ function isTileBlank(img: HTMLImageElement): boolean {
   return true
 }
 
-async function fetchTile(url: string, retries = 2): Promise<HTMLImageElement | null> {
+async function fetchTile(url: string, retries = 2, signal?: AbortSignal): Promise<HTMLImageElement | null> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) await new Promise<void>((r) => setTimeout(r, 400 * attempt))
     try {
-      const resp = await fetch(url, { mode: 'cors' })
+      const resp = await fetch(url, { mode: 'cors', signal })
       if (!resp.ok) continue
       const blob = await resp.blob()
       const objectUrl = URL.createObjectURL(blob)
@@ -67,17 +67,19 @@ async function fetchTile(url: string, retries = 2): Promise<HTMLImageElement | n
       if (!img) continue
       if (isTileBlank(img)) continue
       return img
-    } catch {
-      // swallow and retry
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') throw e
+      // swallow other errors and retry
     }
   }
   return null
 }
 
-async function fetchTilesConcurrent(jobs: (() => Promise<void>)[], limit: number): Promise<void> {
+async function fetchTilesConcurrent(jobs: (() => Promise<void>)[], limit: number, signal?: AbortSignal): Promise<void> {
   const queue = [...jobs]
   const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
     while (queue.length > 0) {
+      signal?.throwIfAborted()
       const job = queue.shift()
       if (job) await job()
     }
@@ -106,13 +108,14 @@ const DOT_NUM_PX: Partial<Record<PinDotSize, number>> = { m: 8, l: 10, xl: 13 }
 
 // Bubble emoji size per dot-size step — matches BUBBLE_EMOJI_SIZE in PinMarker/PinPreview.
 const BUBBLE_EMOJI_PX: Record<PinDotSize, number> = { xs: 14, s: 16, m: 20, l: 24, xl: 30 }
-const BUBBLE_PAD_V = 4  // equal padding all around
-const BUBBLE_PAD_H = 4
+const BUBBLE_PAD_V = 2 // equal padding all around
+const BUBBLE_PAD_H = 2
 const BUBBLE_TIP_H = 7
 
-function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<number>, geoToOut: (lat: number, lng: number) => [number, number], paperW: number, paperH: number) {
-  // Scale pins relative to page width (same reference as drawInfoBox).
-  const S = paperW / 612
+function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<number>, geoToOut: (lat: number, lng: number) => [number, number], paperW: number, paperH: number, markerScale = 1, scaleW = paperW) {
+  // scaleW = paperW for 1×1 exports; larger for singlePageGrid cells so pins scale to the
+  // assembled page size rather than the individual cell canvas (same pattern as drawCaptions).
+  const S = (scaleW / 612) * markerScale
 
   // Pre-compute sequence numbers for numbered pins (order within full list).
   const pinSeqMap = new Map<number, number>()
@@ -135,7 +138,7 @@ function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<
       const tipH = Math.round(BUBBLE_TIP_H * S)
       const tipW = Math.round(7 * S)
       const bubbleH = emojiSize + padV * 2
-      const bx = ox  // bubble horizontal center
+      const bx = ox // bubble horizontal center
       const bubbleBottom = oy - tipH
       const bubbleTop = bubbleBottom - bubbleH
 
@@ -147,19 +150,27 @@ function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<
 
       const isClear = pin.color === 'transparent'
       if (!isClear) {
-        // Colored bubble + matching tip
+        // Colored bubble + matching tip — drawn as one path so the shadow
+        // applies to the combined silhouette (no seam at the chevron junction).
         ctx.save()
         ctx.shadowColor = 'rgba(0,0,0,0.25)'
         ctx.shadowBlur = Math.round(4 * S)
         ctx.shadowOffsetY = Math.round(1 * S)
         ctx.fillStyle = pin.color || '#ffffff'
         const br = Math.round(7 * S)
-        roundRect(ctx, bLeft, bubbleTop, bubbleW, bubbleH, br)
-        ctx.fill()
         ctx.beginPath()
-        ctx.moveTo(bx - tipW, bubbleBottom)
+        ctx.moveTo(bLeft + br, bubbleTop)
+        ctx.lineTo(bLeft + bubbleW - br, bubbleTop)
+        ctx.quadraticCurveTo(bLeft + bubbleW, bubbleTop, bLeft + bubbleW, bubbleTop + br)
+        ctx.lineTo(bLeft + bubbleW, bubbleBottom - br)
+        ctx.quadraticCurveTo(bLeft + bubbleW, bubbleBottom, bLeft + bubbleW - br, bubbleBottom)
         ctx.lineTo(bx + tipW, bubbleBottom)
         ctx.lineTo(bx, oy)
+        ctx.lineTo(bx - tipW, bubbleBottom)
+        ctx.lineTo(bLeft + br, bubbleBottom)
+        ctx.quadraticCurveTo(bLeft, bubbleBottom, bLeft, bubbleBottom - br)
+        ctx.lineTo(bLeft, bubbleTop + br)
+        ctx.quadraticCurveTo(bLeft, bubbleTop, bLeft + br, bubbleTop)
         ctx.closePath()
         ctx.fill()
         ctx.restore()
@@ -190,7 +201,7 @@ function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<
       ctx.shadowColor = 'rgba(0,0,0,0.35)'
       ctx.shadowBlur = Math.round(3 * S)
       ctx.shadowOffsetY = Math.round(1 * S)
-      ctx.fillStyle = isTransparentDot ? 'rgba(0,0,0,0)' : (pin.color || '#06b6d4')
+      ctx.fillStyle = isTransparentDot ? 'rgba(0,0,0,0)' : pin.color || '#06b6d4'
       if (shape === 'circle') {
         ctx.beginPath()
         ctx.arc(0, 0, r, 0, Math.PI * 2)
@@ -239,8 +250,8 @@ const ROUTE_DASH: Partial<Record<string, number[]>> = {
   'dash-dot': [14, 5, 2, 5]
 }
 
-function drawRoutes(ctx: CanvasRenderingContext2D, routes: Route[], hiddenRouteIds: Set<number>, geoToOut: (lat: number, lng: number) => [number, number], paperW: number, _paperH: number) {
-  const S = paperW / 612
+function drawRoutes(ctx: CanvasRenderingContext2D, routes: Route[], hiddenRouteIds: Set<number>, geoToOut: (lat: number, lng: number) => [number, number], paperW: number, _paperH: number, markerScale = 1, scaleW = paperW) {
+  const S = (scaleW / 612) * markerScale
   for (const route of routes) {
     if (hiddenRouteIds.has(route.id)) continue
     const lineStyle = route.lineStyle ?? 'solid'
@@ -382,28 +393,6 @@ function drawRoutes(ctx: CanvasRenderingContext2D, routes: Route[], hiddenRouteI
 
 // 0=TL 1=TR 2=BR 3=BL
 type OverlayCorner = 0 | 1 | 2 | 3
-
-function bestCorner(pinsInArea: Pin[], geoToOutputPx: (lat: number, lng: number) => [number, number], paperW: number, paperH: number): OverlayCorner {
-  const zoneX = paperW * 0.35
-  const zoneY = paperH * 0.35
-  const counts: [number, number, number, number] = [0, 0, 0, 0] // TL, TR, BR, BL
-  for (const pin of pinsInArea) {
-    const [ox, oy] = geoToOutputPx(pin.lat, pin.lng)
-    if (ox < zoneX && oy < zoneY) counts[0]++
-    else if (ox > paperW - zoneX && oy < zoneY) counts[1]++
-    else if (ox > paperW - zoneX && oy > paperH - zoneY) counts[2]++
-    else if (ox < zoneX && oy > paperH - zoneY) counts[3]++
-  }
-  let best: OverlayCorner = 2
-  let min = Infinity
-  for (const i of [2, 3, 1, 0] as const) {
-    if (counts[i] < min) {
-      min = counts[i]
-      best = i
-    }
-  }
-  return best
-}
 
 const LEGEND_WP = {
   xs: { r: 3, sqHalf: 3, fontSize: 4 },
@@ -628,26 +617,36 @@ export function dedupeLegendPins<T extends { pin: Pin; index?: number }>(items: 
   })
 }
 
-function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string, pins: Pin[], routes: Route[], angle: number, corners: [number, number][], scaleUnit: 'km' | 'mi', includeLegend: boolean, includeCompass: boolean, includeScale: boolean, blankLabels: boolean, paperW: number, paperH: number, corner: OverlayCorner, legendScale = 1, legendX: number | null = null, legendY: number | null = null, allPins?: Pin[]) {
+function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string, pins: Pin[], routes: Route[], angle: number, corners: [number, number][], scaleUnit: 'km' | 'mi', includePins: boolean, includeRoutes: boolean, includeCompass: boolean, includeScale: boolean, blankLabels: boolean, paperW: number, paperH: number, corner: OverlayCorner, legendScale = 1, legendX: number | null = null, legendY: number | null = null, allPins?: Pin[], scaleW = paperW) {
   // Compute sequence numbers from the full ordered list so legend indices match the map.
   const pinSeqMap = new Map<number, number>()
   let seq = 0
   for (const p of allPins ?? pins) {
     if (p.showNumber) pinSeqMap.set(p.id, ++seq)
   }
-  const namedPins = dedupeLegendPins(pins.map((p) => ({ pin: p, index: pinSeqMap.get(p.id) })).filter(({ pin }) => pin.name))
-  const namedRoutes = routes.filter((r) => r.name)
-  const hasTitle = includeLegend && !!title
-  const hasArea = includeLegend && !!area
-  const hasLegend = includeLegend && (namedPins.length > 0 || namedRoutes.length > 0)
+  const allNamedPins = dedupeLegendPins(pins.map((p) => ({ pin: p, index: pinSeqMap.get(p.id) })).filter(({ pin }) => pin.name))
+  const allNamedRoutes = routes.filter((r) => r.name)
+  const shownPins = includePins ? allNamedPins : []
+  const shownRoutes = includeRoutes ? allNamedRoutes : []
+  const hasTitle = !!title
+  const hasArea = !!area
+  const hasLegend = shownPins.length > 0 || shownRoutes.length > 0
   const hasHeader = hasTitle || hasArea || includeCompass
   if (!hasHeader && !hasLegend && !includeScale) return
 
-  const S = (paperW / 612) * legendScale
+  // scaleW is the full assembled paper width — equals paperW for single-page exports but is
+  // larger for singlePageGrid cells so the legend/overlays scale to the assembled page size.
+  // Cap so legendW never overflows the cell canvas.
+  let S = (scaleW / 612) * legendScale
+  let legendW = Math.round(190 * S)
+  const maxLegendW = Math.round(paperW * 0.9)
+  if (legendW > maxLegendW) {
+    legendW = maxLegendW
+    S = legendW / 190
+  }
   const pad = Math.round(8 * S)
   const margin = Math.round(16 * S)
   const borderR = Math.round(7 * S)
-  const legendW = Math.round(190 * S)
   const divGapBefore = Math.round(2 * S)
   const divGapAfter = Math.round(3 * S)
   const divW = Math.max(1, Math.round(S))
@@ -677,11 +676,11 @@ function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string,
   let legendSectionH = 0
   if (hasLegend) {
     legendSectionH += headerSize + Math.round(6 * S)
-    for (const { pin } of namedPins) {
+    for (const { pin } of shownPins) {
       const rowH = pin.description ? nameSize + Math.round(2 * S) + descSize : nameSize
       legendSectionH += Math.max(emojiColW, rowH) + rowGap
     }
-    for (let i = 0; i < namedRoutes.length; i++) {
+    for (let i = 0; i < shownRoutes.length; i++) {
       legendSectionH += Math.max(previewH, nameSize + Math.round(2 * S) + descSize) + rowGap
     }
     legendSectionH -= rowGap
@@ -835,7 +834,7 @@ function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string,
     ctx.restore()
     y += headerSize + Math.round(6 * S)
 
-    for (const { pin, index } of namedPins) {
+    for (const { pin, index } of shownPins) {
       const textX = boxX + pad + emojiColW + Math.round(7 * S)
       const textMaxW = legendW - pad * 2 - emojiColW - Math.round(7 * S)
 
@@ -899,7 +898,7 @@ function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: string,
       y += Math.max(emojiColW, rowH) + rowGap
     }
 
-    for (const route of namedRoutes) {
+    for (const route of shownRoutes) {
       const textH = blankLabels ? nameSize : nameSize + Math.round(2 * S) + descSize
       const rowH = Math.max(previewH, textH)
       const previewY = y + Math.round((rowH - previewH) / 2)
@@ -1050,8 +1049,8 @@ function subCornersForCell(corners: [number, number][], ci: number, rj: number, 
 // Geo-anchored text labels. Centered on each caption's lat/lng, scaled by S = paperW/612
 // (same reference as drawPins), optionally rotated and backed by a white pill. Off-canvas
 // captions are skipped with a generous margin since text can extend well past its anchor.
-function drawCaptions(ctx: CanvasRenderingContext2D, captions: Caption[], hiddenCaptionIds: Set<number>, geoToOut: (lat: number, lng: number) => [number, number], paperW: number, paperH: number) {
-  const S = paperW / 612
+function drawCaptions(ctx: CanvasRenderingContext2D, captions: Caption[], hiddenCaptionIds: Set<number>, geoToOut: (lat: number, lng: number) => [number, number], paperW: number, paperH: number, scaleW = paperW) {
+  const S = scaleW / 612
   for (const cap of captions) {
     if (hiddenCaptionIds.has(cap.id)) continue
     const text = cap.text ?? ''
@@ -1116,12 +1115,15 @@ export interface ExportOptions {
   hiddenRouteIds: Set<number>
   captions: Caption[]
   hiddenCaptionIds: Set<number>
-  includeLegend: boolean
-  legendSeparatePage?: boolean // render the legend on its own page(s) instead of on the map
+  legend: boolean // master: draw any legend box at all
+  legendPins?: boolean // include pin list in legend
+  legendRoutes?: boolean // include route list in legend
+  legendSeparatePage?: boolean // render pin/route keys on their own page(s); on-map box keeps title/subtitle/compass/scale
   legendBlankLabels?: boolean // hide pin/route names — exploration mode so viewers can fill them in
   legendScale?: number // multiplier for the on-map legend box size (default 1)
   legendX?: number | null // explicit legend position: fraction of paper width for left edge (null = auto-corner)
   legendY?: number | null // explicit legend position: fraction of paper height for top edge (null = auto-corner)
+  markerScale?: number // multiplier for pins + routes in the PDF (default 1; use < 1 for large-format prints)
   includeCompass: boolean
   includeScale: boolean
   scaleUnit: 'km' | 'mi'
@@ -1131,21 +1133,25 @@ export interface ExportOptions {
   paperHeightPt: number // PDF page height in points
   gridCols?: number // poster grid columns (default 1)
   gridRows?: number // poster grid rows (default 1)
+  overlayCorner?: 0 | 1 | 2 | 3 // which corner to place the info box (0=TL 1=TR 2=BR 3=BL); default 2
   onProgress?: (msg: string) => void
+  signal?: AbortSignal
 }
 
 export type ExportQuality = 'draft' | 'standard' | 'hires'
 
 const TILE_SIZE = 256 // px per tile at 1x (used for grid/zoom math regardless of retina)
-const MAX_OUTPUT_PX = 7200        // standard: ~217 DPI at A0, ~800+ DPI at A4
-const MAX_OUTPUT_PX_FAST = 4000   // draft: smaller + quicker to encode
-const MAX_OUTPUT_PX_HIRES = 24000 // hi-res: native tile resolution for areas up to ~50km; downscaled above that
-const TILE_BUDGET = 750           // standard: picks the highest zoom under this ceiling
-const TILE_BUDGET_FAST = 200      // draft: far fewer tiles at a lower zoom for a quick export
-const TILE_BUDGET_HIRES = 50000   // hi-res: allows zoom 16 for large areas, zoom 17-18 for smaller ones
-const TILE_CONCURRENCY = 24       // max simultaneous tile requests (6 connections × 4 CartoDB subdomains)
+const MAX_OUTPUT_PX = 7200 // standard: ~217 DPI at A0, ~800+ DPI at A4
+const MAX_OUTPUT_PX_FAST = 4000 // draft: smaller + quicker to encode
+const TILE_BUDGET = 750 // standard: picks the highest zoom under this ceiling
+const TILE_BUDGET_FAST = 200 // draft: far fewer tiles at a lower zoom for a quick export
+const TILE_BUDGET_HIRES = 50000 // hi-res: allows zoom 16 for large areas, zoom 17-18 for smaller ones
+const TILE_CONCURRENCY = 24 // max simultaneous tile requests (6 connections × 4 CartoDB subdomains)
 
-async function renderPageToPng(corners: [number, number][], angle: number, config: MapStyleConfig, pins: Pin[], hiddenPinIds: Set<number>, routes: Route[], hiddenRouteIds: Set<number>, captions: Caption[], hiddenCaptionIds: Set<number>, includeLegend: boolean, includeCompass: boolean, includeScale: boolean, scaleUnit: 'km' | 'mi', enhanceContrast: boolean, exportQuality: ExportQuality, mapTitle: string, mapArea: string, blankLabels: boolean, legendScale?: number, legendX?: number | null, legendY?: number | null, legendPins?: Pin[], legendRoutes?: Route[], onProgress?: (msg: string) => void): Promise<Uint8Array> {
+// For singlePageGrid cells: gridCols * 612 / paperWidthPt. Multiplied by the actual cell
+// canvas width (paperWidthPx) inside renderPageToPng to get the overlay scaleW.
+// Undefined for 1×1 or standard-grid (separate-page) exports — no scaling needed.
+async function renderPageToPng(corners: [number, number][], angle: number, config: MapStyleConfig, pins: Pin[], hiddenPinIds: Set<number>, routes: Route[], hiddenRouteIds: Set<number>, captions: Caption[], hiddenCaptionIds: Set<number>, includePins: boolean, includeRoutes: boolean, includeCompass: boolean, includeScale: boolean, scaleUnit: 'km' | 'mi', enhanceContrast: boolean, exportQuality: ExportQuality, mapTitle: string, mapArea: string, blankLabels: boolean, legendScale?: number, legendX?: number | null, legendY?: number | null, legendPins?: Pin[], legendRoutes?: Route[], onProgress?: (msg: string) => void, overlaySFactor?: number, signal?: AbortSignal, markerScale?: number, overlayCorner: OverlayCorner = 2): Promise<Uint8Array> {
   // --- 1. Compute the AABB of the 4 corners in lat/lng space ---
   const lats = corners.map((c) => c[0])
   const lngs = corners.map((c) => c[1])
@@ -1208,16 +1214,18 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
   }
 
   // --- 5. Build the output canvas ---
-  // On iOS, cap at MAX_OUTPUT_PX_FAST regardless of quality — iOS WebKit silently blanks
-  // above ~16 MP and the output canvas is now the only canvas (no stitch canvas).
-  const outputCap = isIOS ? MAX_OUTPUT_PX_FAST : exportQuality === 'draft' ? MAX_OUTPUT_PX_FAST : exportQuality === 'hires' ? MAX_OUTPUT_PX_HIRES : MAX_OUTPUT_PX
-  let capScale = Math.min(1, outputCap / Math.max(halfW * 2, halfH * 2))
-  // Safari on macOS hard-limits canvas area to 268,435,456 px (width × height). The longest-side
-  // cap above isn't enough for wide aspect ratios, so apply a second area constraint.
-  if (isSafari) {
-    const projectedArea = halfW * 2 * capScale * (halfH * 2 * capScale)
-    if (projectedArea > 268_000_000) capScale *= Math.sqrt(268_000_000 / projectedArea)
-  }
+  // Hi-res: capScale = 1 — native tile pixels, no paper-size or DPI targeting.
+  //   The file is as detailed as the tile source provides; the printer (or viewer) decides
+  //   how to scale it. Only the browser's canvas memory limit constrains the output.
+  // Standard/draft: scale to a fixed longest-side cap for speed.
+  const outputCap = isIOS ? MAX_OUTPUT_PX_FAST : exportQuality === 'draft' ? MAX_OUTPUT_PX_FAST : MAX_OUTPUT_PX
+  let capScale = exportQuality === 'hires' ? 1 : Math.min(1, outputCap / Math.max(halfW * 2, halfH * 2))
+
+  // Browser canvas area limits — the only constraint on hi-res output.
+  // iOS: ~16 MP hard limit. Safari macOS: 268 MP hard limit. Chrome desktop: ~500 MP practical safe limit.
+  const maxCanvasArea = isIOS ? 16_000_000 : isSafari ? 268_000_000 : 500_000_000
+  const projectedArea = halfW * 2 * capScale * (halfH * 2 * capScale)
+  if (projectedArea > maxCanvasArea) capScale *= Math.sqrt(maxCanvasArea / projectedArea)
   const paperWidthPx = Math.ceil(halfW * 2 * capScale)
   const paperHeightPx = Math.ceil(halfH * 2 * capScale)
   const outCanvas = document.createElement('canvas')
@@ -1237,7 +1245,7 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
   //    transform eliminates that intermediate canvas entirely.
   const totalTiles = gridW * gridH
   let fetchedTiles = 0
-  onProgress?.(`Zoom ${zoom} — fetching tiles… 0 / ${totalTiles}`)
+  onProgress?.(`Fetching Tiles… 0 / ${totalTiles}`)
 
   outCtx.save()
   outCtx.translate(paperWidthPx / 2, paperHeightPx / 2)
@@ -1252,19 +1260,19 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
       const px = (tx - tileXMin) * drawSize,
         py = (ty - tileYMin) * drawSize
       tileJobs.push(() =>
-        fetchTile(url).then((img) => {
+        fetchTile(url, 2, signal).then((img) => {
           if (img) outCtx.drawImage(img, px, py, drawSize, drawSize)
-          onProgress?.(`Zoom ${zoom} — fetching tiles… ${++fetchedTiles} / ${totalTiles}`)
+          onProgress?.(`Fetching Tiles… ${++fetchedTiles} / ${totalTiles}`)
         })
       )
     }
   }
-  await fetchTilesConcurrent(tileJobs, TILE_CONCURRENCY)
+  await fetchTilesConcurrent(tileJobs, TILE_CONCURRENCY, signal)
   outCtx.restore()
 
   // Levels adjustment on the output canvas.
   if (enhanceContrast && config.printBlackPoint !== undefined) {
-    onProgress?.('Adjusting levels…')
+    onProgress?.('Adjusting Levels…')
     const lo = config.printBlackPoint,
       range = 255 - lo
     const imgData = outCtx.getImageData(0, 0, paperWidthPx, paperHeightPx)
@@ -1278,7 +1286,7 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
   }
 
   // --- 7. Draw pins, legend, compass onto the output canvas ---
-  onProgress?.('Drawing overlays…')
+  onProgress?.('Drawing Overlays…')
   function geoToOutputPx(lat: number, lng: number): [number, number] {
     const [sx, sy] = geoToStitchPx(lat, lng)
     const dx = sx - cx,
@@ -1303,14 +1311,18 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
     })
   })
 
-  const overlayCorner = includeLegend || includeCompass || includeScale ? bestCorner(pinsInArea, geoToOutputPx, paperWidthPx, paperHeightPx) : 2
-  drawRoutes(outCtx, routes, hiddenRouteIds, geoToOutputPx, paperWidthPx, paperHeightPx)
-  drawPins(outCtx, pins, hiddenPinIds, geoToOutputPx, paperWidthPx, paperHeightPx)
-  drawCaptions(outCtx, captions, hiddenCaptionIds, geoToOutputPx, paperWidthPx, paperHeightPx)
-  drawInfoBox(outCtx, mapTitle, mapArea, legendPins ?? pinsInArea, legendRoutes ?? routesInArea, angle, corners, scaleUnit, includeLegend, includeCompass, includeScale, blankLabels, paperWidthPx, paperHeightPx, overlayCorner, legendScale, legendX ?? null, legendY ?? null, pins)
+  // overlaySFactor = gridCols * 612 / paperWidthPt (for singlePageGrid). Multiplying by the
+  // actual cell canvas width gives the scaleW that makes the assembled page S correct:
+  //   S = scaleW/612 = paperWidthPx * gridCols / paperWidthPt → legend = 190pt, margin = 16pt.
+  // Also used for pins/routes so they scale to the assembled page, not just the cell.
+  const overlayScaleW = overlaySFactor !== undefined ? Math.round(paperWidthPx * overlaySFactor) : undefined
+  drawRoutes(outCtx, routes, hiddenRouteIds, geoToOutputPx, paperWidthPx, paperHeightPx, markerScale, overlayScaleW)
+  drawPins(outCtx, pins, hiddenPinIds, geoToOutputPx, paperWidthPx, paperHeightPx, markerScale, overlayScaleW)
+  drawCaptions(outCtx, captions, hiddenCaptionIds, geoToOutputPx, paperWidthPx, paperHeightPx, overlayScaleW)
+  drawInfoBox(outCtx, mapTitle, mapArea, legendPins ?? pinsInArea, legendRoutes ?? routesInArea, angle, corners, scaleUnit, includePins, includeRoutes, includeCompass, includeScale, blankLabels, paperWidthPx, paperHeightPx, overlayCorner, legendScale, legendX ?? null, legendY ?? null, pins, overlayScaleW)
 
   // --- 8. Return PNG bytes ---
-  onProgress?.(`Encoding PNG (${paperWidthPx}×${paperHeightPx})…`)
+  onProgress?.('Encoding…')
   return new Promise<Uint8Array>((resolve, reject) => {
     outCanvas.toBlob((blob) => {
       if (!blob) {
@@ -1577,13 +1589,74 @@ async function renderLegendPagesToPng(c: LegendPageContent, paperWidthPt: number
   )
 }
 
-export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
-  const { corners, angle, mapStyle, mapTitle, mapArea = '', pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, includeLegend, legendSeparatePage = false, legendBlankLabels = false, legendScale = 1, legendX = null, legendY = null, includeCompass, includeScale, scaleUnit, enhanceContrast, exportQuality = 'standard', paperWidthPt, paperHeightPt, gridCols = 1, gridRows = 1, onProgress } = opts
+// Estimates the native half-dimensions (stitch-pixels) of a print area for hi-res mode —
+// same zoom selection logic as renderPageToPng but without allocating any canvas.
+function estimateHiresNativeSize(corners: [number, number][], angle: number, config: MapStyleConfig): { halfW: number; halfH: number } {
+  const lats = corners.map((c) => c[0])
+  const lngs = corners.map((c) => c[1])
+  const minLat = Math.min(...lats),
+    maxLat = Math.max(...lats)
+  const minLng = Math.min(...lngs),
+    maxLng = Math.max(...lngs)
+  const maxZoom = config.maxNativeZoom ?? 19
+  let zoom = 1
+  for (let z = 1; z <= maxZoom; z++) {
+    const xSpan = (lngToTileFrac(maxLng, z) - lngToTileFrac(minLng, z)) * TILE_SIZE
+    const ySpan = (latToTileFrac(minLat, z) - latToTileFrac(maxLat, z)) * TILE_SIZE
+    if ((Math.floor(xSpan / TILE_SIZE) + 2) * (Math.floor(ySpan / TILE_SIZE) + 2) > TILE_BUDGET_HIRES) break
+    zoom = z
+  }
+  const drawSize = config.retina ? 512 : TILE_SIZE
+  const tileXMin = Math.floor(lngToTileFrac(minLng, zoom))
+  const tileYMin = Math.floor(latToTileFrac(maxLat, zoom))
+  const cx = (lngToTileFrac((minLng + maxLng) / 2, zoom) - tileXMin) * drawSize
+  const cy = (latToTileFrac((minLat + maxLat) / 2, zoom) - tileYMin) * drawSize
+  const cosA = Math.cos(-angle),
+    sinA = Math.sin(-angle)
+  let halfW = 0,
+    halfH = 0
+  for (const [lat, lng] of corners) {
+    const dx = (lngToTileFrac(lng, zoom) - tileXMin) * drawSize - cx
+    const dy = (latToTileFrac(lat, zoom) - tileYMin) * drawSize - cy
+    halfW = Math.max(halfW, Math.abs(dx * cosA - dy * sinA))
+    halfH = Math.max(halfH, Math.abs(dx * sinA + dy * cosA))
+  }
+  return { halfW, halfH }
+}
 
-  // When the legend lives on its own page, keep it off the map overlay (compass/scale stay).
-  const onMapLegend = includeLegend && !legendSeparatePage
+export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
+  const { corners, angle, mapStyle, mapTitle, mapArea = '', pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, legend, legendPins: legendPinsEnabled = true, legendRoutes: legendRoutesEnabled = true, legendSeparatePage = false, legendBlankLabels = false, legendScale = 1, legendX = null, legendY = null, markerScale = 1, includeCompass, includeScale, scaleUnit, enhanceContrast, exportQuality = 'standard', paperWidthPt, paperHeightPt, onProgress, signal } = opts
+  const infoCorner = (opts.overlayCorner ?? 2) as OverlayCorner
+  // gridCols/gridRows are mutable — hi-res may auto-increase them to keep each cell's canvas
+  // at native resolution (capScale = 1) without hitting browser memory limits.
+  let gridCols = opts.gridCols ?? 1
+  let gridRows = opts.gridRows ?? 1
+
+  // When keys live on their own page, keep them off the map overlay (title/subtitle/compass/scale stay on map).
+  const onMapPins = legend && legendPinsEnabled && !legendSeparatePage
+  const onMapRoutes = legend && legendRoutesEnabled && !legendSeparatePage
+  const onMapLegend = onMapPins || onMapRoutes // used for full-area pre-collection gate
   const config = MAP_STYLE_CONFIGS[mapStyle]
+
+  // For hi-res: auto-compute the minimum grid so each cell's native canvas fits within
+  // browser limits. Cells render at a higher zoom than the full area (smaller AABB = more
+  // budget headroom), so the PDF total pixel count exceeds what any single canvas could hold.
+  // This completely bypasses the per-canvas memory limit without any capScale downscaling.
+  if (exportQuality === 'hires') {
+    const MAX_CELL_CANVAS_AREA = 100_000_000 // conservative target; cells may render larger due to zoom boost
+    const { halfW, halfH } = estimateHiresNativeSize(corners, angle, config)
+    const minCells = Math.ceil((halfW * 2 * (halfH * 2)) / MAX_CELL_CANVAS_AREA)
+    if (minCells > gridCols * gridRows) {
+      const ratio = halfW / halfH
+      gridRows = Math.max(gridRows, Math.ceil(Math.sqrt(minCells / ratio)))
+      gridCols = Math.max(gridCols, Math.ceil(minCells / gridRows))
+    }
+  }
+
   const totalPages = gridCols * gridRows
+  // Hi-res + grid: stitch all cells onto one PDF page (for large-format print shops).
+  // Standard/draft + grid: keep separate pages (for home printers cutting and taping).
+  const singlePageGrid = exportQuality === 'hires' && totalPages > 1
   const pdfDoc = await PDFDocument.create()
   pdfDoc.setTitle(mapTitle || 'MapFolio')
   pdfDoc.setCreator('MapFolio')
@@ -1603,29 +1676,78 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
     fullAreaLegendRoutes = routes.filter((r) => !hiddenRouteIds.has(r.id) && r.points.some((p) => p.lat >= minLat && p.lat <= maxLat && p.lng >= minLng && p.lng <= maxLng))
   }
 
+  // For single-page grid, create the page once so all cells can be drawn onto it.
+  const stitchedPage = singlePageGrid ? pdfDoc.addPage([paperWidthPt, paperHeightPt]) : null
+
   for (let rj = 0; rj < gridRows; rj++) {
     for (let ci = 0; ci < gridCols; ci++) {
       const pageNum = rj * gridCols + ci + 1
       const cellCorners = totalPages === 1 ? corners : subCornersForCell(corners, ci, rj, gridCols, gridRows)
 
-      // All overlay elements go together on the bottom-right cell as a single combined box.
+      // For singlePageGrid, overlays are composited on a full-page canvas after stitching so that
+      // legendX/legendY (fractions of the full paper) work correctly instead of being misinterpreted
+      // as fractions of a single cell. For multi-page grids, overlays go in the bottom-right cell.
       const isInfoCell = ci === gridCols - 1 && rj === gridRows - 1
-      const cellCompass = includeCompass && isInfoCell
-      const cellLegend = onMapLegend && isInfoCell
-      const cellScale = includeScale && isInfoCell
+      const cellCompass = !singlePageGrid && legend && includeCompass && isInfoCell
+      const cellIncludePins = !singlePageGrid && onMapPins && isInfoCell
+      const cellIncludeRoutes = !singlePageGrid && onMapRoutes && isInfoCell
+      const cellScale = !singlePageGrid && legend && includeScale && isInfoCell
 
-      const prefix = totalPages > 1 ? `Page ${pageNum} of ${totalPages} — ` : ''
-      const pngBytes = await renderPageToPng(cellCorners, angle, config, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, cellLegend, cellCompass, cellScale, scaleUnit, enhanceContrast, exportQuality, mapTitle, mapArea, legendBlankLabels, legendScale, legendX, legendY, cellLegend ? fullAreaLegendPins : undefined, cellLegend ? fullAreaLegendRoutes : undefined, (msg) => onProgress?.(`${prefix}${msg}`))
+      signal?.throwIfAborted()
+      const prefix = singlePageGrid ? `Section ${pageNum} of ${totalPages} — ` : totalPages > 1 ? `Page ${pageNum} of ${totalPages} — ` : ''
+      // captions still use overlaySFactor so their text scales correctly in the assembled page.
+      const overlaySFactor = singlePageGrid ? (gridCols * 612) / paperWidthPt : undefined
+      const cellHasKeys = cellIncludePins || cellIncludeRoutes
+      // For singlePageGrid, the full-page overlay draws the title/legend after stitching — suppress
+      // it in cell renders to avoid duplicate headers. For multi-page grids, only the info cell gets it.
+      const cellTitle = singlePageGrid || !isInfoCell ? '' : mapTitle
+      const cellArea = singlePageGrid || !isInfoCell ? '' : mapArea
+      const pngBytes = await renderPageToPng(cellCorners, angle, config, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, cellIncludePins, cellIncludeRoutes, cellCompass, cellScale, scaleUnit, enhanceContrast, exportQuality, cellTitle, cellArea, legendBlankLabels, legendScale, legendX, legendY, cellHasKeys ? fullAreaLegendPins : undefined, cellHasKeys ? fullAreaLegendRoutes : undefined, (msg) => onProgress?.(`${prefix}${msg}`), overlaySFactor, signal, markerScale, infoCorner)
 
-      onProgress?.(`${prefix}Embedding image…`)
+      onProgress?.(`${prefix}Embedding…`)
       const pdfImage = await pdfDoc.embedPng(pngBytes)
-      const page = pdfDoc.addPage([paperWidthPt, paperHeightPt])
-      page.drawImage(pdfImage, { x: 0, y: 0, width: paperWidthPt, height: paperHeightPt })
+
+      if (singlePageGrid) {
+        const cellW = paperWidthPt / gridCols
+        const cellH = paperHeightPt / gridRows
+        stitchedPage!.drawImage(pdfImage, {
+          x: ci * cellW,
+          y: paperHeightPt - (rj + 1) * cellH,
+          width: cellW,
+          height: cellH
+        })
+      } else {
+        const page = pdfDoc.addPage([paperWidthPt, paperHeightPt])
+        page.drawImage(pdfImage, { x: 0, y: 0, width: paperWidthPt, height: paperHeightPt })
+      }
     }
   }
 
+  // For singlePageGrid: composite the info box on a full-page overlay canvas after all cells are
+  // stitched. legendX/legendY are fractions of the full paper — using the full canvas here means
+  // the coordinates map correctly regardless of grid size or which cell the box would have landed on.
+  if (singlePageGrid && legend) {
+    onProgress?.('Rendering overlay…')
+    const infoW = Math.round(paperWidthPt * 2)
+    const infoH = Math.round(paperHeightPt * 2)
+    const infoCanvas = document.createElement('canvas')
+    infoCanvas.width = infoW
+    infoCanvas.height = infoH
+    drawInfoBox(infoCanvas.getContext('2d')!, mapTitle, mapArea, fullAreaLegendPins ?? [], fullAreaLegendRoutes ?? [], angle, corners, scaleUnit, onMapPins, onMapRoutes, includeCompass, includeScale, legendBlankLabels, infoW, infoH, infoCorner, legendScale, legendX ?? null, legendY ?? null, pins)
+    const infoBytes = await new Promise<Uint8Array>((res, rej) => {
+      infoCanvas.toBlob((blob) => {
+        if (!blob) {
+          rej(new Error('overlay PNG failed'))
+          return
+        }
+        blob.arrayBuffer().then((b) => res(new Uint8Array(b)), rej)
+      }, 'image/png')
+    })
+    stitchedPage!.drawImage(await pdfDoc.embedPng(infoBytes), { x: 0, y: 0, width: paperWidthPt, height: paperHeightPt })
+  }
+
   // Dedicated legend page(s) — named pins/routes within the print area's bounding box.
-  if (includeLegend && legendSeparatePage) {
+  if (legend && legendSeparatePage) {
     const lats = corners.map((c) => c[0])
     const lngs = corners.map((c) => c[1])
     const minLat = Math.min(...lats),
@@ -1639,12 +1761,12 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
     let n = 0
     for (const p of pins) if (p.showNumber) seq.set(p.id, ++n)
 
-    const legendPins = pins.filter((p) => p.name && !hiddenPinIds.has(p.id) && inArea(p.lat, p.lng)).map((pin) => ({ pin, index: seq.get(pin.id) }))
-    const legendRoutes = routes.filter((r) => r.name && !hiddenRouteIds.has(r.id) && r.points.some((p) => inArea(p.lat, p.lng)))
+    const sepPins = legendPinsEnabled ? pins.filter((p) => p.name && !hiddenPinIds.has(p.id) && inArea(p.lat, p.lng)).map((pin) => ({ pin, index: seq.get(pin.id) })) : []
+    const sepRoutes = legendRoutesEnabled ? routes.filter((r) => r.name && !hiddenRouteIds.has(r.id) && r.points.some((p) => inArea(p.lat, p.lng))) : []
 
-    if (legendPins.length > 0 || legendRoutes.length > 0 || mapTitle || mapArea) {
+    if (sepPins.length > 0 || sepRoutes.length > 0 || mapTitle || mapArea) {
       onProgress?.('Rendering legend…')
-      const legendPages = await renderLegendPagesToPng({ title: mapTitle, area: mapArea, pins: legendPins, routes: legendRoutes, unit: scaleUnit, blankLabels: legendBlankLabels }, paperWidthPt, paperHeightPt)
+      const legendPages = await renderLegendPagesToPng({ title: mapTitle, area: mapArea, pins: sepPins, routes: sepRoutes, unit: scaleUnit, blankLabels: legendBlankLabels }, paperWidthPt, paperHeightPt)
       for (const png of legendPages) {
         const img = await pdfDoc.embedPng(png)
         const page = pdfDoc.addPage([paperWidthPt, paperHeightPt])

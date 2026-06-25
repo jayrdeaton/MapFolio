@@ -49,6 +49,35 @@ export interface Caption {
   hidden?: boolean
 }
 
+export type PrintPaperSize = 'letter' | 'tabloid' | 'a'
+export type PrintOrientation = 'portrait' | 'landscape'
+
+export interface PrintArea {
+  id: string
+  corners: [number, number][] // [[lat, lng] × 4] in NW→NE→SE→SW order
+  angle: number
+  paper: PrintPaperSize
+  orientation: PrintOrientation
+  grid: string
+  title?: string
+  subtitle?: string
+  hidden?: boolean
+  legend?: boolean
+  legendPins?: boolean
+  legendRoutes?: boolean
+  legendSeparatePage?: boolean
+  legendTitle?: boolean
+  legendArea?: boolean
+  legendBlankLabels?: boolean
+  legendScale?: number
+  legendX?: number | null
+  legendY?: number | null
+  legendCorner?: 0 | 1 | 2 | 3 | null
+  compass?: boolean
+  scale?: boolean
+  markerScale?: number
+}
+
 export interface MapData {
   id: string
   name: string
@@ -56,6 +85,7 @@ export interface MapData {
   pins: Pin[]
   routes: Route[]
   captions?: Caption[] // optional: older stored maps predate captions
+  printAreas?: PrintArea[] // optional: older stored maps predate print areas
   mapStyle: MapStyle
   showLabels: boolean
   showClusters: boolean

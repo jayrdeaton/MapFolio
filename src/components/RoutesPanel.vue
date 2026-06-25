@@ -99,7 +99,7 @@ function handleRouteSelect(route: RouteType, shiftHeld: boolean, metaHeld: boole
       <div class="flex items-center justify-between">
         <span class="block text-gray-500 dark:text-zinc-400 font-semibold text-xs uppercase tracking-wide">Distance</span>
         <div class="flex h-7 rounded border border-gray-300 dark:border-zinc-700 overflow-hidden">
-          <button v-for="u in ['km', 'mi'] as const" :key="u" :title="`Show distances in ${u === 'km' ? 'kilometers' : 'miles'}`" :class="`px-2 text-xs font-medium cursor-pointer transition-colors ${u === 'mi' ? 'border-l border-gray-300 dark:border-zinc-700' : ''} ${distanceUnit === u ? 'bg-cyan-500 text-white hover:bg-cyan-600' : 'text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800'}`" @click="distanceUnit = u">{{ u }}</button>
+          <button v-for="u in ['km', 'mi'] as const" :key="u" :title="`Show distances in ${u === 'km' ? 'kilometers' : 'miles'}`" :class="`px-2 text-xs font-medium cursor-pointer transition-colors ${u === 'mi' ? 'border-l border-gray-300 dark:border-zinc-700' : ''} ${distanceUnit === u ? 'bg-teal-600 text-white hover:bg-teal-700' : 'text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800'}`" @click="distanceUnit = u">{{ u }}</button>
         </div>
       </div>
     </div>

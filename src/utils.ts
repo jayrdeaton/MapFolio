@@ -1,6 +1,9 @@
 import type { Caption, CaptionSize, MapStyle, Pin, PinDotShape, PinDotSize, Route, RouteLineStyle, RoutePoint, RouteWaypointSize, RouteWaypointStyle } from './types'
 import { uid } from './utils/id'
 
+// Single source of truth for the multi-select modifier: Cmd on Mac, Ctrl on Windows/Linux.
+export const isAdditiveEvent = (e: MouseEvent | PointerEvent): boolean => e.metaKey || e.ctrlKey
+
 // Practical ceiling for a share-link URL. Modern browsers tolerate far more, but
 // many chat apps / proxies / link crawlers silently truncate well below this; this
 // keeps a shared link reliable everywhere. Past it, the export dialog steers the
@@ -138,6 +141,13 @@ export function captionPlaceholder(caption: Caption, allCaptions: Caption[]): st
   const unnamed = allCaptions.filter((c) => !c.text)
   const idx = unnamed.findIndex((c) => c.id === caption.id)
   return `Caption ${idx + 1}`
+}
+
+export function printAreaPlaceholder(areaId: string, allAreas: import('@/types').PrintArea[], mapName?: string): string {
+  const unnamed = allAreas.filter((a) => !a.title)
+  const idx = unnamed.findIndex((a) => a.id === areaId)
+  const base = mapName || 'Print'
+  return idx === 0 ? base : `${base} ${idx}`
 }
 
 export interface ShareState {
@@ -395,7 +405,7 @@ export function parseGeoJsonRouteImport(json: string): { routes: Route[] } | nul
         return {
           id: uid(),
           name: (props.name ?? `Route ${i + 1}`) as string,
-          color: (props.color ?? '#06b6d4') as string,
+          color: (props.color ?? '#0d9488') as string,
           lineStyle: (props.lineStyle ?? 'solid') as Route['lineStyle'],
           points: geo.coordinates.map(([lng, lat]) => ({ lat, lng }))
         }
