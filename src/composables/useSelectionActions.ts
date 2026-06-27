@@ -81,6 +81,7 @@ export function useSelectionActions({ selection, pins, routes, captions, printAr
     const route = selectedRoutes.value[0]
     const caption = selectedCaptions.value[0]
     const area = selectedPrintAreas.value[0]
+    selection.clearSelection()
     if (pin) openEditPin(pin)
     else if (route) openEditRoute(route)
     else if (caption) openEditCaption(caption)

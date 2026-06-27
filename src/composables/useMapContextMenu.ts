@@ -5,6 +5,7 @@ const MAP_PINS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height=
 const MAP_ROUTE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>`
 const MAP_PASTE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>`
 const MAP_CAPTION_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>`
+const MAP_PRINT_AREA_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>`
 const PRINT_EDIT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>`
 const PRINT_CUT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg>`
 const PRINT_EXPORT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>`
@@ -19,6 +20,7 @@ interface UseMapContextMenuOptions {
   onPlacePinMultiple: (latlng: L.LatLng) => void
   onStartRoute: (latlng: L.LatLng) => void
   onPlaceCaption: (lat: number, lng: number) => void
+  onAddPrintArea: () => void
   onPaste: (lat: number, lng: number) => void
   onDownloadPdf: () => void
   onEditPrintArea: () => void
@@ -27,7 +29,7 @@ interface UseMapContextMenuOptions {
   onRemovePrintArea: () => void
 }
 
-export function useMapContextMenu({ leafletMap, hasClipboard, onPlacePinSingle, onPlacePinMultiple, onStartRoute, onPlaceCaption, onPaste, onDownloadPdf, onEditPrintArea, onCutPrintArea, onCopyPrintArea, onRemovePrintArea }: UseMapContextMenuOptions) {
+export function useMapContextMenu({ leafletMap, hasClipboard, onPlacePinSingle, onPlacePinMultiple, onStartRoute, onPlaceCaption, onAddPrintArea, onPaste, onDownloadPdf, onEditPrintArea, onCutPrintArea, onCopyPrintArea, onRemovePrintArea }: UseMapContextMenuOptions) {
   let ctxPopup: L.Popup | null = null
 
   function closeMapContextPopup() {
@@ -44,10 +46,11 @@ export function useMapContextMenu({ leafletMap, hasClipboard, onPlacePinSingle, 
       .setLatLng(latlng)
       .setContent(
         `<div class="pin-popup" style="padding:4px 0;min-width:170px;">
-          <button class="pin-popup-action-row map-ctx-one">${MAP_LOCATION_SVG} Place Pin Here</button>
+          <button class="pin-popup-action-row map-ctx-one">${MAP_LOCATION_SVG} Place Pin</button>
           <button class="pin-popup-action-row map-ctx-many">${MAP_PINS_SVG} Place Multiple Pins</button>
-          <button class="pin-popup-action-row map-ctx-route">${MAP_ROUTE_SVG} Start Route Here</button>
-          <button class="pin-popup-action-row map-ctx-caption">${MAP_CAPTION_SVG} Add Caption Here</button>
+          <button class="pin-popup-action-row map-ctx-route">${MAP_ROUTE_SVG} Start Route</button>
+          <button class="pin-popup-action-row map-ctx-caption">${MAP_CAPTION_SVG} Add Caption</button>
+          <button class="pin-popup-action-row map-ctx-print-area">${MAP_PRINT_AREA_SVG} Add Print</button>
           <button class="pin-popup-action-row map-ctx-copy-coords">${MAP_COPY_SVG}<span class="pin-popup-action-label">${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}</span></button>
           ${pasteRow}
         </div>`
@@ -83,6 +86,14 @@ export function useMapContextMenu({ leafletMap, hasClipboard, onPlacePinSingle, 
       () => {
         closeMapContextPopup()
         onPlaceCaption(latlng.lat, latlng.lng)
+      },
+      { once: true }
+    )
+    document.querySelector<HTMLButtonElement>('.map-ctx-print-area')?.addEventListener(
+      'click',
+      () => {
+        closeMapContextPopup()
+        onAddPrintArea()
       },
       { once: true }
     )
