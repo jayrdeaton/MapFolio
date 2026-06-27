@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, FileDown, FileUp, Link, Map, Plus, X } from '@lucide/vue'
+import { Check, FileDown, FileUp, Link, Loader2, Map, Plus, X } from '@lucide/vue'
 
 import MapListItem from '@/components/MapListItem.vue'
 import type { MapExportLayers, MapExportOptions } from '@/composables/useMaps'
@@ -18,7 +18,7 @@ const emit = defineEmits<{
   duplicate: [id: string]
   delete: [id: string]
   export: [opts: MapExportOptions]
-  'copy-link': [opts: { layers: MapExportLayers }]
+  'copy-link': [opts: { layers: MapExportLayers; mapId: string }]
   import: []
   close: []
   reorder: [maps: MapData[]]
@@ -41,22 +41,28 @@ function cancelNew() {
 
 // ── Export dialog ─────────────────────────────────────────────────────────
 const showExport = ref(false)
+const isExporting = ref(false)
 const exportScope = ref<string>('') // a map id, or 'all'
 const exportFormat = ref<'json' | 'geojson' | 'link'>('json')
-const layers = ref<MapExportLayers>({ pins: true, routes: true, captions: true })
+const layers = ref<MapExportLayers>({ pins: true, routes: true, captions: true, printAreas: true, includeHidden: true })
 
 const isLink = computed(() => exportFormat.value === 'link')
 
 const scopeMaps = computed(() => (exportScope.value === 'all' ? props.maps : props.maps.filter((m) => m.id === exportScope.value)))
-const counts = computed(() => ({
-  pins: scopeMaps.value.reduce((n, m) => n + (m.pins?.length ?? 0), 0),
-  routes: scopeMaps.value.reduce((n, m) => n + (m.routes?.length ?? 0), 0),
-  captions: scopeMaps.value.reduce((n, m) => n + (m.captions?.length ?? 0), 0)
-}))
+const counts = computed(() => {
+  const inc = layers.value.includeHidden
+  const vis = <T extends { hidden?: boolean }>(arr: T[] | undefined) => (inc ? (arr?.length ?? 0) : (arr?.filter((x) => !x.hidden).length ?? 0))
+  return {
+    pins: scopeMaps.value.reduce((n, m) => n + vis(m.pins), 0),
+    routes: scopeMaps.value.reduce((n, m) => n + vis(m.routes), 0),
+    captions: scopeMaps.value.reduce((n, m) => n + vis(m.captions), 0),
+    printAreas: scopeMaps.value.reduce((n, m) => n + vis(m.printAreas), 0)
+  }
+})
 
-// GeoJSON has no caption concept (links and JSON do). "All maps" and "Share link"
-// are each single-format: all-maps must be JSON, a link is always the current map.
+// GeoJSON has no caption or print area concept; both are omitted for that format.
 const captionsDisabled = computed(() => exportFormat.value === 'geojson' || counts.value.captions === 0)
+const printAreasDisabled = computed(() => exportFormat.value === 'geojson' || counts.value.printAreas === 0)
 const geojsonDisabled = computed(() => exportScope.value === 'all')
 const linkDisabled = computed(() => exportScope.value === 'all')
 
@@ -64,16 +70,17 @@ const linkDisabled = computed(() => exportScope.value === 'all')
 const resolvedLayers = computed<MapExportLayers>(() => ({
   pins: layers.value.pins && counts.value.pins > 0,
   routes: layers.value.routes && counts.value.routes > 0,
-  captions: !captionsDisabled.value && layers.value.captions && counts.value.captions > 0
+  captions: !captionsDisabled.value && layers.value.captions && counts.value.captions > 0,
+  printAreas: !printAreasDisabled.value && layers.value.printAreas && counts.value.printAreas > 0
 }))
 
 const canExport = computed(() => resolvedLayers.value.pins || resolvedLayers.value.routes || resolvedLayers.value.captions)
 
-// Candidate share URL for the active map (stored view is fine for length-gauging;
-// App.vue rebuilds it with the live center/zoom on copy).
+// Candidate share URL for the selected map (stored view is fine for length-gauging;
+// App.vue rebuilds it with the live center/zoom when copying the active map).
 const shareUrl = computed(() => {
   if (!isLink.value) return ''
-  const m = props.maps.find((x) => x.id === props.activeId)
+  const m = props.maps.find((x) => x.id === exportScope.value)
   if (!m) return ''
   const inc = resolvedLayers.value
   const encoded = encodeShareState({
@@ -92,10 +99,6 @@ const shareUrl = computed(() => {
 const linkTooLong = computed(() => isLink.value && shareUrl.value.length > MAX_SHARE_URL_LENGTH)
 const actionDisabled = computed(() => !canExport.value || (isLink.value && linkTooLong.value))
 
-// A link is always the current map; force scope back to it if the user picks link.
-watch(exportFormat, (f) => {
-  if (f === 'link') exportScope.value = props.activeId
-})
 watch([geojsonDisabled, linkDisabled], () => {
   if (exportScope.value === 'all' && exportFormat.value !== 'json') exportFormat.value = 'json'
 })
@@ -103,17 +106,21 @@ watch([geojsonDisabled, linkDisabled], () => {
 function openExport() {
   exportScope.value = props.activeId
   exportFormat.value = 'json'
-  layers.value = { pins: true, routes: true, captions: true }
+  layers.value = { pins: true, routes: true, captions: true, printAreas: true, includeHidden: true }
   showExport.value = true
 }
 
-function doExport() {
+async function doExport() {
   if (exportFormat.value === 'link') {
-    emit('copy-link', { layers: resolvedLayers.value })
-  } else {
-    emit('export', { scope: exportScope.value, format: exportFormat.value, layers: resolvedLayers.value })
+    emit('copy-link', { layers: resolvedLayers.value, mapId: exportScope.value })
+    showExport.value = false
+    return
   }
+  isExporting.value = true
+  emit('export', { scope: exportScope.value, format: exportFormat.value, layers: resolvedLayers.value })
+  await new Promise((resolve) => setTimeout(resolve, 600))
   showExport.value = false
+  isExporting.value = false
 }
 
 const sectionLabelClass = 'block text-gray-500 dark:text-zinc-400 font-semibold text-xs uppercase tracking-wide'
@@ -171,11 +178,10 @@ const fieldLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibo
         <!-- Which map -->
         <div>
           <span :class="fieldLabelClass">Map</span>
-          <select v-model="exportScope" :disabled="isLink" :class="[fieldClass, isLink && 'opacity-50 cursor-not-allowed']">
+          <select v-model="exportScope" :class="fieldClass">
             <option v-for="m in maps" :key="m.id" :value="m.id">{{ m.id === activeId ? `${m.name} (this map)` : m.name }}</option>
-            <option v-if="maps.length > 1" value="all">All maps</option>
+            <option v-if="maps.length > 1" value="all">All Maps</option>
           </select>
-          <p v-if="isLink" class="mt-1 text-xs text-gray-400 dark:text-zinc-500">A share link is always the current map.</p>
         </div>
 
         <!-- Which layers -->
@@ -194,6 +200,16 @@ const fieldLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibo
               <input v-model="layers.captions" type="checkbox" :disabled="captionsDisabled" class="accent-teal-600" />
               Captions <span class="text-gray-400 dark:text-zinc-500 tabular-nums">({{ counts.captions }})</span>
             </label>
+            <label :class="['flex items-center gap-2 text-sm', printAreasDisabled ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed' : 'text-gray-800 dark:text-zinc-200 cursor-pointer']">
+              <input v-model="layers.printAreas" type="checkbox" :disabled="printAreasDisabled" class="accent-teal-600" />
+              Prints <span class="text-gray-400 dark:text-zinc-500 tabular-nums">({{ counts.printAreas }})</span>
+            </label>
+            <div class="border-t border-gray-100 dark:border-zinc-700 pt-1.5 mt-0.5">
+              <label class="flex items-center gap-2 text-sm text-gray-800 dark:text-zinc-200 cursor-pointer">
+                <input v-model="layers.includeHidden" type="checkbox" class="accent-teal-600" />
+                Hidden Items
+              </label>
+            </div>
           </div>
         </div>
 
@@ -212,13 +228,13 @@ const fieldLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibo
               <input v-model="exportFormat" type="radio" value="geojson" :disabled="geojsonDisabled" class="accent-teal-600" />
               <span class="flex flex-col leading-tight">
                 <span>GeoJSON</span>
-                <span class="text-xs text-gray-400 dark:text-zinc-500">For other map tools{{ exportFormat === 'geojson' ? ' · no captions' : '' }}</span>
+                <span class="text-xs text-gray-400 dark:text-zinc-500">For other map tools · pins and routes only</span>
               </span>
             </label>
             <label :class="['flex items-center gap-2 text-sm', linkDisabled ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed' : 'text-gray-800 dark:text-zinc-200 cursor-pointer']">
               <input v-model="exportFormat" type="radio" value="link" :disabled="linkDisabled" class="accent-teal-600" />
               <span class="flex flex-col leading-tight">
-                <span>Share link</span>
+                <span>Share Link</span>
                 <span class="text-xs text-gray-400 dark:text-zinc-500">Opens in one tap · best for smaller maps</span>
               </span>
             </label>
@@ -228,7 +244,11 @@ const fieldLabelClass = 'block mb-1 text-gray-500 dark:text-zinc-400 font-semibo
 
         <!-- Actions -->
         <div class="flex gap-1.5 pt-1">
-          <button class="flex-1 h-8 flex items-center justify-center gap-1.5 rounded border border-teal-400 bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors" :disabled="actionDisabled" :title="linkTooLong ? 'Too large for a share link. Export a file instead.' : undefined" @click="doExport"><component :is="isLink ? Link : FileDown" :size="14" /> {{ isLink ? 'Copy link' : 'Export' }}</button>
+          <button class="flex-1 h-8 flex items-center justify-center gap-1.5 rounded border border-teal-400 bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors" :disabled="actionDisabled || isExporting" :title="linkTooLong ? 'Too large for a share link. Export a file instead.' : undefined" @click="doExport">
+            <Loader2 v-if="isExporting" :size="14" class="animate-spin" />
+            <component :is="isLink ? Link : FileDown" v-else :size="14" />
+            {{ isExporting ? 'Downloading…' : isLink ? 'Copy Link' : 'Export' }}
+          </button>
           <button class="px-3 h-8 rounded border border-gray-300 dark:border-zinc-700 text-sm text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors" @click="showExport = false">Cancel</button>
         </div>
       </div>

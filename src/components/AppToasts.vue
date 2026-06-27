@@ -20,8 +20,8 @@ defineProps<{
     </Transition>
 
     <Transition name="mf-toast">
-      <div v-if="notification" :class="['text-white text-sm rounded shadow-lg whitespace-nowrap flex items-center gap-2', onCancel ? 'pointer-events-auto pl-4 pr-2 py-2' : 'px-4 py-2.5', notification.type === 'error' ? 'bg-rose-500' : notification.type === 'info' ? 'bg-teal-600' : 'bg-emerald-500']">
-        {{ notification.message }}
+      <div v-if="notification" :class="['text-white text-sm rounded shadow-lg whitespace-nowrap flex items-center gap-2', onCancel ? 'pointer-events-auto pl-4 pr-2 py-2 min-w-88' : 'px-4 py-2.5', notification.type === 'error' ? 'bg-rose-500' : notification.type === 'info' ? 'bg-teal-600' : 'bg-emerald-500']">
+        <span :class="onCancel ? 'tabular-nums flex-1' : ''">{{ notification.message }}</span>
         <button v-if="onCancel" class="shrink-0 opacity-70 hover:opacity-100 transition-opacity p-0.5 rounded" title="Cancel" @click="onCancel">
           <X :size="13" />
         </button>

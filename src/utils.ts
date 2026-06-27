@@ -1,4 +1,4 @@
-import type { Caption, CaptionSize, MapStyle, Pin, PinDotShape, PinDotSize, Route, RouteLineStyle, RoutePoint, RouteWaypointSize, RouteWaypointStyle } from './types'
+import type { Caption, CaptionSize, MapStyle, Pin, PinDotShape, PinDotSize, PrintArea, PrintOrientation, PrintPaperSize, Route, RouteLineStyle, RoutePoint, RouteWaypointSize, RouteWaypointStyle } from './types'
 import { uid } from './utils/id'
 
 // Single source of truth for the multi-select modifier: Cmd on Mac, Ctrl on Windows/Linux.
@@ -124,9 +124,16 @@ export function emojiToName(emoji: string): string {
 }
 
 export function pinPlaceholder(pin: Pin, allPins: Pin[]): string {
-  const base = emojiToName(pin.emoji)
-  if (!base) return 'Unnamed'
-  const unnamed = allPins.filter((p) => !p.name && emojiToName(p.emoji) === base)
+  if (pin.emoji) {
+    const base = emojiToName(pin.emoji)
+    if (!base) return 'Unnamed'
+    const unnamed = allPins.filter((p) => !p.name && p.emoji && emojiToName(p.emoji) === base)
+    const idx = unnamed.findIndex((p) => p.id === pin.id)
+    return idx >= 0 ? `${base} ${idx + 1}` : base
+  }
+  const shape = pin.dotShape ?? 'circle'
+  const base = shape === 'circle' ? 'Circle' : shape === 'square' ? 'Square' : 'Diamond'
+  const unnamed = allPins.filter((p) => !p.name && !p.emoji && (p.dotShape ?? 'circle') === shape)
   const idx = unnamed.findIndex((p) => p.id === pin.id)
   return idx >= 0 ? `${base} ${idx + 1}` : base
 }
@@ -134,13 +141,13 @@ export function pinPlaceholder(pin: Pin, allPins: Pin[]): string {
 export function routePlaceholder(route: Route, allRoutes: Route[]): string {
   const unnamed = allRoutes.filter((r) => !r.name)
   const idx = unnamed.findIndex((r) => r.id === route.id)
-  return `Route ${idx + 1}`
+  return idx >= 0 ? `Route ${idx + 1}` : 'Route'
 }
 
 export function captionPlaceholder(caption: Caption, allCaptions: Caption[]): string {
   const unnamed = allCaptions.filter((c) => !c.text)
   const idx = unnamed.findIndex((c) => c.id === caption.id)
-  return `Caption ${idx + 1}`
+  return idx >= 0 ? `Caption ${idx + 1}` : 'Caption'
 }
 
 export function printAreaPlaceholder(areaId: string, allAreas: import('@/types').PrintArea[], mapName?: string): string {
@@ -154,6 +161,7 @@ export interface ShareState {
   pins: Pin[]
   routes?: Route[] // undefined = not present (old links); [] = intentionally empty
   captions?: Caption[] // undefined = pre-captions link; [] = intentionally empty
+  printAreas?: PrintArea[] // undefined = pre-printArea link; [] = intentionally empty
   mapStyle: MapStyle
   mapTitle: string
   area?: string
@@ -197,6 +205,32 @@ interface CompactCaption {
   bg?: true // background pill
   ro?: number // rotation degrees (omitted when 0)
   hd?: true // hidden
+}
+
+interface CompactPrintArea {
+  id: number
+  co: Array<[number, number]> // corners [[lat,lng]×4]
+  an: number // angle
+  pa: string // paper size
+  or: string // orientation
+  gr: string // grid
+  ti?: string // title
+  su?: string // subtitle
+  hd?: true // hidden
+  lg?: true // legend
+  lgp?: true // legendPins
+  lgr?: true // legendRoutes
+  lgsp?: true // legendSeparatePage
+  lgt?: true // legendTitle
+  lga?: true // legendArea
+  lgb?: true // legendBlankLabels
+  lgsc?: number // legendScale
+  lgx?: number | null // legendX
+  lgy?: number | null // legendY
+  lgc?: 0 | 1 | 2 | 3 | null // legendCorner
+  cp?: true // compass
+  sc?: true // scale
+  ms?: number // markerScale
 }
 
 function toBase64Url(str: string): string {
@@ -273,6 +307,35 @@ export function encodeShareState(state: ShareState): string {
   if (state.area) compact.a = state.area
   if (state.center) compact.v = [+state.center[0].toFixed(5), +state.center[1].toFixed(5)]
   if (state.zoom !== undefined) compact.z = Math.round(state.zoom)
+  if (state.printAreas && state.printAreas.length > 0) {
+    compact.pa = state.printAreas.map(
+      (a, i): CompactPrintArea => ({
+        id: i,
+        co: a.corners.map(([lat, lng]) => [+lat.toFixed(6), +lng.toFixed(6)] as [number, number]),
+        an: +a.angle.toFixed(4),
+        pa: a.paper,
+        or: a.orientation,
+        gr: a.grid,
+        ...(a.title ? { ti: a.title } : {}),
+        ...(a.subtitle ? { su: a.subtitle } : {}),
+        ...(a.hidden ? { hd: true as const } : {}),
+        ...(a.legend ? { lg: true as const } : {}),
+        ...(a.legendPins ? { lgp: true as const } : {}),
+        ...(a.legendRoutes ? { lgr: true as const } : {}),
+        ...(a.legendSeparatePage ? { lgsp: true as const } : {}),
+        ...(a.legendTitle ? { lgt: true as const } : {}),
+        ...(a.legendArea ? { lga: true as const } : {}),
+        ...(a.legendBlankLabels ? { lgb: true as const } : {}),
+        ...(a.legendScale !== undefined ? { lgsc: a.legendScale } : {}),
+        ...(a.legendX !== undefined ? { lgx: a.legendX } : {}),
+        ...(a.legendY !== undefined ? { lgy: a.legendY } : {}),
+        ...(a.legendCorner !== undefined ? { lgc: a.legendCorner } : {}),
+        ...(a.compass ? { cp: true as const } : {}),
+        ...(a.scale ? { sc: true as const } : {}),
+        ...(a.markerScale !== undefined ? { ms: a.markerScale } : {})
+      })
+    )
+  }
   return toBase64Url(JSON.stringify(compact))
 }
 
@@ -325,6 +388,33 @@ export function decodeShareState(encoded: string): ShareState | null {
             ...(c.bg ? { background: true } : {}),
             ...(c.ro ? { rotation: c.ro } : {}),
             ...(c.hd ? { hidden: true } : {})
+          }))
+        : undefined,
+      printAreas: Array.isArray(raw.pa)
+        ? (raw.pa as CompactPrintArea[]).map((a) => ({
+            id: String(uid()),
+            corners: a.co as [number, number][],
+            angle: a.an,
+            paper: a.pa as PrintPaperSize,
+            orientation: a.or as PrintOrientation,
+            grid: a.gr,
+            ...(a.ti ? { title: a.ti } : {}),
+            ...(a.su ? { subtitle: a.su } : {}),
+            ...(a.hd ? { hidden: true } : {}),
+            ...(a.lg ? { legend: true } : {}),
+            ...(a.lgp ? { legendPins: true } : {}),
+            ...(a.lgr ? { legendRoutes: true } : {}),
+            ...(a.lgsp ? { legendSeparatePage: true } : {}),
+            ...(a.lgt ? { legendTitle: true } : {}),
+            ...(a.lga ? { legendArea: true } : {}),
+            ...(a.lgb ? { legendBlankLabels: true } : {}),
+            ...(a.lgsc !== undefined ? { legendScale: a.lgsc } : {}),
+            ...(a.lgx !== undefined ? { legendX: a.lgx } : {}),
+            ...(a.lgy !== undefined ? { legendY: a.lgy } : {}),
+            ...(a.lgc !== undefined ? { legendCorner: a.lgc } : {}),
+            ...(a.cp ? { compass: true } : {}),
+            ...(a.sc ? { scale: true } : {}),
+            ...(a.ms !== undefined ? { markerScale: a.ms } : {})
           }))
         : undefined,
       mapStyle: raw.s as MapStyle,

@@ -2,11 +2,11 @@ import type L from 'leaflet'
 import type { ShallowRef } from 'vue'
 
 import type { MapExportLayers } from '@/composables/useMaps'
-import type { Caption, MapStyle, Pin, Route } from '@/types'
+import type { Caption, MapData, MapStyle, Pin, PrintArea, Route } from '@/types'
 import { encodeShareState, MAX_SHARE_URL_LENGTH } from '@/utils'
 
-export function useShareClipboard(options: { pins: Ref<Pin[]>; routes: Ref<Route[]>; captions: Ref<Caption[]>; mapStyle: Ref<MapStyle>; mapTitle: Ref<string>; mapArea: Ref<string>; leafletMap: ShallowRef<L.Map | null>; showNotification: (message: string, type?: 'success' | 'error' | 'info') => void }) {
-  const { pins, routes, captions, mapStyle, mapTitle, mapArea, leafletMap, showNotification } = options
+export function useShareClipboard(options: { pins: Ref<Pin[]>; routes: Ref<Route[]>; captions: Ref<Caption[]>; printAreas: Ref<PrintArea[]>; mapStyle: Ref<MapStyle>; mapTitle: Ref<string>; mapArea: Ref<string>; leafletMap: ShallowRef<L.Map | null>; maps: Ref<MapData[]>; activeId: Ref<string>; showNotification: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+  const { pins, routes, captions, printAreas, mapStyle, mapTitle, mapArea, leafletMap, maps, activeId, showNotification } = options
 
   async function copyText(text: string): Promise<boolean> {
     const ta = document.createElement('textarea')
@@ -32,10 +32,12 @@ export function useShareClipboard(options: { pins: Ref<Pin[]>; routes: Ref<Route
   function buildShareUrl(layers: MapExportLayers): string {
     const c = leafletMap.value?.getCenter()
     const z = leafletMap.value?.getZoom()
+    const vis = <T extends { hidden?: boolean }>(arr: T[]) => (layers.includeHidden ? arr : arr.filter((x) => !x.hidden))
     const encoded = encodeShareState({
-      pins: layers.pins ? pins.value : [],
-      routes: layers.routes ? routes.value : [],
-      captions: layers.captions ? captions.value : [],
+      pins: layers.pins ? vis(pins.value) : [],
+      routes: layers.routes ? vis(routes.value) : [],
+      captions: layers.captions ? vis(captions.value) : [],
+      printAreas: layers.printAreas ? vis(printAreas.value) : [],
       mapStyle: mapStyle.value,
       mapTitle: mapTitle.value,
       area: mapArea.value,
@@ -45,8 +47,34 @@ export function useShareClipboard(options: { pins: Ref<Pin[]>; routes: Ref<Route
     return `${location.origin}${location.pathname}#${encoded}`
   }
 
-  async function copyShareLink(layers: MapExportLayers = { pins: true, routes: true, captions: true }) {
-    const url = buildShareUrl(layers)
+  function buildShareUrlForMap(m: MapData, layers: MapExportLayers): string {
+    const vis = <T extends { hidden?: boolean }>(arr: T[]) => (layers.includeHidden ? arr : arr.filter((x) => !x.hidden))
+    const encoded = encodeShareState({
+      pins: layers.pins ? vis(m.pins) : [],
+      routes: layers.routes ? vis(m.routes) : [],
+      captions: layers.captions ? vis(m.captions ?? []) : [],
+      printAreas: layers.printAreas ? vis(m.printAreas ?? []) : [],
+      mapStyle: m.mapStyle,
+      mapTitle: m.name,
+      area: m.area,
+      center: m.center,
+      zoom: m.zoom
+    })
+    return `${location.origin}${location.pathname}#${encoded}`
+  }
+
+  async function copyShareLink(layers: MapExportLayers = { pins: true, routes: true, captions: true, printAreas: true, includeHidden: true }, mapId?: string) {
+    let url: string
+    if (mapId && mapId !== activeId.value) {
+      const m = maps.value.find((x) => x.id === mapId)
+      if (!m) {
+        showNotification('Map not found', 'error')
+        return
+      }
+      url = buildShareUrlForMap(m, layers)
+    } else {
+      url = buildShareUrl(layers)
+    }
     // Belt-and-suspenders: the export dialog already disables this when the link is
     // too long, but guard here too so a bypass can't silently produce a dead link.
     if (url.length > MAX_SHARE_URL_LENGTH) {

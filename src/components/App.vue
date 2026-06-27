@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Minus, Plus, Redo2, Undo2 } from '@lucide/vue'
 import { LMap } from '@vue-leaflet/vue-leaflet'
 import L from 'leaflet'
 
@@ -11,11 +10,17 @@ import PrintAreaForm from '@/components/PrintAreaForm.vue'
 import PrintPreviewModal from '@/components/PrintPreviewModal.vue'
 import RouteForm from '@/components/RouteForm.vue'
 import RouteLayer from '@/components/RouteLayer.vue'
+import UndoRedoFabs from '@/components/UndoRedoFabs.vue'
 import WaypointPill from '@/components/WaypointPill.vue'
-import { dedupeLegendPins, legendBoxFractions } from '@/composables/useMapExport'
+import ZoomControl from '@/components/ZoomControl.vue'
+import { useLegendPreview } from '@/composables/useLegendPreview'
+import { useLocate } from '@/composables/useLocate'
+import { useMapClick } from '@/composables/useMapClick'
+import { useMapInit } from '@/composables/useMapInit'
+import { usePrintAreaHandlers } from '@/composables/usePrintAreaHandlers'
 import { useRubberBand } from '@/composables/useRubberBand'
 import type { Caption, MapStyle, Pin, PinDotShape, PinDotSize, PrintArea, Route } from '@/types'
-import { captionPlaceholder, decodeShareState, emojiToName, printAreaPlaceholder, routePlaceholder } from '@/utils'
+import { captionPlaceholder, decodeShareState, pinPlaceholder, printAreaPlaceholder, routePlaceholder } from '@/utils'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
@@ -73,10 +78,8 @@ const mapArea = computed<string>({
 })
 
 const leafletMap = shallowRef<L.Map | null>(null)
-let cleanupLongPress: (() => void) | null = null
 
 const showSearch = ref(false)
-const isLocating = ref(false)
 
 // ── Placement / interaction mode state ───────────────────────────────────────
 
@@ -138,7 +141,7 @@ const editingCaption = ref<Caption | null>(null)
 
 // ── Composables ───────────────────────────────────────────────────────────────
 
-const { notification, showNotification, cleanupNotification } = useNotification()
+const { notification, showNotification, dismissNotification, cleanupNotification } = useNotification()
 const mapClipboard = useMapClipboard()
 const selection = useSelection()
 
@@ -154,13 +157,7 @@ const { routes, hiddenRouteIds, allRoutesHidden, isDrawingRoute, drawingRoute, d
 
 const { captions, hiddenCaptionIds, captionSearch, filteredCaptions, allCaptionsHidden, handleDeleteCaption, handleUpdateCaption, handleCaptionMove, toggleCaptionVisibility, toggleAllCaptionVisibility, clearAllCaptions, fitToCaptions, zoomToCaption, resetCaptions } = useCaptions({ initialCaptions: activeMap.value.captions ?? [], leafletMap, showNotification, pushHistory: sharedPush })
 
-const editingPinIndex = computed(() => {
-  if (!editingPin.value || editingPin.value.name) return undefined
-  const emojiName = emojiToName(editingPin.value.emoji)
-  const group = pins.value.filter((p) => !p.name && emojiToName(p.emoji) === emojiName)
-  const idx = group.findIndex((p) => p.id === editingPin.value!.id)
-  return idx >= 0 ? idx + 1 : undefined
-})
+const editingPinPlaceholder = computed(() => (editingPin.value && !editingPin.value.name ? pinPlaceholder(editingPin.value, pins.value) : undefined))
 const editingRoutePlaceholder = computed(() => (editingRouteRef.value && !editingRouteRef.value.name ? routePlaceholder(editingRouteRef.value, routes.value) : undefined))
 const editingCaptionPlaceholder = computed(() => (editingCaption.value && !editingCaption.value.text ? captionPlaceholder(editingCaption.value, captions.value) : undefined))
 
@@ -169,7 +166,7 @@ function updatePrintAreas(areas: PrintArea[]) {
   updateActiveMap({ printAreas: areas })
 }
 
-const { activePrintAreaId, activePrintArea, printBounds, printAspectRatio, overlayCorner, isDownloadingPdf, isPreviewOpen, previewBlobUrl, autoArea, addPrintArea, deletePrintArea, selectPrintArea, deselectPrintArea, patchPrintArea, flipPrintAreaOrientation, fitToPrintArea, fitPrintAreaToElements, handleBoundsSet, openPreview, cancelExport, downloadFromPreview, closePreview } = usePrintExport({ leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, units: mapUnits, angleSnapEnabled, showNotification, printSettings, printAreas, updatePrintAreas })
+const { activePrintAreaId, activePrintArea, printBounds, printAspectRatio, overlayCorner, isDownloadingPdf, isPreviewOpen, previewBlobUrl, autoArea, addPrintArea, deletePrintArea, selectPrintArea, deselectPrintArea, patchPrintArea, flipPrintAreaOrientation, fitToPrintArea, fitPrintAreaToElements, handleBoundsSet, openPreview, cancelExport, downloadFromPreview, closePreview } = usePrintExport({ leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, units: mapUnits, angleSnapEnabled, showNotification, dismissNotification, printSettings, printAreas, updatePrintAreas })
 
 // isAdjustingPrintArea syncs with activePrintAreaId for backwards compat with composables
 // that read/write it (useMapModeState, useKeyboardShortcuts, useSelectionActions).
@@ -211,11 +208,6 @@ function handleMapFormDelete() {
   )
 }
 
-// PrintAreaForm state
-const showPrintAreaForm = ref(false)
-const editingPrintArea = ref<PrintArea | null>(null)
-const editingPrintAreaPlaceholder = computed(() => (editingPrintArea.value && !editingPrintArea.value.title ? printAreaPlaceholder(editingPrintArea.value.id, printAreas.value, mapName.value) : undefined))
-
 const history = useHistory({
   pins,
   routes,
@@ -243,11 +235,48 @@ const pinsLinkedToSelectedRoutes = computed(() => {
   return ids
 })
 
+const selectedWaypointRoute = computed(() => {
+  const key = selection.selectedWaypointKey.value
+  if (!key) return null
+  return routes.value.find((r) => r.id === key.routeId) ?? null
+})
+
+const selectedWaypointLinkedPin = computed(() => {
+  const key = selection.selectedWaypointKey.value
+  if (!key || !selectedWaypointRoute.value) return null
+  const pt = selectedWaypointRoute.value.points[key.pointIndex]
+  return pt?.pinId !== undefined ? (pins.value.find((p) => p.id === pt.pinId) ?? null) : null
+})
+
 // useMapModeState must only see pin/route/caption selection — print area selection must be
 // invisible to it, otherwise the hasSelection watcher kills isAdjustingPrintArea the moment
 // a print area row is selected, and the clearSelection watcher wipes selectedPrintAreaIds
 // the moment the adjusting state turns on.
 const hasNonPrintSelection = computed(() => selection.selectedPinIds.value.size > 0 || selection.selectedRouteIds.value.size > 0 || selection.selectedCaptionIds.value.size > 0 || selection.selectedWaypointKey.value !== null)
+
+// PrintAreaForm state
+const { showPrintAreaForm, editingPrintArea, editingPrintAreaPlaceholder, handleAddPrintArea, handlePrintAreaSave, handlePrintAreaDelete, handlePrintAreaEdit, handlePrintAreaClose, handleSelectPrintArea, handlePrintAreaDownload, handleFitPrintAreaToElements, reorderPrintAreas } = usePrintAreaHandlers({
+  printAreas,
+  updatePrintAreas,
+  mapName,
+  selection,
+  history,
+  activePrintAreaId,
+  activePrintArea,
+  printBounds,
+  hasNonPrintSelection,
+  addPrintArea,
+  deletePrintArea,
+  selectPrintArea,
+  deselectPrintArea,
+  patchPrintArea,
+  fitPrintAreaToElements,
+  openPreview,
+  printSettings,
+  activeFab,
+  leafletMap
+})
+
 function clearNonPrintSelection() {
   selection.selectedPinIds.value = new Set()
   selection.selectedRouteIds.value = new Set()
@@ -325,6 +354,27 @@ const { handleExtendFrom, findWaypointSnapForPin, handlePinMoveWithSnap, handleM
   moveRoute
 })
 
+const { handleMapClick } = useMapClick({
+  leafletMap,
+  isPlacingPin,
+  isPlacingCaption,
+  isDrawingRoute,
+  isAdjustingPrintArea,
+  routeSnapEnabled,
+  angleSnapEnabled,
+  pins,
+  hiddenPinIds,
+  routes,
+  hiddenRouteIds,
+  linkedPinIds,
+  drawingAnchorIndex,
+  drawingRoute,
+  handlePinPlace,
+  placeCaptionDrop,
+  addPoint,
+  clearSelection: selection.clearSelection
+})
+
 const { clusterGroup, initClusterGroup, refreshClusterPositions } = useMarkerCluster({
   isPlacingPin,
   isPlacingCaption,
@@ -349,35 +399,6 @@ const { pointerCoords, drawingPreviewLine } = useDrawingPreview({
 const displayCoords = computed(() => pointerCoords.value ?? mapCenterCoords.value)
 const atMaxZoom = computed(() => !!leafletMap.value && previewView.value.zoom >= mapMaxZoom.value)
 const atMinZoom = computed(() => !!leafletMap.value && previewView.value.zoom <= (leafletMap.value.getMinZoom() ?? 0))
-
-let zoomRepeatTimer: ReturnType<typeof setTimeout> | null = null
-let zoomRepeatInterval: ReturnType<typeof setInterval> | null = null
-
-function startZoomRepeat(fn: () => void, atLimit: () => boolean) {
-  stopZoomRepeat()
-  if (atLimit()) return
-  fn()
-  zoomRepeatTimer = setTimeout(() => {
-    zoomRepeatInterval = setInterval(() => {
-      if (atLimit()) {
-        stopZoomRepeat()
-        return
-      }
-      fn()
-    }, 350)
-  }, 500)
-}
-
-function stopZoomRepeat() {
-  if (zoomRepeatTimer) {
-    clearTimeout(zoomRepeatTimer)
-    zoomRepeatTimer = null
-  }
-  if (zoomRepeatInterval) {
-    clearInterval(zoomRepeatInterval)
-    zoomRepeatInterval = null
-  }
-}
 
 const { handleClipCopyPin, handleClipCutPin, handleClipCopyRoute, handleClipCutRoute, handleClipCopyCaption, handleClipCutCaption, handleClipCopyPrintArea, handleClipCutPrintArea, handlePaste, pasteAtCenter } = useClipboardActions({
   pins,
@@ -428,65 +449,20 @@ const { band: rubberBand } = useRubberBand(leafletMap, isInteracting, (bounds) =
   selection.selectedPinIds.value = new Set(pins.value.filter((p) => !hiddenPinIds.value.has(p.id) && bounds.contains([p.lat, p.lng])).map((p) => p.id))
   selection.selectedRouteIds.value = new Set(routes.value.filter((r) => !hiddenRouteIds.value.has(r.id) && r.points.some((pt) => bounds.contains([pt.lat, pt.lng]))).map((r) => r.id))
   selection.selectedCaptionIds.value = new Set(captions.value.filter((c) => !hiddenCaptionIds.value.has(c.id) && bounds.contains([c.lat, c.lng])).map((c) => c.id))
+  selection.selectedPrintAreaIds.value = new Set(printAreas.value.filter((a) => !a.hidden && a.corners.some((corner) => bounds.contains(corner as [number, number]))).map((a) => a.id))
   selection.selectedWaypointKey.value = null
 })
 
 // Subtitle shown on the print: the user's entered area, or the geocoded suggestion as a fallback.
 const effectiveArea = computed(() => mapArea.value || autoArea.value)
 
-// Named pins/routes inside the active print area bounds — drives legend content indicators.
-const legendCounts = computed(() => {
-  const bounds = printBounds.value
-  if (!bounds) return null
-  const pinCount = dedupeLegendPins(
-    pins.value.filter((p) => p.name && bounds.contains([p.lat, p.lng])).map((p) => ({ pin: p, index: p.showNumber ? p.id : undefined }))
-  ).length
-  const routeCount = routes.value.filter((r) => r.name && r.points.some((pt) => bounds.contains([pt.lat, pt.lng]))).length
-  return { pins: pinCount, routes: routeCount }
-})
-
-// Passed to the active PrintAreaDrawer so the on-map legend preview reflects current settings.
-const activeLegendSettings = computed(() => {
-  const area = activePrintArea.value
-  if (!printBounds.value || !area) return undefined
-  return {
-    legend: area.legend ?? true,
-    separatePage: area.legendSeparatePage ?? false,
-    title: area.legendTitle ?? true,
-    titleText: mapName.value,
-    area: area.legendArea ?? true,
-    areaText: effectiveArea.value ?? '',
-    pins: area.legendPins ?? true,
-    routes: area.legendRoutes ?? true,
-    pinCount: legendCounts.value?.pins ?? 0,
-    routeCount: legendCounts.value?.routes ?? 0,
-    compass: area.compass ?? true,
-    scale: area.scale ?? true
-  }
-})
-
-// Footprint of the PDF info box for the active print area — shown as an overlay in the drawer.
-const legendBox = computed(() => {
-  const bounds = printBounds.value
-  const area = activePrintArea.value
-  if (!bounds || !area) return null
-  const masterOn = area.legend ?? true
-  if (!masterOn) return null
-  const onMapPins = (area.legendPins ?? true) && !(area.legendSeparatePage ?? false)
-  const onMapRoutes = (area.legendRoutes ?? true) && !(area.legendSeparatePage ?? false)
-  const namedPins = onMapPins ? dedupeLegendPins(pins.value.filter((p) => p.name && bounds.contains([p.lat, p.lng])).map((p) => ({ pin: p, index: p.showNumber ? p.id : undefined }))) : []
-  const namedRoutes = onMapRoutes ? routes.value.filter((r) => r.name && r.points.some((pt) => bounds.contains([pt.lat, pt.lng]))) : []
-  return legendBoxFractions(
-    {
-      hasTitle: (area.legendTitle ?? true) && !!mapName.value,
-      hasArea: (area.legendArea ?? true) && !!effectiveArea.value,
-      includeCompass: area.compass ?? true,
-      includeScale: area.scale ?? true,
-      pins: namedPins.map(({ pin }) => ({ hasDescription: !!pin.description })),
-      routeCount: namedRoutes.length
-    },
-    area.legendScale ?? 1
-  )
+const { activeLegendSettings, legendBox } = useLegendPreview({
+  printBounds,
+  activePrintArea,
+  pins,
+  routes,
+  mapName,
+  effectiveArea
 })
 
 const routeLayerRef = ref<InstanceType<typeof RouteLayer> | null>(null)
@@ -495,10 +471,13 @@ const { copyShareLink } = useShareClipboard({
   pins,
   routes,
   captions,
+  printAreas,
   mapStyle,
   mapTitle: mapName,
   mapArea,
   leafletMap,
+  maps,
+  activeId,
   showNotification
 })
 
@@ -551,10 +530,6 @@ onMounted(() => {
   })
 })
 
-function onContextWaypoint(routeId: number, pointIndex: number) {
-  handleContextWaypoint(routeId, pointIndex)
-}
-
 function handlePinDragStart(_id: number) {
   history.push('move pin')
 }
@@ -579,10 +554,6 @@ function handlePinMoveOnDrop(id: number, lat: number, lng: number) {
 
 function handlePinDragMove(id: number, lat: number, lng: number) {
   routeLayerRef.value?.setPinDragPreview(id, lat, lng)
-}
-
-function handlePinSelect(pin: Pin, additive: boolean) {
-  handleSelectPin(pin, additive)
 }
 
 function handleLockedPinContext(pin: Pin) {
@@ -629,66 +600,6 @@ function handleUnlinkSelectedPin() {
   }
 }
 
-function handleAddPrintArea() {
-  selection.clearSelection()
-  history.push('add print area')
-  addPrintArea({ paper: printSettings.stickyPaper.value, orientation: printSettings.stickyOrientation.value })
-  activeFab.value = null
-}
-
-function handlePrintAreaSave(area: PrintArea) {
-  history.push('edit print area')
-  patchPrintArea(area.id, area)
-  printSettings.stickyPaper.value = area.paper
-  printSettings.stickyOrientation.value = area.orientation
-  showPrintAreaForm.value = false
-  editingPrintArea.value = null
-}
-
-function handlePrintAreaDelete() {
-  if (!editingPrintArea.value) return
-  history.push('delete print area')
-  deletePrintArea(editingPrintArea.value.id)
-  showPrintAreaForm.value = false
-  editingPrintArea.value = null
-}
-
-function handlePrintAreaEdit(id: string) {
-  const area = printAreas.value.find((a) => a.id === id)
-  if (!area) return
-  editingPrintArea.value = area
-  showPrintAreaForm.value = true
-}
-
-function handleSelectPrintArea(id: string, additive: boolean) {
-  leafletMap.value?.closePopup()
-  const hasOtherSelection = hasNonPrintSelection.value || selection.selectedPrintAreaIds.value.size > 0 || activePrintAreaId.value !== null
-  if (additive && hasOtherSelection) {
-    // Additive → transition into (or extend) SelectionPill multiselect
-    const next = new Set(selection.selectedPrintAreaIds.value)
-    if (activePrintAreaId.value) next.add(activePrintAreaId.value)
-    deselectPrintArea()
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    selection.selectedPrintAreaIds.value = next
-  } else {
-    // Regular click, or additive with nothing selected yet → activate (PrintPill + handles)
-    selection.clearSelection()
-    selectPrintArea(id)
-  }
-}
-
-function handlePrintAreaDownload() {
-  const id = activePrintAreaId.value ?? [...selection.selectedPrintAreaIds.value][0]
-  if (!id) return
-  if (!activePrintAreaId.value) selectPrintArea(id)
-  openPreview()
-}
-
-function handleFitPrintAreaToElements() {
-  if (printBounds.value) history.push('fit print area to pins')
-  fitPrintAreaToElements()
-}
 function reorderPins(newPins: Pin[]) {
   history.push('reorder pins')
   pins.value = newPins
@@ -696,10 +607,6 @@ function reorderPins(newPins: Pin[]) {
 function reorderRoutes(newRoutes: Route[]) {
   history.push('reorder routes')
   routes.value = newRoutes
-}
-function reorderPrintAreas(newAreas: PrintArea[]) {
-  history.push('reorder prints')
-  updatePrintAreas(newAreas)
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
@@ -721,39 +628,27 @@ watch(searchLocation, (loc) => {
 
 // ── My location ───────────────────────────────────────────────────────────────
 
-// Enabled only when there's something to frame; the button stays visible but disabled otherwise.
-const canFitAll = computed(() => {
-  const hasPins = pins.value.some((p) => !hiddenPinIds.value.has(p.id))
-  const hasRoutes = routes.value.some((r) => !hiddenRouteIds.value.has(r.id) && r.points.length > 0)
-  const hasCaptions = captions.value.some((c) => !hiddenCaptionIds.value.has(c.id))
-  return hasPins || hasRoutes || hasCaptions
+const { isLocating, canFitAll, fitAllToView, goToMyLocation } = useLocate({
+  pins,
+  hiddenPinIds,
+  routes,
+  hiddenRouteIds,
+  captions,
+  hiddenCaptionIds,
+  printAreas,
+  leafletMap,
+  searchLocation,
+  showNotification
 })
 
-// Frame every visible pin, route point, and caption in one view.
-function fitAllToView() {
-  if (!leafletMap.value) return
-  const coords: L.LatLngTuple[] = []
-  for (const p of pins.value) if (!hiddenPinIds.value.has(p.id)) coords.push([p.lat, p.lng])
-  for (const r of routes.value) if (!hiddenRouteIds.value.has(r.id)) for (const pt of r.points) coords.push([pt.lat, pt.lng])
-  for (const c of captions.value) if (!hiddenCaptionIds.value.has(c.id)) coords.push([c.lat, c.lng])
-  if (coords.length === 0) return
-  leafletMap.value.fitBounds(coords, { padding: [60, 60], animate: true })
-}
+const hasSelection = computed(() => selectedPins.value.length > 0 || selectedRoutes.value.length > 0 || selectedCaptions.value.length > 0 || selectedPrintAreas.value.length > 0)
+const canFit = computed(() => !!activePrintAreaId.value || hasSelection.value || canFitAll.value)
+const fitLabel = computed(() => (activePrintAreaId.value ? 'Zoom to print' : hasSelection.value ? 'Zoom to selection' : 'Fit all to view'))
 
-function goToMyLocation() {
-  if (!navigator.geolocation || isLocating.value) return
-  isLocating.value = true
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      isLocating.value = false
-      searchLocation.value = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'Your location' }
-    },
-    (err) => {
-      isLocating.value = false
-      showNotification(err.code === err.PERMISSION_DENIED ? 'Location blocked - enable it in browser settings' : 'Could not get your location', 'error')
-    },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-  )
+function fitToView() {
+  if (activePrintAreaId.value) return fitToPrintArea()
+  if (hasSelection.value) return handleSelectionFit()
+  fitAllToView()
 }
 
 // ── FAB / panel / sheet ───────────────────────────────────────────────────────
@@ -842,7 +737,7 @@ function handlePinDelete() {
 
 function removePrintArea() {
   if (activePrintAreaId.value) {
-    history.push('remove print area')
+    history.push('remove print')
     deletePrintArea(activePrintAreaId.value)
   }
   selection.clearSelection()
@@ -867,141 +762,45 @@ const { openMapContextPopup, openPrintAreaContextMenu, closeMapContextPopup } = 
   },
   onPaste: handlePaste,
   onDownloadPdf: openPreview,
+  onEditPrintArea: () => {
+    if (activePrintAreaId.value) handlePrintAreaEdit(activePrintAreaId.value)
+  },
+  onCutPrintArea: () => {
+    if (activePrintAreaId.value) handleClipCutPrintArea(activePrintAreaId.value)
+  },
+  onCopyPrintArea: () => {
+    if (activePrintAreaId.value) handleClipCopyPrintArea(activePrintAreaId.value)
+  },
   onRemovePrintArea: removePrintArea
 })
 
 // ── Map initialization ────────────────────────────────────────────────────────
 
-function onMapReady(map: L.Map) {
-  initClusterGroup(map)
-  leafletMap.value = map
-  // Give the browser time to finish layout and any internal Leaflet invalidateSize calls
-  // before we correct marker positions.
-  setTimeout(refreshClusterPositions, 300)
-  applyTileLayer(map)
-  applyLabelsLayer(map)
-  map.on('moveend', saveState)
-  map.on('click', closeMapContextPopup)
-  map.boxZoom.disable()
-  map.zoomControl.remove()
-
-  if (!hasExplicitLocation) flyToIpLocation(map)
-
-  if (loadedFromUrl) {
-    const missing = pins.value.filter((p) => !p.address)
-    if (missing.length > 0) resolveAddressesFromUrl(missing)
-  }
-
-  const updateCenter = () => {
-    const c = map.getCenter()
-    mapCenterCoords.value = { lat: c.lat, lng: c.lng }
-  }
-  updateCenter()
-  map.on('move', updateCenter)
-  const updatePreviewView = () => {
-    const c = map.getCenter()
-    previewView.value = { lat: c.lat, lng: c.lng, zoom: map.getZoom() }
-  }
-  updatePreviewView()
-  map.on('moveend', updatePreviewView)
-  map.on('zoomend', updatePreviewView)
-
-  cleanupLongPress = useLongPress(map, {
-    isBlocked: () => !!(bottomSheet.value || activeFab.value || showMapsPanel.value),
-    onPlace: (latlng) => {
-      if (isPlacingPin.value) {
-        handlePinPlace(latlng)
-        return
-      }
-      if (isPlacingCaption.value) {
-        placeCaptionDrop(latlng.lat, latlng.lng)
-        return
-      }
-      if (isDrawingRoute.value) return
-      activeFab.value = null
-      showMapsPanel.value = false
-      openMapContextPopup(latlng, map)
-    }
-  })
-
-  if (loadedFromUrl && pins.value.length > 0) {
-    requestAnimationFrame(() => {
-      map.fitBounds(
-        pins.value.map((p) => [p.lat, p.lng] as [number, number]),
-        { padding: [60, 60], animate: false }
-      )
-    })
-  }
-}
-
-function handleMapClick(e: L.LeafletMouseEvent) {
-  if (e.originalEvent.metaKey || e.originalEvent.ctrlKey) return
-  if (isPlacingPin.value) handlePinPlace(e.latlng)
-  else if (isPlacingCaption.value) placeCaptionDrop(e.latlng.lat, e.latlng.lng)
-  else if (isDrawingRoute.value) {
-    let { lat, lng } = e.latlng
-    const map = leafletMap.value!
-    const shiftHeld = e.originalEvent.shiftKey
-    let snappedPinId: number | undefined
-
-    // Pin snap (magnet): snap to nearest visible, unlinked pin within threshold
-    if (routeSnapEnabled.value) {
-      const SNAP_PX = 28
-      const toPx = map.latLngToContainerPoint([lat, lng])
-      for (const pin of pins.value) {
-        if (hiddenPinIds.value.has(pin.id) || linkedPinIds.value.has(pin.id)) continue
-        const pinPx = map.latLngToContainerPoint([pin.lat, pin.lng])
-        if (Math.hypot(toPx.x - pinPx.x, toPx.y - pinPx.y) < SNAP_PX) {
-          lat = pin.lat
-          lng = pin.lng
-          snappedPinId = pin.id
-          break
-        }
-      }
-    }
-
-    // Waypoint snap (skip if already pin-snapped)
-    if (!snappedPinId && routeSnapEnabled.value) {
-      const SNAP_PX = 28
-      const toPx = map.latLngToContainerPoint([lat, lng])
-      outer: for (const route of routes.value) {
-        if (hiddenRouteIds.value.has(route.id)) continue
-        for (const pt of route.points) {
-          const ptPx = map.latLngToContainerPoint([pt.lat, pt.lng])
-          if (Math.hypot(toPx.x - ptPx.x, toPx.y - ptPx.y) < SNAP_PX) {
-            lat = pt.lat
-            lng = pt.lng
-            break outer
-          }
-        }
-      }
-    }
-
-    // Angle snap (skip when already snapped); shift toggles the persistent setting
-    if (!snappedPinId && angleSnapEnabled.value !== shiftHeld) {
-      const snapAnchorIdx = drawingAnchorIndex.value
-      const lastPt = snapAnchorIdx !== null ? drawingRoute.value?.points[snapAnchorIdx] : undefined
-      if (lastPt) {
-        const fromPx = map.latLngToContainerPoint([lastPt.lat, lastPt.lng])
-        const toPx = map.latLngToContainerPoint([lat, lng])
-        const dx = toPx.x - fromPx.x
-        const dy = toPx.y - fromPx.y
-        const dist = Math.sqrt(dx * dx + dy * dy)
-        const snappedAngle = Math.round(Math.atan2(dy, dx) / (Math.PI / 12)) * (Math.PI / 12)
-        const snappedLatLng = map.containerPointToLatLng(L.point(fromPx.x + dist * Math.cos(snappedAngle), fromPx.y + dist * Math.sin(snappedAngle)))
-        lat = snappedLatLng.lat
-        lng = snappedLatLng.lng
-      }
-    }
-
-    addPoint(lat, lng, snappedPinId)
-  } else if (isAdjustingPrintArea.value) {
-    // Clicking away from the print area deselects it (which locks it).
-    isAdjustingPrintArea.value = false
-  } else {
-    selection.clearSelection()
-  }
-}
+const { onMapReady } = useMapInit({
+  leafletMap,
+  mapCenterCoords,
+  previewView,
+  hasExplicitLocation,
+  loadedFromUrl,
+  pins,
+  resolveAddressesFromUrl,
+  initClusterGroup,
+  refreshClusterPositions,
+  applyTileLayer,
+  applyLabelsLayer,
+  flyToIpLocation,
+  saveState,
+  closeMapContextPopup,
+  openMapContextPopup,
+  bottomSheet,
+  activeFab,
+  showMapsPanel,
+  isPlacingPin,
+  isPlacingCaption,
+  isDrawingRoute,
+  handlePinPlace,
+  placeCaptionDrop
+})
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 
@@ -1099,7 +898,6 @@ watch(
 
 onUnmounted(() => {
   cleanupNotification()
-  cleanupLongPress?.()
 })
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
@@ -1128,20 +926,18 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
 
     <!-- ── Mobile search panel ──────────────────────────────────────────── -->
     <Transition name="mf-search-bar">
-      <div v-if="showSearch" class="sm:hidden bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 px-3 py-2.5 shrink-0 z-900 no-print">
-        <MapSearch
-          :auto-focus="true"
-          :clear-trigger="searchClearTrigger"
-          @location-select="
-            (loc) => {
-              searchLocation = loc
-              showNotification(`Navigated to ${loc.label}`)
-              showSearch = false
-            }
-          "
-          @clear="clearSearchLocation"
-        />
-      </div>
+      <MobileSearchBar
+        v-if="showSearch"
+        :clear-trigger="searchClearTrigger"
+        @location-select="
+          (loc) => {
+            searchLocation = loc
+            showNotification(`Navigated to ${loc.label}`)
+            showSearch = false
+          }
+        "
+        @clear="clearSearchLocation"
+      />
     </Transition>
 
     <!-- ── Map ──────────────────────────────────────────────────────────── -->
@@ -1184,14 +980,19 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
           @legend-move="(x, y) => patchPrintArea(area.id, { legendX: x, legendY: y, legendCorner: null })"
           @legend-scale="(s) => patchPrintArea(area.id, { legendScale: s })"
           @legend-corner="(c) => patchPrintArea(area.id, { legendX: null, legendY: null, legendCorner: c })"
-          @legend-reset="() => { history.push('reset legend position'); patchPrintArea(area.id, { legendX: null, legendY: null, legendCorner: null }) }"
+          @legend-reset="
+            () => {
+              history.push('reset legend position')
+              patchPrintArea(area.id, { legendX: null, legendY: null, legendCorner: null })
+            }
+          "
           @drag-start="(label) => history.push(label)"
         />
-        <PinMarker v-for="(pin, i) in pins" :key="pin.id" :render-index="i" :pin="pin" :map="leafletMap" :layer="showClusters ? clusterGroup : undefined" :hidden="hiddenPinIds.has(pin.id)" :dot-size="stickyDotSize" :locked="linkedPinIds.has(pin.id)" :drawing="isDrawingRoute" :find-snap="findWaypointSnapForPin" :pin-index="pinNumberedIndex.get(pin.id)" :selected="selection.selectedPinIds.value.has(pin.id) || pinsLinkedToSelectedRoutes.has(pin.id)" :linked-to-selected-route="false" @delete="deletePinWithCleanup" @hide="togglePinVisibility" @drag-start="handlePinDragStart" @drag-move="handlePinDragMove" @move="handlePinMoveOnDrop" @edit="openEditPin" @copy="(coords) => showNotification(`Copied: ${coords}`)" @clip-copy="handleClipCopyPin" @clip-cut="handleClipCutPin" @place-waypoint="(lat, lng, pinId) => addPoint(lat, lng, pinId)" @select="handlePinSelect" @context-locked="handleLockedPinContext" />
+        <PinMarker v-for="(pin, i) in pins" :key="pin.id" :render-index="i" :pin="pin" :map="leafletMap" :layer="showClusters ? clusterGroup : undefined" :hidden="hiddenPinIds.has(pin.id)" :dot-size="stickyDotSize" :locked="linkedPinIds.has(pin.id)" :drawing="isDrawingRoute" :find-snap="findWaypointSnapForPin" :pin-index="pinNumberedIndex.get(pin.id)" :selected="selection.selectedPinIds.value.has(pin.id) || pinsLinkedToSelectedRoutes.has(pin.id)" :linked-to-selected-route="false" @delete="deletePinWithCleanup" @hide="togglePinVisibility" @drag-start="handlePinDragStart" @drag-move="handlePinDragMove" @move="handlePinMoveOnDrop" @edit="openEditPin" @copy="(coords) => showNotification(`Copied: ${coords}`)" @clip-copy="handleClipCopyPin" @clip-cut="handleClipCutPin" @place-waypoint="(lat, lng, pinId) => addPoint(lat, lng, pinId)" @select="handleSelectPin" @context-locked="handleLockedPinContext" />
         <CaptionMarker v-for="(caption, i) in captions" :key="caption.id" :render-index="i" :caption="caption" :map="leafletMap" :hidden="hiddenCaptionIds.has(caption.id)" :selected="selection.selectedCaptionIds.value.has(caption.id) || editingCaption?.id === caption.id || activeCaptionId === caption.id" :is-dark="isDark" :placeholder="caption.text ? undefined : captionPlaceholder(caption, captions)" @delete="handleDeleteCaption" @hide="toggleCaptionVisibility" @move-start="onCaptionMoveStart" @move="onCaptionMove" @edit="openEditCaption" @clip-copy="handleClipCopyCaption" @clip-cut="handleClipCutCaption" @select="handleSelectCaption" />
         <CaptionRotateHandle v-if="activeCaption && !hiddenCaptionIds.has(activeCaption.id)" :caption="activeCaption" :map="leafletMap" :angle-snap="angleSnapEnabled" @rotate-start="onCaptionRotateStart" @rotate="onCaptionRotate" />
         <SearchMarker v-if="searchLocation" :key="`${searchLocation.lat}-${searchLocation.lng}`" ref="searchMarkerRef" :lat="searchLocation.lat" :lng="searchLocation.lng" :map="leafletMap" @pin="handleSearchMarkerPin" @dismiss="searchLocation = null" />
-        <RouteLayer v-if="routes.length > 0" ref="routeLayerRef" :routes="routes" :hidden-route-ids="hiddenRouteIds" :map="leafletMap" :drawing-route-id="isDrawingRoute ? (drawingRoute?.id ?? null) : null" :drawing-anchor-index="isDrawingRoute ? drawingAnchorIndex : null" :pins="pins" :snap-enabled="routeSnapEnabled" :hidden-pin-ids="hiddenPinIds" :angle-snap-enabled="angleSnapEnabled" :selected-route-ids="selection.selectedRouteIds.value" :selected-waypoint-key="selection.selectedWaypointKey.value" @remove-point="removePoint" @move-point="handleMovePoint" @move-route="handleMoveRoute" @select-route="handleSelectRoute" @select-waypoint="handleSelectWaypoint" @context-route="handleContextRoute" @context-waypoint="onContextWaypoint" />
+        <RouteLayer v-if="routes.length > 0" ref="routeLayerRef" :routes="routes" :hidden-route-ids="hiddenRouteIds" :map="leafletMap" :drawing-route-id="isDrawingRoute ? (drawingRoute?.id ?? null) : null" :drawing-anchor-index="isDrawingRoute ? drawingAnchorIndex : null" :pins="pins" :snap-enabled="routeSnapEnabled" :hidden-pin-ids="hiddenPinIds" :angle-snap-enabled="angleSnapEnabled" :selected-route-ids="selection.selectedRouteIds.value" :selected-waypoint-key="selection.selectedWaypointKey.value" @remove-point="removePoint" @move-point="handleMovePoint" @move-route="handleMoveRoute" @select-route="handleSelectRoute" @select-waypoint="handleSelectWaypoint" @context-route="handleContextRoute" @context-waypoint="handleContextWaypoint" />
       </template>
 
       <PrintLegend :title="(activePrintArea?.legendTitle ?? true) ? mapName : ''" :area="(activePrintArea?.legendArea ?? true) ? effectiveArea : ''" :pins="pins" :routes="routes" :blank-labels="activePrintArea?.legendBlankLabels ?? false" />
@@ -1235,11 +1036,12 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
           @hide="patchPrintArea(activePrintArea.id, { hidden: !activePrintArea.hidden })"
           @delete="
             () => {
-              history.push('delete print area')
+              history.push('delete print')
               deletePrintArea(activePrintArea!.id)
             }
           "
           @download="openPreview"
+          @cancel="cancelExport"
           @done="deselectPrintArea"
         />
       </Transition>
@@ -1251,27 +1053,7 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
 
       <!-- Waypoint pill -->
       <Transition name="mf-fade">
-        <WaypointPill
-          v-if="selection.selectedWaypointKey.value && !isPlacingPin && !isPlacingCaption && !isDrawingRoute && !isAdjustingPrintArea"
-          :route="routes.find((r) => r.id === selection.selectedWaypointKey.value!.routeId)!"
-          :point-index="selection.selectedWaypointKey.value.pointIndex"
-          :linked-pin="
-            (() => {
-              const pt = routes.find((r) => r.id === selection.selectedWaypointKey.value!.routeId)?.points[selection.selectedWaypointKey.value!.pointIndex]
-              return pt?.pinId !== undefined ? (pins.find((p) => p.id === pt.pinId) ?? null) : null
-            })()
-          "
-          @edit-route="openEditRoute(routes.find((r) => r.id === selection.selectedWaypointKey.value!.routeId)!)"
-          @edit-pin="
-            (() => {
-              const pt = routes.find((r) => r.id === selection.selectedWaypointKey.value!.routeId)?.points[selection.selectedWaypointKey.value!.pointIndex]
-              const pin = pt?.pinId !== undefined ? pins.find((p) => p.id === pt.pinId) : undefined
-              if (pin) openEditPin(pin)
-            })()
-          "
-          @delete="handleWaypointDelete(selection.selectedWaypointKey.value!.routeId, selection.selectedWaypointKey.value!.pointIndex)"
-          @clear="selection.clearSelection()"
-        />
+        <WaypointPill v-if="selection.selectedWaypointKey.value && !isPlacingPin && !isPlacingCaption && !isDrawingRoute && !isAdjustingPrintArea" :route="selectedWaypointRoute!" :point-index="selection.selectedWaypointKey.value.pointIndex" :linked-pin="selectedWaypointLinkedPin" @edit-route="openEditRoute(selectedWaypointRoute!)" @edit-pin="selectedWaypointLinkedPin && openEditPin(selectedWaypointLinkedPin)" @delete="handleWaypointDelete(selection.selectedWaypointKey.value!.routeId, selection.selectedWaypointKey.value!.pointIndex)" @clear="selection.clearSelection()" />
       </Transition>
 
       <!-- Maps panel backdrop -->
@@ -1280,7 +1062,7 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
       <!-- Maps panel -->
       <Transition name="mf-panel">
         <div v-if="showMapsPanel" class="absolute left-4 top-4 z-1100 w-80 max-w-[calc(100vw-80px)] bg-white dark:bg-zinc-900 rounded-xl shadow-xl border border-gray-200 dark:border-zinc-800 overflow-y-auto flex flex-col max-h-[80vh] no-print">
-          <MapsPanel :maps="maps" :active-id="activeId" @switch="doSwitchMap" @edit="editingMapId = $event" @create="doCreateMap" @duplicate="doDuplicateMap" @delete="doDeleteMap" @export="exportMapData" @copy-link="(o) => copyShareLink(o.layers)" @import="mapImportFileRef?.click()" @close="showMapsPanel = false" @reorder="reorderMaps" />
+          <MapsPanel :maps="maps" :active-id="activeId" @switch="doSwitchMap" @edit="editingMapId = $event" @create="doCreateMap" @duplicate="doDuplicateMap" @delete="doDeleteMap" @export="exportMapData" @copy-link="(o) => copyShareLink(o.layers, o.mapId)" @import="mapImportFileRef?.click()" @close="showMapsPanel = false" @reorder="reorderMaps" />
         </div>
       </Transition>
 
@@ -1323,18 +1105,19 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
             @cut-area="handleClipCutPrintArea"
             @delete-area="
               (id) => {
-                history.push('delete print area')
+                history.push('delete print')
                 deletePrintArea(id)
               }
             "
             @clear-all="
               () => {
-                history.push('delete all print areas')
+                history.push('delete all prints')
                 updatePrintAreas([])
               }
             "
             @reorder="reorderPrintAreas"
             @download-pdf="handlePrintAreaDownload"
+            @cancel-pdf="cancelExport"
           />
         </div>
       </Transition>
@@ -1480,44 +1263,7 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
       <!-- Bottom-left: zoom pill + coords + scale -->
       <Transition name="mf-focus-left">
         <div v-if="!focusMode" class="absolute left-2 z-1000 no-print flex flex-col items-start gap-1 pointer-events-none" style="bottom: calc(0.75rem + env(safe-area-inset-bottom))">
-          <div v-if="showZoom && leafletMap" class="pointer-events-auto flex flex-col w-8 rounded overflow-hidden shadow-sm border border-gray-200/60 dark:border-zinc-700/60 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm">
-            <button
-              :disabled="atMaxZoom"
-              :class="['h-7 flex items-center justify-center border-b border-gray-200/60 dark:border-zinc-700/60 transition-colors select-none', atMaxZoom ? 'text-gray-300 dark:text-zinc-600 cursor-not-allowed' : 'text-gray-500 dark:text-zinc-400 hover:bg-gray-100/80 dark:hover:bg-zinc-800/80 cursor-pointer']"
-              style="touch-action: manipulation"
-              aria-label="Zoom in"
-              title="Zoom in"
-              @pointerdown.prevent="
-                startZoomRepeat(
-                  () => leafletMap!.zoomIn(),
-                  () => atMaxZoom
-                )
-              "
-              @pointerup="stopZoomRepeat()"
-              @pointerleave="stopZoomRepeat()"
-              @pointercancel="stopZoomRepeat()"
-            >
-              <Plus :size="13" />
-            </button>
-            <button
-              :disabled="atMinZoom"
-              :class="['h-7 flex items-center justify-center transition-colors select-none', atMinZoom ? 'text-gray-300 dark:text-zinc-600 cursor-not-allowed' : 'text-gray-500 dark:text-zinc-400 hover:bg-gray-100/80 dark:hover:bg-zinc-800/80 cursor-pointer']"
-              style="touch-action: manipulation"
-              aria-label="Zoom out"
-              title="Zoom out"
-              @pointerdown.prevent="
-                startZoomRepeat(
-                  () => leafletMap!.zoomOut(),
-                  () => atMinZoom
-                )
-              "
-              @pointerup="stopZoomRepeat()"
-              @pointerleave="stopZoomRepeat()"
-              @pointercancel="stopZoomRepeat()"
-            >
-              <Minus :size="13" />
-            </button>
-          </div>
+          <ZoomControl v-if="showZoom && leafletMap" :leaflet-map="leafletMap" :at-max-zoom="atMaxZoom" :at-min-zoom="atMinZoom" />
           <div class="pointer-events-none flex flex-col items-start gap-1">
             <div v-if="showCoords && displayCoords" class="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm text-xs font-mono text-gray-500 dark:text-zinc-400 px-2 py-1 rounded shadow-sm border border-gray-200/60 dark:border-zinc-700/60 tabular-nums">{{ displayCoords.lat.toFixed(5) }}, {{ displayCoords.lng.toFixed(5) }}</div>
             <ScaleBar v-if="showScale && leafletMap" v-model:unit="mapUnits" :map="leafletMap" />
@@ -1527,14 +1273,7 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
 
       <!-- Top-left: undo/redo small FABs (appear on demand) -->
       <Transition name="mf-focus-left">
-        <div v-if="(canUndo || canRedo) && !focusMode" class="absolute left-2 top-2 z-1000 no-print flex flex-col gap-2">
-          <button :disabled="!canUndo" :class="['w-9 h-9 rounded-full flex items-center justify-center shadow-md border transition-all', canUndo ? 'bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 border-gray-200 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 cursor-pointer' : 'bg-white/50 dark:bg-zinc-900/50 text-gray-400 dark:text-zinc-600 border-gray-200/50 dark:border-zinc-700/50 cursor-not-allowed']" aria-label="Undo" title="Undo (⌘Z)" @click="undo()">
-            <Undo2 :size="16" />
-          </button>
-          <button v-if="canRedo" class="w-9 h-9 rounded-full flex items-center justify-center shadow-md border transition-all bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 border-gray-200 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 cursor-pointer" aria-label="Redo" title="Redo (⌘Y)" @click="redo()">
-            <Redo2 :size="16" />
-          </button>
-        </div>
+        <UndoRedoFabs v-if="(canUndo || canRedo) && !focusMode" :can-undo="canUndo" :can-redo="canRedo" @undo="undo()" @redo="redo()" />
       </Transition>
 
       <!-- FAB stack -->
@@ -1542,7 +1281,7 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
 
       <!-- Bottom-right nav helpers (locate + fit-all), above the attribution -->
       <Transition name="mf-focus-right">
-        <MapNavStack v-if="!focusMode" :is-locating="isLocating" :can-fit-all="canFitAll" @locate="goToMyLocation" @fit-all="fitAllToView" />
+        <MapNavStack v-if="!focusMode" :is-locating="isLocating" :can-fit-all="canFit" :fit-label="fitLabel" @locate="goToMyLocation" @fit-all="fitToView" />
       </Transition>
     </div>
 
@@ -1553,7 +1292,7 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
 
     <!-- ── Edit Pin sheet ─────────────────────────────────────────────────── -->
     <Transition name="mf-sheet">
-      <PinForm ref="pinFormRef" :show="bottomSheet" :editing-pin="editingPin" :global-dot-size="stickyDotSize" :name-index="editingPinIndex" @save="handlePinSave" @delete="handlePinDelete" @close="closeSheet" />
+      <PinForm ref="pinFormRef" :show="bottomSheet" :editing-pin="editingPin" :global-dot-size="stickyDotSize" :name-placeholder="editingPinPlaceholder" @save="handlePinSave" @delete="handlePinDelete" @close="closeSheet" />
     </Transition>
 
     <!-- ── Edit Route sheet ─────────────────────────────────────────────────── -->
@@ -1585,23 +1324,10 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
 
     <!-- ── Print Area form sheet ─────────────────────────────────────────── -->
     <Transition name="mf-fade">
-      <div
-        v-if="showPrintAreaForm"
-        class="fixed inset-0 z-1700 bg-black/30 no-print"
-        @click="showPrintAreaForm = false; editingPrintArea = null"
-      />
+      <div v-if="showPrintAreaForm" class="fixed inset-0 z-1700 bg-black/30 no-print" @click="handlePrintAreaClose" />
     </Transition>
     <Transition name="mf-sheet">
-      <PrintAreaForm
-        :show="showPrintAreaForm"
-        :editing-area="editingPrintArea"
-        :name-placeholder="editingPrintAreaPlaceholder"
-        :map-title="mapName"
-        :map-subtitle="effectiveArea"
-        @save="handlePrintAreaSave"
-        @delete="handlePrintAreaDelete"
-        @close="showPrintAreaForm = false; editingPrintArea = null"
-      />
+      <PrintAreaForm :show="showPrintAreaForm" :editing-area="editingPrintArea" :name-placeholder="editingPrintAreaPlaceholder" :map-title="mapName" :map-subtitle="effectiveArea" @save="handlePrintAreaSave" @delete="handlePrintAreaDelete" @close="handlePrintAreaClose" />
     </Transition>
 
     <!-- ── Map form sheet ──────────────────────────────────────────────────── -->
@@ -1614,10 +1340,6 @@ const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)]
 
     <!-- ── Welcome modal ──────────────────────────────────────────────────── -->
     <WelcomeModal :show="showInfo" @close="closeInfo" />
-
-    <!-- Export overlay — blocks all UI interaction during PDF export. The notification pill
-         (z-2000) stays above this so the cancel button remains clickable. -->
-    <div v-if="isDownloadingPdf" class="fixed inset-0 z-1500 cursor-wait" />
 
     <!-- ── Toasts ─────────────────────────────────────────────────────────── -->
     <AppToasts :notification="notification" :address-resolve-prog="addressResolveProg" :on-cancel="isDownloadingPdf ? cancelExport : null" />

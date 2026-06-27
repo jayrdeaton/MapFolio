@@ -57,7 +57,6 @@ watch(
   { immediate: true }
 )
 
-
 function save() {
   if (!props.editingArea) return
   emit('save', {
@@ -109,7 +108,7 @@ const pillInactive = 'bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400
         <!-- Title -->
         <div>
           <label :class="sectionLabelClass">Title</label>
-          <input v-model="title" :class="inputClass" type="text" :placeholder="namePlaceholder || mapTitle || 'Print Area'" />
+          <input v-model="title" :class="inputClass" type="text" :placeholder="namePlaceholder || mapTitle || 'Print'" />
         </div>
 
         <!-- Subtitle -->
@@ -146,7 +145,19 @@ const pillInactive = 'bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400
         <div>
           <label :class="sectionLabelClass">Pin Scale</label>
           <div class="flex gap-1">
-            <button v-for="{ value, label } in ([{ value: 0.25, label: '¼×' }, { value: 0.5, label: '½×' }, { value: 0.75, label: '¾×' }, { value: 1, label: '1×' }] as const)" :key="value" :class="['flex-1 py-1 rounded border text-xs font-medium transition-colors cursor-pointer', markerScale === value ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800' : 'bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400 border-gray-200 dark:border-zinc-700 hover:border-gray-400 dark:hover:border-zinc-500']" @click="markerScale = value">{{ label }}</button>
+            <button
+              v-for="{ value, label } in [
+                { value: 0.25, label: '¼×' },
+                { value: 0.5, label: '½×' },
+                { value: 0.75, label: '¾×' },
+                { value: 1, label: '1×' }
+              ] as const"
+              :key="value"
+              :class="['flex-1 py-1 rounded border text-xs font-medium transition-colors cursor-pointer', markerScale === value ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800' : 'bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400 border-gray-200 dark:border-zinc-700 hover:border-gray-400 dark:hover:border-zinc-500']"
+              @click="markerScale = value"
+            >
+              {{ label }}
+            </button>
           </div>
         </div>
 
@@ -167,7 +178,7 @@ const pillInactive = 'bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400
         <!-- Legend -->
         <div>
           <div class="flex items-center justify-between mb-1">
-            <span :class="sectionLabelClass" style="margin-bottom:0">Legend</span>
+            <span :class="sectionLabelClass" style="margin-bottom: 0">Legend</span>
             <button role="switch" :aria-checked="legend" :class="['relative inline-flex h-4 w-7 items-center rounded-full transition-colors cursor-pointer', legend ? 'bg-teal-600' : 'bg-gray-200 dark:bg-zinc-600']" @click="legend = !legend">
               <span :class="['inline-block h-3 w-3 rounded-full bg-white shadow transition-transform', legend ? 'translate-x-3.5' : 'translate-x-0.5']" />
             </button>

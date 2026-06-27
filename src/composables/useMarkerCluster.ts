@@ -369,7 +369,7 @@ export function useMarkerCluster({ isPlacingPin, isPlacingCaption, isDrawingRout
     const origFET = m._findEventTargets.bind(m)
     m._findEventTargets = function (e: MouseEvent, type: string): L.Layer[] {
       const targets = origFET(e, type)
-      if (type !== 'click' && type !== 'preclick') return targets
+      if (type !== 'click' && type !== 'preclick' && type !== 'contextmenu') return targets
 
       const { clientX, clientY } = e
       const HIT = 12 // px margin for small icons

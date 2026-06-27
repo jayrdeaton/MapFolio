@@ -69,16 +69,16 @@ export function useClipboardActions({ pins, routes, captions, printAreas, update
     const area = printAreas.value.find((a) => a.id === id)
     if (!area) return
     mapClipboard.set([], [], [], [area], activeMapId.value)
-    showNotification('Print area copied - ⌘V to paste')
+    showNotification('Print copied - ⌘V to paste')
   }
 
   function handleClipCutPrintArea(id: string) {
     const area = printAreas.value.find((a) => a.id === id)
     if (!area) return
     mapClipboard.set([], [], [], [area], activeMapId.value)
-    history.push('cut print area')
+    history.push('cut print')
     updatePrintAreas(printAreas.value.filter((a) => a.id !== id))
-    showNotification('Print area cut - ⌘V to paste')
+    showNotification('Print cut - ⌘V to paste')
   }
 
   function commitPaste(result: { pins: Pin[]; routes: Route[]; captions: Caption[]; printAreas: PrintArea[] }) {

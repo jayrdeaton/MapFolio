@@ -30,10 +30,8 @@ function tileUrl(config: MapStyleConfig, isDark: boolean, z: number, x: number, 
 
 // Sample 8×8 pixels from a loaded tile and return true if they're all near-white.
 // Near-white uniform tiles are blank server responses, not real map content.
-function isTileBlank(img: HTMLImageElement): boolean {
-  const s = document.createElement('canvas')
-  s.width = 8
-  s.height = 8
+function isTileBlank(img: ImageBitmap): boolean {
+  const s = new OffscreenCanvas(8, 8)
   const c = s.getContext('2d')
   if (!c) return false
   c.drawImage(img, 0, 0, 8, 8)
@@ -44,28 +42,18 @@ function isTileBlank(img: HTMLImageElement): boolean {
   return true
 }
 
-async function fetchTile(url: string, retries = 2, signal?: AbortSignal): Promise<HTMLImageElement | null> {
+async function fetchTile(url: string, retries = 2, signal?: AbortSignal): Promise<ImageBitmap | null> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) await new Promise<void>((r) => setTimeout(r, 400 * attempt))
     try {
       const resp = await fetch(url, { mode: 'cors', signal })
       if (!resp.ok) continue
       const blob = await resp.blob()
-      const objectUrl = URL.createObjectURL(blob)
-      const img = await new Promise<HTMLImageElement | null>((resolve) => {
-        const i = new Image()
-        i.onload = () => {
-          URL.revokeObjectURL(objectUrl)
-          resolve(i)
-        }
-        i.onerror = () => {
-          URL.revokeObjectURL(objectUrl)
-          resolve(null)
-        }
-        i.src = objectUrl
-      })
-      if (!img) continue
-      if (isTileBlank(img)) continue
+      const img = await createImageBitmap(blob)
+      if (isTileBlank(img)) {
+        img.close()
+        continue
+      }
       return img
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') throw e
@@ -136,15 +124,18 @@ function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<
       const padV = Math.round(BUBBLE_PAD_V * S)
       const padH = Math.round(BUBBLE_PAD_H * S)
       const tipH = Math.round(BUBBLE_TIP_H * S)
-      const tipW = Math.round(7 * S)
       const bubbleH = emojiSize + padV * 2
       const bx = ox // bubble horizontal center
       const bubbleBottom = oy - tipH
       const bubbleTop = bubbleBottom - bubbleH
 
-      // Measure emoji to determine bubble width
+      // Measure emoji to determine bubble width and ink centering offsets.
+      // Set baseline/align before measuring so actualBoundingBox* are relative to alphabetic baseline.
       ctx.font = `${emojiSize}px serif`
-      const emojiW = ctx.measureText(pin.emoji).width
+      ctx.textBaseline = 'alphabetic'
+      ctx.textAlign = 'left'
+      const emojiMet = ctx.measureText(pin.emoji)
+      const emojiW = emojiMet.width
       const bubbleW = Math.max(emojiW + padH * 2, bubbleH)
       const bLeft = bx - bubbleW / 2
 
@@ -164,9 +155,9 @@ function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<
         ctx.quadraticCurveTo(bLeft + bubbleW, bubbleTop, bLeft + bubbleW, bubbleTop + br)
         ctx.lineTo(bLeft + bubbleW, bubbleBottom - br)
         ctx.quadraticCurveTo(bLeft + bubbleW, bubbleBottom, bLeft + bubbleW - br, bubbleBottom)
-        ctx.lineTo(bx + tipW, bubbleBottom)
+        // Go directly from each rounded-corner endpoint to the tip — no horizontal shelf
+        // segments, which appeared as visible seams on the left and right sides in the PDF.
         ctx.lineTo(bx, oy)
-        ctx.lineTo(bx - tipW, bubbleBottom)
         ctx.lineTo(bLeft + br, bubbleBottom)
         ctx.quadraticCurveTo(bLeft, bubbleBottom, bLeft, bubbleBottom - br)
         ctx.lineTo(bLeft, bubbleTop + br)
@@ -176,7 +167,9 @@ function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<
         ctx.restore()
       }
 
-      // Emoji centered in bubble (or at geo point when transparent)
+      // Emoji centered in bubble using actual ink bounds, not em-square 'middle'.
+      // Emojis like 🕊️ and ✈️ have ink shifted well above the em-square, so
+      // textBaseline:'middle' places them outside the bubble. Mirror PinMarker logic.
       ctx.save()
       if (isClear) {
         ctx.shadowColor = 'rgba(0,0,0,0.4)'
@@ -184,9 +177,11 @@ function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinIds: Set<
         ctx.shadowOffsetY = Math.round(1 * S)
       }
       ctx.font = `${emojiSize}px serif`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(pin.emoji, bx, bubbleTop + bubbleH / 2)
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'alphabetic'
+      const emojiDrawX = bx - (emojiMet.actualBoundingBoxRight - emojiMet.actualBoundingBoxLeft) / 2
+      const emojiDrawY = bubbleTop + bubbleH / 2 + (emojiMet.actualBoundingBoxAscent - emojiMet.actualBoundingBoxDescent) / 2
+      ctx.fillText(pin.emoji, emojiDrawX, emojiDrawY)
       ctx.restore()
     } else {
       // Dot marker. Geo anchor at dot centre.
@@ -1228,10 +1223,8 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
   if (projectedArea > maxCanvasArea) capScale *= Math.sqrt(maxCanvasArea / projectedArea)
   const paperWidthPx = Math.ceil(halfW * 2 * capScale)
   const paperHeightPx = Math.ceil(halfH * 2 * capScale)
-  const outCanvas = document.createElement('canvas')
-  outCanvas.width = paperWidthPx
-  outCanvas.height = paperHeightPx
-  const outCtx = outCanvas.getContext('2d')!
+  const outCanvas = new OffscreenCanvas(paperWidthPx, paperHeightPx)
+  const outCtx = outCanvas.getContext('2d') as unknown as CanvasRenderingContext2D
   const scaleX = capScale,
     scaleY = capScale
 
@@ -1261,7 +1254,10 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
         py = (ty - tileYMin) * drawSize
       tileJobs.push(() =>
         fetchTile(url, 2, signal).then((img) => {
-          if (img) outCtx.drawImage(img, px, py, drawSize, drawSize)
+          if (img) {
+            outCtx.drawImage(img, px, py, drawSize, drawSize)
+            img.close()
+          }
           onProgress?.(`Fetching Tiles… ${++fetchedTiles} / ${totalTiles}`)
         })
       )
@@ -1323,18 +1319,8 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
 
   // --- 8. Return PNG bytes ---
   onProgress?.('Encoding…')
-  return new Promise<Uint8Array>((resolve, reject) => {
-    outCanvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error('Canvas toBlob failed'))
-        return
-      }
-      blob
-        .arrayBuffer()
-        .then((buf) => resolve(new Uint8Array(buf)))
-        .catch(reject)
-    }, 'image/png')
-  })
+  const blob = await outCanvas.convertToBlob({ type: 'image/png' })
+  return new Uint8Array(await blob.arrayBuffer())
 }
 
 interface LegendPageContent {
@@ -1373,8 +1359,8 @@ async function renderLegendPagesToPng(c: LegendPageContent, paperWidthPt: number
   const previewH = 20 * previewScale
   const lineH = pt(1) // gap between a name and its description
 
-  const pages: HTMLCanvasElement[] = []
-  let canvas!: HTMLCanvasElement
+  const pages: OffscreenCanvas[] = []
+  let canvas!: OffscreenCanvas
   let ctx!: CanvasRenderingContext2D
   let colCount = 1
   let colW = W - margin * 2
@@ -1385,10 +1371,8 @@ async function renderLegendPagesToPng(c: LegendPageContent, paperWidthPt: number
   let y = margin
 
   function newPage(withHeader: boolean) {
-    canvas = document.createElement('canvas')
-    canvas.width = W
-    canvas.height = H
-    ctx = canvas.getContext('2d')!
+    canvas = new OffscreenCanvas(W, H)
+    ctx = canvas.getContext('2d') as unknown as CanvasRenderingContext2D
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, W, H)
     pages.push(canvas)
@@ -1571,21 +1555,10 @@ async function renderLegendPagesToPng(c: LegendPageContent, paperWidthPt: number
   }
 
   return Promise.all(
-    pages.map(
-      (cv) =>
-        new Promise<Uint8Array>((resolve, reject) => {
-          cv.toBlob((blob) => {
-            if (!blob) {
-              reject(new Error('Canvas toBlob failed'))
-              return
-            }
-            blob
-              .arrayBuffer()
-              .then((buf) => resolve(new Uint8Array(buf)))
-              .catch(reject)
-          }, 'image/png')
-        })
-    )
+    pages.map(async (cv) => {
+      const blob = await cv.convertToBlob({ type: 'image/png' })
+      return new Uint8Array(await blob.arrayBuffer())
+    })
   )
 }
 
@@ -1730,19 +1703,10 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
     onProgress?.('Rendering overlay…')
     const infoW = Math.round(paperWidthPt * 2)
     const infoH = Math.round(paperHeightPt * 2)
-    const infoCanvas = document.createElement('canvas')
-    infoCanvas.width = infoW
-    infoCanvas.height = infoH
-    drawInfoBox(infoCanvas.getContext('2d')!, mapTitle, mapArea, fullAreaLegendPins ?? [], fullAreaLegendRoutes ?? [], angle, corners, scaleUnit, onMapPins, onMapRoutes, includeCompass, includeScale, legendBlankLabels, infoW, infoH, infoCorner, legendScale, legendX ?? null, legendY ?? null, pins)
-    const infoBytes = await new Promise<Uint8Array>((res, rej) => {
-      infoCanvas.toBlob((blob) => {
-        if (!blob) {
-          rej(new Error('overlay PNG failed'))
-          return
-        }
-        blob.arrayBuffer().then((b) => res(new Uint8Array(b)), rej)
-      }, 'image/png')
-    })
+    const infoCanvas = new OffscreenCanvas(infoW, infoH)
+    drawInfoBox(infoCanvas.getContext('2d') as unknown as CanvasRenderingContext2D, mapTitle, mapArea, fullAreaLegendPins ?? [], fullAreaLegendRoutes ?? [], angle, corners, scaleUnit, onMapPins, onMapRoutes, includeCompass, includeScale, legendBlankLabels, infoW, infoH, infoCorner, legendScale, legendX ?? null, legendY ?? null, pins)
+    const infoBlob = await infoCanvas.convertToBlob({ type: 'image/png' })
+    const infoBytes = new Uint8Array(await infoBlob.arrayBuffer())
     stitchedPage!.drawImage(await pdfDoc.embedPng(infoBytes), { x: 0, y: 0, width: paperWidthPt, height: paperHeightPt })
   }
 

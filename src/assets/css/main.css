@@ -85,6 +85,11 @@ html.dark {
 .mf-outlined .mf-ibtn--primary:hover { border-color: #0f766e; }
 .dark.mf-outlined .mf-ibtn--primary:hover { border-color: #0f766e; }
 
+/* Destructive solid (Cancel export) → filled red, mirrors --primary shape. */
+.mf-ibtn--destructive { color: #fff; background-color: #dc2626; border-color: #dc2626; }
+.dark .mf-ibtn--destructive { color: #fff; }
+.mf-ibtn--destructive:hover { color: #fff; background-color: #b91c1c; border-color: #b91c1c; }
+
 /* Active toggle (state = ON) → soft cyan: a tinted background + cyan glyph, no
    solid fill, so it reads as "lit" without competing with the primary button.
    No border outside `.mf-outlined`, so it stays flush when outlines are off.
@@ -312,10 +317,11 @@ input, textarea, select {
 }
 
 .pin-emoji {
-  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  line-height: 1;
+  overflow: hidden;
 }
 
 /* Emoji bubble marker — white pill with a colored downward triangle tip */
@@ -326,6 +332,7 @@ input, textarea, select {
   padding: 2px;
   border-radius: 7px;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .pin-bubble-tip {
@@ -336,6 +343,7 @@ input, textarea, select {
   border-top-width: 7px;
   border-top-style: solid;
   /* border-top-color set inline via style binding */
+  margin-top: -1px; /* close the sub-pixel gap between bubble and tip */
 }
 
 .pin-bubble--preview {
@@ -346,7 +354,7 @@ input, textarea, select {
 /* Transparent / no-color bubble — just the emoji, no background or shadow */
 .pin-bubble--clear {
   background: transparent !important;
-  box-shadow: none;
+  overflow: visible; /* emoji filter:drop-shadow must paint outside the bubble box */
 }
 
 .pin-dot {

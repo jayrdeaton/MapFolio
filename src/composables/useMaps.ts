@@ -5,12 +5,14 @@ import { parseGeoJsonImport, parseGeoJsonRouteImport, pinsToGeoJson, routesToGeo
 const STORAGE_KEY = 'mapfolio_v1'
 const LEGACY_KEY = 'custommap_v1'
 
-// Which layers to include in an export. Captions can only ride along in MapFolio
-// JSON — standard GeoJSON has no caption/label concept, so they're dropped there.
+// Which layers to include in an export. Captions and printAreas can only ride
+// along in MapFolio JSON or share links — GeoJSON has no equivalent concepts.
 export interface MapExportLayers {
   pins: boolean
   routes: boolean
   captions: boolean
+  printAreas: boolean
+  includeHidden: boolean
 }
 
 export interface MapExportOptions {
@@ -188,12 +190,15 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-// Hands the file to the OS share sheet when available (lovely on mobile — send
-// straight to Messages/Mail/etc.), otherwise downloads it. Must stay synchronous
-// up to the navigator.share() call so it runs inside the click's user activation.
+// On touch devices, hand the file to the OS share sheet (send straight to
+// Messages/Mail/AirDrop/etc.). On desktop, navigator.canShare may still return
+// true (macOS Safari/Chrome support it) but the share sheet is awkward there —
+// just download directly instead. Must stay synchronous up to navigator.share()
+// so it runs inside the click's user activation window.
 function outputFile(filename: string, content: string, mime: string) {
   const file = new File([content], filename, { type: mime })
-  if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [file] })) {
+  const isTouchDevice = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0
+  if (isTouchDevice && navigator.canShare?.({ files: [file] })) {
     navigator.share({ files: [file], title: filename }).catch((err: unknown) => {
       // User dismissed the sheet → nothing to do. Anything else → fall back to a download.
       if (err instanceof DOMException && err.name === 'AbortError') return
@@ -211,11 +216,13 @@ function slugify(name: string): string {
 // A copy of the map with unchecked layers emptied — used for both single-map and
 // all-maps JSON export so the file still round-trips as a valid MapData.
 function filterMapLayers(m: MapData, layers: MapExportLayers): MapData {
+  const vis = <T extends { hidden?: boolean }>(arr: T[]) => (layers.includeHidden ? arr : arr.filter((x) => !x.hidden))
   return {
     ...m,
-    pins: layers.pins ? m.pins : [],
-    routes: layers.routes ? m.routes : [],
-    captions: layers.captions ? (m.captions ?? []) : []
+    pins: layers.pins ? vis(m.pins) : [],
+    routes: layers.routes ? vis(m.routes) : [],
+    captions: layers.captions ? vis(m.captions ?? []) : [],
+    printAreas: layers.printAreas ? vis(m.printAreas ?? []) : []
   }
 }
 
@@ -317,6 +324,7 @@ export function useMaps() {
       pins: state.pins,
       routes: state.routes ?? [],
       captions: state.captions ?? [],
+      ...(state.printAreas?.length ? { printAreas: state.printAreas } : {}),
       mapStyle: state.mapStyle,
       center: state.center,
       zoom: state.zoom

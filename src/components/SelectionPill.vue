@@ -74,7 +74,7 @@ const hasHideable = computed(() => totalCount.value > 0)
     </template>
 
     <!-- Edit (single only) -->
-    <button v-if="singlePin || singleRoute || singleCaption || singlePrintArea" :title="singlePin ? 'Edit Pin' : singleRoute ? 'Edit Route' : singleCaption ? 'Edit Caption' : 'Edit Print Area'" class="w-6 h-6 flex items-center justify-center rounded text-gray-400 dark:text-zinc-400 hover:text-gray-600 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors shrink-0" @click.stop="emit('edit')">
+    <button v-if="singlePin || singleRoute || singleCaption || singlePrintArea" :title="singlePin ? 'Edit Pin' : singleRoute ? 'Edit Route' : singleCaption ? 'Edit Caption' : 'Edit Print'" class="w-6 h-6 flex items-center justify-center rounded text-gray-400 dark:text-zinc-400 hover:text-gray-600 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors shrink-0" @click.stop="emit('edit')">
       <Pencil :size="13" />
     </button>
 

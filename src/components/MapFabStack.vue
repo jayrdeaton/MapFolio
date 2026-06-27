@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { EyeOff, MapPin, Maximize2, Minimize2, Printer, Route, Settings, Type } from '@lucide/vue'
+import { EyeOff, Layers, MapPin, Maximize2, Minimize2, Printer, Route, Type } from '@lucide/vue'
 
 defineProps<{
   activeFab: 'style' | 'export' | 'pins' | 'routes' | 'captions' | null
@@ -31,8 +31,8 @@ const fabActive = 'bg-teal-600 text-white border-teal-600 hover:bg-teal-700'
     </button>
     <Transition name="mf-focus-right">
       <div v-if="!focusMode" class="flex flex-col gap-2">
-        <button :class="`${fabBase} ${activeFab === 'style' ? fabActive : fabDefault}`" title="Settings" @click="emit('toggle', 'style')">
-          <Settings :size="18" />
+        <button :class="`${fabBase} ${activeFab === 'style' ? fabActive : fabDefault}`" title="Style" @click="emit('toggle', 'style')">
+          <Layers :size="18" />
         </button>
         <button :class="`${fabBase} ${activeFab === 'pins' ? fabActive : fabDefault} relative`" title="Pins" @click="emit('toggle', 'pins')">
           <MapPin :size="18" />

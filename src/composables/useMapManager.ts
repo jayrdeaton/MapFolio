@@ -75,9 +75,17 @@ export function useMapManager(options: { activeId: Ref<string>; activeMap: Compu
   async function importMapFiles(files: File[]) {
     for (const file of files) {
       try {
-        const m = options.importMapFromData(JSON.parse(await file.text()))
-        if (m) options.showNotification(`Imported "${m.name}"`)
-        else options.showNotification('Invalid map file', 'error')
+        const parsed = JSON.parse(await file.text())
+        if (Array.isArray(parsed)) {
+          // All-maps export format — import each map individually.
+          const imported = parsed.map((item) => options.importMapFromData(item)).filter(Boolean)
+          if (imported.length > 0) options.showNotification(`Imported ${imported.length} map${imported.length === 1 ? '' : 's'}`)
+          else options.showNotification('Invalid map file', 'error')
+        } else {
+          const m = options.importMapFromData(parsed)
+          if (m) options.showNotification(`Imported "${m.name}"`)
+          else options.showNotification('Invalid map file', 'error')
+        }
       } catch {
         options.showNotification('Could not read file', 'error')
       }

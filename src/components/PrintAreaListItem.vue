@@ -29,7 +29,7 @@ useElementLongPress(rowRef, openMenu)
 <template>
   <div ref="rowRef" :class="['group flex items-center gap-2 px-4 py-1.5 transition-all', selected ? 'bg-teal-50 dark:bg-teal-900/20' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/60', area.hidden ? 'opacity-40' : '']" @mousedown="($event.shiftKey || $event.metaKey || $event.ctrlKey) && $event.preventDefault()" @contextmenu.prevent="openMenu($event.clientX, $event.clientY)">
     <!-- Printer icon / drag handle -->
-    <div class="print-area-drag-handle shrink-0 cursor-grab active:cursor-grabbing text-gray-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 transition-colors" :title="area.title ? `Select ${area.title}` : 'Select print area'" @click="emit('select', area.id, $event.shiftKey || isAdditiveEvent($event))">
+    <div class="print-area-drag-handle shrink-0 cursor-grab active:cursor-grabbing text-gray-400 dark:text-zinc-500 hover:text-teal-600 dark:hover:text-teal-400 transition-colors" :title="area.title ? `Select ${area.title}` : 'Select Print'" @click="emit('select', area.id, $event.shiftKey || isAdditiveEvent($event))">
       <Printer :size="14" />
     </div>
 

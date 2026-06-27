@@ -308,7 +308,9 @@ function destroyHandles() {
 function rebuildLegendPreview(S: number) {
   if (!legendBoxEl) return
   // Clear content children (legendResizeEl is absolutely positioned and stays)
-  Array.from(legendBoxEl.children).forEach((c) => { if (c !== legendResizeEl) c.remove() })
+  Array.from(legendBoxEl.children).forEach((c) => {
+    if (c !== legendResizeEl) c.remove()
+  })
 
   const settings = props.legendSettings
   const isDark = document.documentElement.classList.contains('dark')
@@ -321,7 +323,11 @@ function rebuildLegendPreview(S: number) {
   const compassCol = c('rgba(107,114,128,.55)', 'rgba(113,113,122,.7)')
   const tealCol = c('rgba(15,118,110,.9)', 'rgba(45,212,191,.9)')
 
-  const mk = (tag: string, css: string): HTMLElement => { const el = document.createElement(tag); el.style.cssText = css; return el }
+  const mk = (tag: string, css: string): HTMLElement => {
+    const el = document.createElement(tag)
+    el.style.cssText = css
+    return el
+  }
   const pad = Math.max(3, Math.round(8 * S))
   const gap = Math.max(1, Math.round(2 * S))
   const compassSize = settings?.compass ? Math.max(8, Math.round(20 * S)) : 0
@@ -426,9 +432,11 @@ function updateLegendBox() {
   const { halfW, halfH } = currentPixelDims()
   const rectW = halfW * 2
   const rectH = halfH * 2
-  const S = rectW / 612
   const boxW = box.wFrac * rectW
   const boxH = box.hFrac * rectW // hFrac is also fraction of WIDTH
+  // S scales content relative to the legend box size, not the full print area.
+  // 190 = base PDF legend width (pt) from legendBoxFractions; at scale=1, S = rectW/612.
+  const S = boxW / 190
 
   legendBoxEl.style.width = boxW + 'px'
   legendBoxEl.style.height = boxH + 'px'
@@ -888,7 +896,7 @@ function clearAll() {
 
 function startCornerDrag(el: HTMLElement, i: number, startEvent: PointerEvent) {
   if (!localRect || !props.aspectRatio) return
-  emit('drag-start', 'resize print area')
+  emit('drag-start', 'resize print')
   const map = props.map
   const fixedPt = map.latLngToContainerPoint(localCorners[(i + 2) % 4]!)
   const angle = localRect.angle
@@ -936,7 +944,7 @@ function startCornerDrag(el: HTMLElement, i: number, startEvent: PointerEvent) {
 
 function startRotateDrag(el: HTMLElement, startEvent: PointerEvent) {
   if (!localRect) return
-  emit('drag-start', 'rotate print area')
+  emit('drag-start', 'rotate print')
   const map = props.map
   const centerLatLng = localRect.center
   const { halfW, halfH } = currentPixelDims()
@@ -987,7 +995,7 @@ function onBodyDown(startEvent: PointerEvent) {
     startEvent.pointerId,
     (ev) => {
       if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) <= CLICK_SLOP) return
-      if (!moved) emit('drag-start', 'move print area')
+      if (!moved) emit('drag-start', 'move print')
       moved = true
       if (ev.pointerType === 'touch') ev.preventDefault()
       const r2 = map.getContainer().getBoundingClientRect()
