@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Crosshair, Magnet, Ruler, Settings, Triangle, Type, ZoomIn } from '@lucide/vue'
+import { Crosshair, Layers, Magnet, Ruler, Triangle, Type, ZoomIn } from '@lucide/vue'
 
 import type { MapStyle } from '@/types'
 import { MAP_STYLE_CONFIGS } from '@/types'
@@ -41,7 +41,7 @@ function previewUrl(style: MapStyle): string {
     <!-- Sticky header -->
     <div class="sticky top-0 z-10 bg-gray-50 dark:bg-zinc-800 px-4 pt-4 pb-3">
       <div class="flex items-center justify-between">
-        <span class="flex items-center gap-1.5 text-gray-500 dark:text-zinc-400 font-semibold text-xs uppercase tracking-wide"> <Settings :size="12" /> Settings </span>
+        <span class="flex items-center gap-1.5 text-gray-500 dark:text-zinc-400 font-semibold text-xs uppercase tracking-wide"> <Layers :size="12" /> Style</span>
       </div>
     </div>
 

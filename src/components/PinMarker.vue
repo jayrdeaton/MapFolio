@@ -12,6 +12,43 @@ function nextShowIndex(): number {
   })
   return _showBatchCount++
 }
+
+// Pre-render emoji onto a canvas so the glyph is clipped to exact pixel dimensions.
+// Apple Color Emoji glyphs (especially 🕊️) paint outside the em-square via a separate
+// compositing layer that bypasses CSS overflow:hidden/clip-path entirely. Canvas always
+// clips to its own bounds. Results are memoized per emoji+size+DPR.
+const _emojiUrlCache = new Map<string, string>()
+
+// fontPx: the CSS font-size used to draw the emoji (controls visual weight).
+// canvasPx: the canvas/img display size — larger than fontPx to give a buffer so glyphs
+// whose ink box slightly exceeds the em-square are not clipped by the canvas boundary.
+function emojiToDataUrl(emoji: string, fontPx: number, canvasPx: number): string {
+  const dpr = Math.ceil(window.devicePixelRatio ?? 1)
+  const key = `${emoji}:${fontPx}:${canvasPx}:${dpr}`
+  if (_emojiUrlCache.has(key)) return _emojiUrlCache.get(key)!
+  const canvas = document.createElement('canvas')
+  canvas.width = canvasPx * dpr
+  canvas.height = canvasPx * dpr
+  const ctx = canvas.getContext('2d')
+  if (ctx) {
+    ctx.scale(dpr, dpr)
+    ctx.font = `${fontPx}px sans-serif`
+    ctx.textBaseline = 'alphabetic'
+    ctx.textAlign = 'left'
+    // Use the actual ink bounding box to center the glyph precisely.
+    // textBaseline:'middle' centers on the em-square midpoint, not the visual glyph center —
+    // emoji like 🕊️ have ink that extends well above the em-square so they'd appear high.
+    const m = ctx.measureText(emoji)
+    // Center ink in the (larger) canvas: positive actualBoundingBoxLeft means ink starts left of drawX
+    const drawX = canvasPx / 2 - (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2
+    // Center ink vertically: baseline Y that puts ink center at canvasPx/2
+    const drawY = canvasPx / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2
+    ctx.fillText(emoji, drawX, drawY)
+  }
+  const url = canvas.toDataURL()
+  _emojiUrlCache.set(key, url)
+  return url
+}
 </script>
 
 <script setup lang="ts">
@@ -129,7 +166,7 @@ function target(): L.Map | L.LayerGroup {
 function buildIcon() {
   const hasEmoji = !!props.pin.emoji
   const cls = ['pin-marker', props.pending ? 'pin-marker--pending' : '', props.locked ? 'pin-marker--locked' : '', props.selected ? 'pin-marker--selected' : '', props.linkedToSelectedRoute ? 'pin-marker--route-linked' : ''].filter(Boolean).join(' ')
-  const animDelay = Math.min((props.renderIndex ?? 0) * 25, 600)
+  const animDelay = hasAnimated ? 0 : Math.min(nextShowIndex() * 25, 600)
   const animStyle = hasAnimated ? '' : `animation:pin-in 200ms ease-out both;animation-delay:${animDelay}ms;`
   hasAnimated = true
 
@@ -138,12 +175,23 @@ function buildIcon() {
     const bubbleSize: PinDotSize = (props.pin.dotSize != null && props.pin.dotSize in BUBBLE_GEO ? props.pin.dotSize : undefined) ?? 'm'
     const { iconH, anchorY } = (isClear ? BUBBLE_GEO_CLEAR : BUBBLE_GEO)[bubbleSize]
     const emojiPx = BUBBLE_EMOJI_SIZE[bubbleSize]
+    // canvasPx adds a 2px buffer on each side so glyph ink that slightly exceeds the em-square
+    // is not hard-clipped by the canvas edge. The bubble stays emojiPx+8 total (canvasPx+4px padding),
+    // identical to the old emojiPx+4px-padding layout, so BUBBLE_GEO doesn't need to change.
+    const canvasPx = emojiPx + 4
     const bubbleCls = isClear ? 'pin-bubble pin-bubble--clear' : 'pin-bubble'
-    const emojiStyle = `font-size:${emojiPx}px;width:${emojiPx}px;height:${emojiPx}px;${isClear ? 'filter:drop-shadow(0 1px 3px rgba(0,0,0,0.4))' : ''}`
+    const emojiSrc = emojiToDataUrl(props.pin.emoji, emojiPx, canvasPx)
+    // Use inline CSS width/height — Tailwind preflight sets `img { height: auto }` at author
+    // specificity which overrides HTML width/height attributes (UA-level hints), making the img
+    // render at the canvas's full pixel dimensions instead of the intended emoji size.
+    const emojiImg = `<img src="${emojiSrc}" style="display:block;width:${canvasPx}px;height:${canvasPx}px;min-width:0;min-height:0;pointer-events:none;${isClear ? 'filter:drop-shadow(0 1px 3px rgba(0,0,0,0.4))' : ''}">`
     const bubbleStyle = isClear ? '' : `background:${props.pin.color}`
     const tip = isClear ? '' : `<div class="pin-bubble-tip" style="border-top-color:${props.pin.color}"></div>`
-    const wrapFilter = isClear ? '' : 'filter:drop-shadow(0 1px 4px rgba(0,0,0,0.3))'
-    const inner = `<div class="pin-inner pin-inner--bubble" style="${wrapFilter}"><div class="${bubbleCls}" style="${bubbleStyle}"><span class="pin-emoji" style="${emojiStyle}">${props.pin.emoji}</span></div>${tip}</div>`
+    // filter:drop-shadow on the wrapper casts a unified shadow over the whole bubble+tip shape,
+    // avoiding the seam that box-shadow (bubble-only) produces. With the emoji now a canvas <img>
+    // (not Apple Color Emoji text), a parent filter no longer breaks overflow:hidden on .pin-bubble.
+    const innerStyle = isClear ? '' : 'filter:drop-shadow(0 1px 4px rgba(0,0,0,0.3));'
+    const inner = `<div class="pin-inner pin-inner--bubble" style="${innerStyle}"><div class="${bubbleCls}" style="${bubbleStyle}">${emojiImg}</div>${tip}</div>`
     return L.divIcon({
       html: `<div class="${cls}" style="${animStyle}">${inner}</div>`,
       className: '',

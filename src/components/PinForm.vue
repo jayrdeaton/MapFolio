@@ -6,13 +6,11 @@ import DotPicker from '@/components/DotPicker.vue'
 import PinPreview from '@/components/PinPreview.vue'
 import type { Pin, PinDotShape, PinDotSize } from '@/types'
 import { DEFAULT_EMOJIS } from '@/types'
-import { emojiToName } from '@/utils'
-
 const props = defineProps<{
   show: boolean
   editingPin: Pin | null
   globalDotSize: PinDotSize
-  nameIndex?: number
+  namePlaceholder?: string
 }>()
 
 const emit = defineEmits<{
@@ -119,7 +117,7 @@ defineExpose({ save })
       <div class="space-y-3">
         <div>
           <label :class="sectionLabelClass">Name</label>
-          <input v-model="newPinName" type="text" :placeholder="[emojiToName(activeEmoji), props.nameIndex !== undefined ? props.nameIndex : ''].filter(Boolean).join(' ') || 'Name this pin…'" :class="inputClass" @keydown.enter="save" />
+          <input v-model="newPinName" type="text" :placeholder="namePlaceholder || 'Name this pin…'" :class="inputClass" @keydown.enter="save" />
         </div>
 
         <div>

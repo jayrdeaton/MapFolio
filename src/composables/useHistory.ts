@@ -5,8 +5,8 @@ type HistoryEntry = { snapshot: Snapshot; label: string }
 
 export function useHistory(options: { pins: Ref<Pin[]>; routes: Ref<Route[]>; captions: Ref<Caption[]>; showNotification: (message: string) => void; printAreas?: Ref<PrintArea[]>; updatePrintAreas?: (areas: PrintArea[]) => void }) {
   const MAX = 50
-  const past = ref<HistoryEntry[]>([])
-  const future = ref<HistoryEntry[]>([])
+  const past = shallowRef<HistoryEntry[]>([])
+  const future = shallowRef<HistoryEntry[]>([])
 
   const canUndo = computed(() => past.value.length > 0)
   const canRedo = computed(() => future.value.length > 0)

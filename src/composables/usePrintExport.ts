@@ -4,8 +4,7 @@ import type { ShallowRef } from 'vue'
 import type { PrintAreaInfo } from '@/components/PrintAreaDrawer.vue'
 import type { Caption, MapStyle, Pin, PrintArea, PrintOrientation, PrintPaperSize, Route } from '@/types'
 
-import type { ExportQuality } from './useMapExport'
-import { exportMapToPdf } from './useMapExport'
+import type { ExportOptions, ExportQuality } from './useMapExport'
 
 export type PaperSize = PrintPaperSize
 export type Orientation = PrintOrientation
@@ -51,7 +50,8 @@ export function usePrintExport(options: {
   hiddenCaptionIds: Ref<Set<number>>
   units: Ref<'km' | 'mi'>
   angleSnapEnabled: Ref<boolean>
-  showNotification: (message: string, type?: 'success' | 'error' | 'info') => void
+  showNotification: (message: string, type?: 'success' | 'error' | 'info', persistent?: boolean) => void
+  dismissNotification: () => void
   printSettings: {
     contrast: Ref<boolean>
     exportQuality: Ref<ExportQuality>
@@ -59,7 +59,7 @@ export function usePrintExport(options: {
   printAreas: Ref<PrintArea[]>
   updatePrintAreas: (areas: PrintArea[]) => void
 }) {
-  const { leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, units, showNotification, printSettings, printAreas, updatePrintAreas } = options
+  const { leafletMap, mapStyle, mapName, mapArea, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, units, showNotification, dismissNotification, printSettings, printAreas, updatePrintAreas } = options
 
   // ── Active area ───────────────────────────────────────────────────────────────
 
@@ -106,10 +106,16 @@ export function usePrintExport(options: {
   // ── Preview / download ────────────────────────────────────────────────────────
 
   const isDownloadingPdf = ref(false)
-  let exportAbortController: AbortController | null = null
+  let exportWorker: Worker | null = null
+  let exportWorkerReject: ((err: DOMException) => void) | null = null
 
   function cancelExport() {
-    exportAbortController?.abort()
+    if (exportWorker) {
+      exportWorker.terminate()
+      exportWorker = null
+      exportWorkerReject?.(new DOMException('Export cancelled', 'AbortError'))
+      exportWorkerReject = null
+    }
   }
   const isPreviewOpen = ref(false)
   const previewBlobUrl = ref<string | null>(null)
@@ -406,27 +412,28 @@ export function usePrintExport(options: {
     const area = activePrintArea.value
     if (isDownloadingPdf.value) return
     if (!area || area.corners.length !== 4) {
-      showNotification('Select a print area first', 'error')
+      showNotification('Select a print first', 'error')
       return
     }
-    exportAbortController = new AbortController()
     isDownloadingPdf.value = true
-    showNotification('Building PDF…', 'info')
+    showNotification('Building PDF…', 'info', true)
+    const worker = new Worker(new URL('../workers/pdfExport.worker.ts', import.meta.url), { type: 'module' })
+    exportWorker = worker
     try {
       const [pw, ph] = PAPER_PT[area.paper][area.orientation]
       const [gridCols, gridRows] = area.grid.split('x').map(Number)
-      const pdfBytes = await exportMapToPdf({
-        corners: area.corners,
+      const opts: Omit<ExportOptions, 'signal' | 'onProgress'> = {
+        corners: area.corners.map(([lat, lng]) => [lat, lng] as [number, number]),
         angle: area.angle,
         mapStyle: mapStyle.value,
         mapTitle: (area.legend ?? true) && (area.legendTitle ?? true) ? area.title || mapName.value : '',
         mapArea: (area.legend ?? true) && (area.legendArea ?? true) ? area.subtitle || mapArea.value || autoArea.value : '',
-        pins: pins.value,
-        hiddenPinIds: hiddenPinIds.value,
-        routes: routes.value,
-        hiddenRouteIds: hiddenRouteIds.value,
-        captions: captions.value,
-        hiddenCaptionIds: hiddenCaptionIds.value,
+        pins: JSON.parse(JSON.stringify(pins.value)),
+        hiddenPinIds: new Set(hiddenPinIds.value),
+        routes: JSON.parse(JSON.stringify(routes.value)),
+        hiddenRouteIds: new Set(hiddenRouteIds.value),
+        captions: JSON.parse(JSON.stringify(captions.value)),
+        hiddenCaptionIds: new Set(hiddenCaptionIds.value),
         legend: area.legend ?? true,
         legendPins: area.legendPins ?? true,
         legendRoutes: area.legendRoutes ?? true,
@@ -445,11 +452,22 @@ export function usePrintExport(options: {
         paperWidthPt: pw,
         paperHeightPt: ph,
         gridCols: gridCols || 1,
-        gridRows: gridRows || 1,
-        onProgress: (msg) => showNotification(msg, 'info'),
-        signal: exportAbortController.signal
+        gridRows: gridRows || 1
+      }
+      const pdfBytes = await new Promise<Uint8Array>((resolve, reject) => {
+        exportWorkerReject = reject
+        worker.onmessage = (e: MessageEvent<{ type: string; msg?: string; bytes?: Uint8Array; message?: string }>) => {
+          const { type, msg, bytes, message } = e.data
+          if (type === 'progress') showNotification(msg!, 'info', true)
+          else if (type === 'done') resolve(bytes!)
+          else if (type === 'cancelled') reject(new DOMException('Export cancelled', 'AbortError'))
+          else if (type === 'error') reject(new Error(message))
+        }
+        worker.onerror = (e) => reject(new Error(e.message))
+        worker.postMessage({ type: 'export', opts })
       })
       const blob = new Blob([pdfBytes as Uint8Array<ArrayBuffer>], { type: 'application/pdf' })
+      dismissNotification()
       if (previewBlobUrl.value) URL.revokeObjectURL(previewBlobUrl.value)
       previewBlobUrl.value = URL.createObjectURL(blob)
       isPreviewOpen.value = true
@@ -462,8 +480,10 @@ export function usePrintExport(options: {
         showNotification('Export failed - check console', 'error')
       }
     } finally {
+      exportWorker = null
+      exportWorkerReject = null
+      worker.terminate()
       isDownloadingPdf.value = false
-      exportAbortController = null
     }
   }
 

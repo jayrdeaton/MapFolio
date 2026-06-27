@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Captions, CircleDotDashed, Compass, Contrast, Crosshair, FileText, Heading, List, Magnet, MapPin, Maximize2, PenLine, Printer, Route, Ruler, ScanSearch, Settings, Share2, Triangle, Type, X, Zap, ZoomIn } from '@lucide/vue'
+import { Captions, Circle, CircleDotDashed, Compass, Contrast, Crosshair, FileText, Heading, Layers, Magnet, MapPin, Maximize2, PenLine, Printer, Route, Ruler, ScanSearch, Share2, Snail, Triangle, Type, X, Zap, ZoomIn } from '@lucide/vue'
 
 defineProps<{ show: boolean }>()
 const emit = defineEmits<{ close: [] }>()
@@ -25,11 +25,21 @@ const emit = defineEmits<{ close: [] }>()
           <!-- Hero -->
           <div>
             <p class="text-xl font-bold leading-snug mb-1.5">Place custom pins on any map. Print it or share it.</p>
-            <p class="text-sm text-gray-500 dark:text-zinc-400 leading-relaxed">Drop emoji-labeled markers anywhere in the world, choose a map style, then export a print-ready PDF at any paper size, or copy a link with your entire map encoded in the URL.</p>
+            <p class="text-sm text-gray-500 dark:text-zinc-400 leading-relaxed">Drop pins, routes, and captions anywhere in the world. Add style with emojis, colors, and labels. Export a print-ready PDF or copy a shareable link.</p>
           </div>
 
           <!-- Feature sections — 2-col grid on wider screens -->
           <div class="grid sm:grid-cols-2 gap-3.5">
+            <div class="flex gap-3">
+              <div class="w-8 h-8 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 shadow-sm flex items-center justify-center shrink-0 mt-0.5">
+                <Layers :size="15" class="text-gray-600 dark:text-zinc-300" />
+              </div>
+              <div>
+                <p class="text-sm font-semibold mb-0.5">Style</p>
+                <p class="text-sm text-gray-500 dark:text-zinc-400 leading-relaxed">Switch map styles (Clean, Satellite, Minimal…), toggle the Labels overlay, and change distance units.</p>
+              </div>
+            </div>
+
             <div class="flex gap-3">
               <div class="w-8 h-8 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 shadow-sm flex items-center justify-center shrink-0 mt-0.5">
                 <MapPin :size="15" class="text-gray-600 dark:text-zinc-300" />
@@ -62,21 +72,11 @@ const emit = defineEmits<{ close: [] }>()
 
             <div class="flex gap-3">
               <div class="w-8 h-8 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 shadow-sm flex items-center justify-center shrink-0 mt-0.5">
-                <Settings :size="15" class="text-gray-600 dark:text-zinc-300" />
-              </div>
-              <div>
-                <p class="text-sm font-semibold mb-0.5">Settings</p>
-                <p class="text-sm text-gray-500 dark:text-zinc-400 leading-relaxed">Switch map styles (Clean, Satellite, Minimal…), toggle the Labels overlay, and change distance units.</p>
-              </div>
-            </div>
-
-            <div class="flex gap-3">
-              <div class="w-8 h-8 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 shadow-sm flex items-center justify-center shrink-0 mt-0.5">
                 <Printer :size="15" class="text-gray-600 dark:text-zinc-300" />
               </div>
               <div>
                 <p class="text-sm font-semibold mb-0.5">Print to PDF</p>
-                <p class="text-sm text-gray-500 dark:text-zinc-400 leading-relaxed">Set a print area rectangle, choose paper size and orientation, and download a PDF with optional legend and compass overlays.</p>
+                <p class="text-sm text-gray-500 dark:text-zinc-400 leading-relaxed">Save multiple named prints, choose paper size and orientation, and download a PDF with optional legend and compass overlays.</p>
               </div>
             </div>
 
@@ -133,11 +133,12 @@ const emit = defineEmits<{ close: [] }>()
             <div>
               <p class="text-xs font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Print: Legend</p>
               <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-zinc-400">
-                <span class="flex items-center gap-1"><List :size="12" /> Show legend</span>
-                <span class="flex items-center gap-1"><FileText :size="12" /> Own page</span>
                 <span class="flex items-center gap-1"><Heading :size="12" /> Title</span>
                 <span class="flex items-center gap-1"><Captions :size="12" /> Subtitle</span>
-                <span class="flex items-center gap-1"><PenLine :size="12" /> Exploration mode</span>
+                <span class="flex items-center gap-1"><MapPin :size="12" /> Pins</span>
+                <span class="flex items-center gap-1"><Route :size="12" /> Routes</span>
+                <span class="flex items-center gap-1"><PenLine :size="12" /> Blank Labels</span>
+                <span class="flex items-center gap-1"><FileText :size="12" /> Separate Page</span>
               </div>
             </div>
             <div>
@@ -146,11 +147,14 @@ const emit = defineEmits<{ close: [] }>()
                 <span class="flex items-center gap-1"><Compass :size="12" /> Compass</span>
                 <span class="flex items-center gap-1"><Ruler :size="12" /> Scale bar</span>
                 <span class="flex items-center gap-1"><Contrast :size="12" /> Enhance contrast</span>
-                <span class="flex items-center gap-1"><Zap :size="12" /> Fast draft</span>
+                <span class="flex items-center gap-1"><Magnet :size="12" /> Snap rotation & legend corner</span>
+                <span class="flex items-center gap-1"><Zap :size="12" /> Draft</span>
+                <span class="flex items-center gap-1"><Circle :size="12" /> Standard</span>
+                <span class="flex items-center gap-1"><Snail :size="12" /> Hi-res</span>
               </div>
             </div>
             <div>
-              <p class="text-xs font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Settings: Display</p>
+              <p class="text-xs font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Style: Display</p>
               <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-zinc-400">
                 <span class="flex items-center gap-1"><Type :size="12" /> Labels</span>
                 <span class="flex items-center gap-1"><ZoomIn :size="12" /> Zoom controls</span>
@@ -159,7 +163,7 @@ const emit = defineEmits<{ close: [] }>()
               </div>
             </div>
             <div>
-              <p class="text-xs font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Settings: Drawing</p>
+              <p class="text-xs font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Style: Drawing</p>
               <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-zinc-400">
                 <span class="flex items-center gap-1"><Magnet :size="12" /> Snap pins &amp; waypoints</span>
                 <span class="flex items-center gap-1"><Triangle :size="12" /> Angle snap (15°)</span>
@@ -211,7 +215,7 @@ const emit = defineEmits<{ close: [] }>()
                 </div>
                 <div class="flex items-start gap-2.5">
                   <kbd class="shrink-0 text-xs bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-300 px-1.5 py-0.5 rounded font-mono whitespace-nowrap">A</kbd>
-                  <span class="text-gray-600 dark:text-zinc-400">Activate print area</span>
+                  <span class="text-gray-600 dark:text-zinc-400">Activate print</span>
                 </div>
               </div>
             </div>
@@ -262,11 +266,11 @@ const emit = defineEmits<{ close: [] }>()
               </div>
             </div>
             <div>
-              <p class="text-xs font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-3">Print</p>
+              <p class="text-xs font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-3">Interaction</p>
               <div class="grid sm:grid-cols-2 gap-x-5 gap-y-2 text-sm">
                 <div class="flex items-start gap-2.5">
                   <kbd class="shrink-0 text-xs bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 px-1.5 py-0.5 rounded font-mono whitespace-nowrap">Shift</kbd>
-                  <span class="text-gray-600 dark:text-zinc-400">Hold while rotating to toggle 15° snap</span>
+                  <span class="text-gray-600 dark:text-zinc-400">Invert snap while drawing, rotating, or placing the legend corner</span>
                 </div>
                 <div class="flex items-start gap-2.5">
                   <kbd class="shrink-0 text-xs bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 px-1.5 py-0.5 rounded font-mono whitespace-nowrap">Option / Alt</kbd>

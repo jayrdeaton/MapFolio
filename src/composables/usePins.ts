@@ -20,18 +20,29 @@ export function usePins(options: { initialPins: Pin[]; leafletMap: ShallowRef<L.
 
   const allPinsHidden = computed(() => pins.value.length > 0 && pins.value.every((p) => p.hidden))
 
+  // Nominatim allows 1 req/sec. This queue serializes all reverse-geocode calls
+  // so concurrent pin placements, pastes, and moves don't get rate-limited.
+  let nominatimQueue: Promise<void> = Promise.resolve()
+
   async function fetchPinAddress(lat: number, lng: number): Promise<string> {
-    try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18`, { headers: { 'Accept-Language': 'en' } })
-      const data = await res.json()
-      const a = data.address ?? {}
-      const street = [a.house_number, a.road].filter(Boolean).join(' ')
-      const locality = a.city || a.town || a.village || a.suburb || a.municipality || a.county || ''
-      const region = a.state || a.country || ''
-      return [street, locality, region].filter(Boolean).join(', ') || data.display_name || ''
-    } catch {
-      return ''
-    }
+    const result = nominatimQueue.then(async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18`, { headers: { 'Accept-Language': 'en' } })
+        const data = await res.json()
+        const a = data.address ?? {}
+        const street = [a.house_number, a.road].filter(Boolean).join(' ')
+        const locality = a.city || a.town || a.village || a.suburb || a.municipality || a.county || ''
+        const region = a.state || a.country || ''
+        return [street, locality, region].filter(Boolean).join(', ') || data.display_name || ''
+      } catch {
+        return ''
+      }
+    })
+    nominatimQueue = result.then(
+      () => new Promise<void>((r) => setTimeout(r, 1100)),
+      () => new Promise<void>((r) => setTimeout(r, 1100))
+    )
+    return result
   }
 
   // recordHistory=false lets a caller push its own snapshot first (e.g. to capture
@@ -104,7 +115,6 @@ export function usePins(options: { initialPins: Pin[]; leafletMap: ShallowRef<L.
       if (address) pins.value = pins.value.map((p) => (p.id === pin.id ? { ...p, address } : p))
       resolvingPinId.value = null
       addressResolveProg.value = { done: i + 1, total: missing.length }
-      if (i < missing.length - 1) await new Promise((r) => setTimeout(r, 1100))
     }
     await new Promise((r) => setTimeout(r, 1200))
     addressResolveProg.value = null

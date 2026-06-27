@@ -7,7 +7,7 @@ import type { MapStyle, PrintArea } from '@/types'
 import { MAP_STYLE_CONFIGS } from '@/types'
 import { printAreaPlaceholder } from '@/utils'
 
-const props = defineProps<{
+defineProps<{
   printAreas: PrintArea[]
   activePrintAreaId: string | null
   selectedPrintAreaIds: string[]
@@ -31,6 +31,7 @@ const emit = defineEmits<{
   reorder: [areas: PrintArea[]]
   'clear-all': []
   'download-pdf': []
+  'cancel-pdf': []
 }>()
 
 const enhanceContrast = defineModel<boolean>('enhanceContrast', { required: true })
@@ -92,7 +93,7 @@ const sectionLabelClass = 'block text-gray-500 dark:text-zinc-400 font-semibold 
       </div>
 
       <div>
-        <button class="w-full px-3 py-2 rounded text-sm font-medium flex items-center justify-center gap-1.5 cursor-pointer bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" :disabled="isDownloadingPdf || (!activePrintAreaId && selectedPrintAreaIds.length !== 1)" @click="emit('download-pdf')"><Printer :size="14" /> {{ isDownloadingPdf ? 'Building…' : 'PDF' }}</button>
+        <button class="w-full px-3 py-2 rounded text-sm font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :class="isDownloadingPdf ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-teal-600 text-white hover:bg-teal-700'" :disabled="!isDownloadingPdf && !activePrintAreaId && selectedPrintAreaIds.length !== 1" @click="isDownloadingPdf ? emit('cancel-pdf') : emit('download-pdf')"><Printer :size="14" /> {{ isDownloadingPdf ? 'Cancel' : 'PDF' }}</button>
         <p v-if="!activePrintAreaId && selectedPrintAreaIds.length !== 1" class="text-xs text-center text-gray-400 dark:text-zinc-500 mt-1.5">
           {{ printAreas.length === 0 ? 'Add a print above to export' : selectedPrintAreaIds.length > 1 ? 'Select one print to export' : 'Select a print to export' }}
         </p>
