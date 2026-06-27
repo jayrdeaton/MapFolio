@@ -71,7 +71,8 @@ const resolvedLayers = computed<MapExportLayers>(() => ({
   pins: layers.value.pins && counts.value.pins > 0,
   routes: layers.value.routes && counts.value.routes > 0,
   captions: !captionsDisabled.value && layers.value.captions && counts.value.captions > 0,
-  printAreas: !printAreasDisabled.value && layers.value.printAreas && counts.value.printAreas > 0
+  printAreas: !printAreasDisabled.value && layers.value.printAreas && counts.value.printAreas > 0,
+  includeHidden: layers.value.includeHidden
 }))
 
 const canExport = computed(() => resolvedLayers.value.pins || resolvedLayers.value.routes || resolvedLayers.value.captions)
