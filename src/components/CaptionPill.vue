@@ -32,23 +32,30 @@ function step(dir: 1 | -1) {
 </script>
 
 <template>
-  <div class="absolute top-4 left-1/2 -translate-x-1/2 z-1000 flex items-center gap-2 bg-white dark:bg-zinc-800 text-gray-800 dark:text-zinc-100 text-sm font-semibold px-4 py-2.5 rounded-full shadow-lg no-print pointer-events-auto">
-    <CaptionPreview :color="color" preview />
-    Placing captions
-    <span v-if="count > 0" class="font-normal opacity-60">· {{ count }}</span>
-
-    <!-- Size adjuster -->
-    <div class="flex items-center gap-1">
-      <button :disabled="!canShrink" class="mf-ibtn w-6 h-6" title="Smaller" @click.stop="step(-1)"><Minus :size="13" /></button>
-      <span class="w-5 text-center text-xs font-semibold uppercase tabular-nums text-gray-500 dark:text-zinc-400">{{ size }}</span>
-      <button :disabled="!canGrow" class="mf-ibtn w-6 h-6" title="Larger" @click.stop="step(1)"><Plus :size="13" /></button>
+  <div class="absolute top-4 left-1/2 -translate-x-1/2 z-1100 w-max sm:w-auto flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 bg-white dark:bg-zinc-800 text-gray-800 dark:text-zinc-100 text-sm font-semibold px-3 sm:px-4 py-2.5 rounded-2xl sm:rounded-full shadow-lg no-print pointer-events-auto max-w-[calc(100vw-5rem)]">
+    <!-- Identity -->
+    <div class="flex items-center gap-2 w-full sm:w-auto min-w-0">
+      <CaptionPreview :color="color" preview class="shrink-0" />
+      <span class="truncate min-w-0">Placing captions</span>
+      <span v-if="count > 0" class="font-normal opacity-60 shrink-0">· {{ count }}</span>
+      <button class="sm:hidden ml-auto mf-ibtn w-6 h-6" title="Done" @click.stop="emit('done')"><X :size="13" /></button>
     </div>
 
-    <!-- Angle snap (15° increments when rotating with the on-map handle) -->
-    <button :class="['mf-ibtn w-6 h-6', angleSnapEnabled && 'mf-ibtn--active']" title="Angle snap (15° increments) when rotating" @click.stop="emit('update:angleSnapEnabled', !angleSnapEnabled)"><Triangle :size="13" /></button>
+    <!-- Divider (mobile only) -->
+    <div class="w-full border-t border-gray-100 dark:border-zinc-700 sm:hidden" />
 
-    <button class="mf-ibtn w-6 h-6" :disabled="!canUndo" title="Undo last caption" @click.stop="emit('undo')"><Undo2 :size="13" /></button>
-    <button class="mf-ibtn w-6 h-6" :disabled="!canRedo" title="Redo last caption" @click.stop="emit('redo')"><Redo2 :size="13" /></button>
-    <button class="mf-ibtn w-6 h-6" title="Done" @click.stop="emit('done')"><X :size="13" /></button>
+    <!-- Actions -->
+    <div class="flex items-center gap-1.5 sm:gap-2">
+      <!-- Size adjuster -->
+      <div class="flex items-center gap-1">
+        <button :disabled="!canShrink" class="mf-ibtn w-6 h-6" title="Smaller" @click.stop="step(-1)"><Minus :size="13" /></button>
+        <span class="w-5 text-center text-xs font-semibold uppercase tabular-nums text-gray-500 dark:text-zinc-400">{{ size }}</span>
+        <button :disabled="!canGrow" class="mf-ibtn w-6 h-6" title="Larger" @click.stop="step(1)"><Plus :size="13" /></button>
+      </div>
+      <button :class="['mf-ibtn w-6 h-6', angleSnapEnabled && 'mf-ibtn--active']" title="Angle snap (15° increments) when rotating" @click.stop="emit('update:angleSnapEnabled', !angleSnapEnabled)"><Triangle :size="13" /></button>
+      <button class="mf-ibtn w-6 h-6" :disabled="!canUndo" title="Undo last caption" @click.stop="emit('undo')"><Undo2 :size="13" /></button>
+      <button class="mf-ibtn w-6 h-6" :disabled="!canRedo" title="Redo last caption" @click.stop="emit('redo')"><Redo2 :size="13" /></button>
+      <button class="hidden sm:flex mf-ibtn w-6 h-6" title="Done" @click.stop="emit('done')"><X :size="13" /></button>
+    </div>
   </div>
 </template>

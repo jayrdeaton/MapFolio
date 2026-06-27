@@ -655,6 +655,11 @@ function fitToView() {
 
 function toggleMapsPanel() {
   closeCaptionSheet()
+  stopPlacing()
+  stopPlacingCaption()
+  stopDrawing()
+  isAdjustingPrintArea.value = false
+  selection.clearSelection()
   showMapsPanel.value = !showMapsPanel.value
   if (showMapsPanel.value) activeFab.value = null
 }
@@ -664,6 +669,8 @@ function toggleFab(fab: 'style' | 'export' | 'pins' | 'routes' | 'captions') {
   stopPlacing()
   stopPlacingCaption()
   stopDrawing()
+  isAdjustingPrintArea.value = false
+  selection.clearSelection()
   showMapsPanel.value = false
   activeFab.value = activeFab.value === fab ? null : fab
 }
@@ -760,6 +767,7 @@ const { openMapContextPopup, openPrintAreaContextMenu, closeMapContextPopup } = 
     stopDrawing()
     placeCaptionAt(lat, lng)
   },
+  onAddPrintArea: handleAddPrintArea,
   onPaste: handlePaste,
   onDownloadPdf: openPreview,
   onEditPrintArea: () => {
@@ -902,7 +910,7 @@ onUnmounted(() => {
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
 
-const panelClass = 'absolute right-16 top-2 z-1000 w-80 max-w-[calc(100vw-80px)] bg-white dark:bg-zinc-900 rounded-xl shadow-xl border border-gray-200 dark:border-zinc-800 overflow-y-auto flex flex-col max-h-[80vh] no-print'
+const panelClass = 'absolute right-16 top-2 z-1100 w-80 max-w-[calc(100vw-80px)] bg-white dark:bg-zinc-900 rounded-xl shadow-xl border border-gray-200 dark:border-zinc-800 overflow-y-auto flex flex-col max-h-[80vh] no-print'
 </script>
 
 <template>

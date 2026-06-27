@@ -136,17 +136,22 @@ defineExpose({ save })
 
           <!-- Emoji bubble options -->
           <template v-if="activeEmoji !== undefined && activeEmoji !== ''">
-            <div class="flex flex-wrap gap-0.5 mb-2">
-              <button :class="['w-8 h-8 text-xs font-semibold rounded cursor-pointer flex items-center justify-center transition-all shrink-0', showCustomInput || customEmoji.trim() ? 'ring-2 ring-teal-600 bg-teal-50 dark:bg-teal-950/30 text-teal-600 dark:text-teal-400' : 'text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-800']" title="Custom emoji" @click="showCustomInput = !showCustomInput">Aa</button>
+            <div class="flex gap-0.5 mb-0.5 justify-center">
+              <button :class="['w-8 h-8 shrink-0 text-xs font-semibold rounded cursor-pointer flex items-center justify-center transition-all', showCustomInput || customEmoji.trim() ? 'ring-2 ring-teal-600 bg-teal-50 dark:bg-teal-950/30 text-teal-600 dark:text-teal-400' : 'text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-800']" title="Custom emoji" @click="showCustomInput = !showCustomInput">Aa</button>
               <template v-if="showCustomInput">
                 <input v-model="customEmoji" type="text" placeholder="Any text or emoji…" class="flex-1 min-w-0 h-8 ml-1 px-2 border border-gray-300 dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20" autofocus @keydown.enter="showCustomInput = false" />
               </template>
               <template v-else>
-                <button v-for="emoji in showAllEmojis ? DEFAULT_EMOJIS : DEFAULT_EMOJIS.slice(0, 10)" :key="emoji" :class="['w-8 h-8 text-base rounded cursor-pointer transition-all flex items-center justify-center', newPinEmoji === emoji && !customEmoji.trim() ? 'ring-2 ring-teal-600 bg-teal-50 dark:bg-teal-950/30' : 'hover:bg-gray-100 dark:hover:bg-zinc-800']" @click="selectEmoji(emoji)">
+                <button v-for="emoji in DEFAULT_EMOJIS.slice(0, 8)" :key="emoji" :class="['w-8 h-8 shrink-0 text-base rounded cursor-pointer transition-all flex items-center justify-center', newPinEmoji === emoji && !customEmoji.trim() ? 'ring-2 ring-teal-600 bg-teal-50 dark:bg-teal-950/30' : 'hover:bg-gray-100 dark:hover:bg-zinc-800']" @click="selectEmoji(emoji)">
                   {{ emoji }}
                 </button>
-                <button class="w-8 h-8 text-xs rounded cursor-pointer flex items-center justify-center font-medium text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-800" @click="showAllEmojis = !showAllEmojis">{{ showAllEmojis ? '−' : '···' }}</button>
+                <button class="w-8 h-8 shrink-0 text-xs rounded cursor-pointer flex items-center justify-center font-medium text-gray-400 dark:text-zinc-500 hover:bg-gray-100 dark:hover:bg-zinc-800" @click="showAllEmojis = !showAllEmojis">{{ showAllEmojis ? '−' : '···' }}</button>
               </template>
+            </div>
+            <div v-if="showAllEmojis && !showCustomInput" class="flex flex-wrap gap-0.5 mb-2 justify-center">
+              <button v-for="emoji in DEFAULT_EMOJIS.slice(8)" :key="emoji" :class="['w-8 h-8 text-base rounded cursor-pointer transition-all flex items-center justify-center', newPinEmoji === emoji && !customEmoji.trim() ? 'ring-2 ring-teal-600 bg-teal-50 dark:bg-teal-950/30' : 'hover:bg-gray-100 dark:hover:bg-zinc-800']" @click="selectEmoji(emoji)">
+                {{ emoji }}
+              </button>
             </div>
             <div class="flex gap-1.5 mb-2">
               <button v-for="s in ['xs', 's', 'm', 'l', 'xl']" :key="s" :class="['flex-1 py-2 rounded border text-xs font-medium transition-colors cursor-pointer', newPinDotSize === s ? 'border-teal-600 bg-teal-50 dark:bg-teal-950/30 text-teal-600 dark:text-teal-400' : 'border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800']" @click="newPinDotSize = s as PinDotSize">{{ s.toUpperCase() }}</button>
