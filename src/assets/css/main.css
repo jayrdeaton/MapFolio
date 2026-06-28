@@ -1,20 +1,36 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* ── Scroll lock — app should never scroll as a page ────────────────────── */
+html {
+  background-color: rgb(255 255 255);
+  color-scheme: light;
+  height: 100%;
+}
 
-html, body {
+@media (prefers-color-scheme: dark) {
+  html {
+    background-color: rgb(24 24 27);
+    color-scheme: dark;
+  }
+}
+
+html.dark {
+  background-color: rgb(24 24 27);
+  color-scheme: dark;
+}
+
+body {
+  height: 100%;
+  width: 100%;
   overflow: hidden;
   overscroll-behavior: none;
 }
 
-html {
-  background-color: #f8f8f7;
+#__nuxt {
+  height: calc(100% + env(safe-area-inset-bottom));
+  overflow-y: auto;
 }
 
-html.dark {
-  background-color: #0f0f0f;
-}
 
 /* ── Icon buttons — one shared style for every menu + pill icon button ────────
    Three dev constants drive global classes on <html> (see config/buttons.ts):
@@ -285,9 +301,6 @@ input, textarea, select {
 
 .pin-marker--pending {
   opacity: 0.5;
-}
-
-.pin-marker--locked {
 }
 
 .pin-inner {
