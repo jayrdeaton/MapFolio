@@ -29,7 +29,7 @@ function cycleColorMode() {
 </script>
 
 <template>
-  <header class="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 px-4 pb-3 flex items-center gap-3 z-1000 shrink-0 no-print" style="padding-top: calc(0.75rem + env(safe-area-inset-top))">
+  <header class="relative z-[1000] bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 px-4 pb-3 flex items-center gap-3 shrink-0 no-print" style="padding-top: calc(0.75rem + env(safe-area-inset-top))">
     <div class="flex-1">
       <button class="flex items-center gap-1.5 group cursor-pointer rounded-lg px-1 -ml-1 py-0.5 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors" title="Switch map" @click="emit('open-maps')">
         <img src="/icon.svg" alt="MapFolio" class="w-5 h-5 shrink-0" />

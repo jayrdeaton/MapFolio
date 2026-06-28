@@ -133,6 +133,7 @@ const previewTile = computed(() => {
 
 const activeFab = ref<'style' | 'export' | 'pins' | 'routes' | 'captions' | null>(null)
 const focusMode = ref(false)
+const { isPwa } = usePwa()
 const bottomSheet = ref(false)
 const editingPin = ref<Pin | null>(null)
 
@@ -1270,7 +1271,7 @@ const panelClass = 'absolute right-16 top-2 z-1100 w-80 max-w-[calc(100vw-80px)]
 
       <!-- Bottom-left: zoom pill + coords + scale -->
       <Transition name="mf-focus-left">
-        <div v-if="!focusMode" class="absolute left-2 z-1000 no-print flex flex-col items-start gap-1 pointer-events-none" style="bottom: calc(0.75rem + env(safe-area-inset-bottom))">
+        <div v-if="!focusMode" class="absolute left-2 z-1000 no-print flex flex-col items-start gap-1 pointer-events-none" :style="{ bottom: isPwa ? '0.75rem' : 'calc(0.75rem + env(safe-area-inset-bottom))' }">
           <ZoomControl v-if="showZoom && leafletMap" :leaflet-map="leafletMap" :at-max-zoom="atMaxZoom" :at-min-zoom="atMinZoom" />
           <div class="pointer-events-none flex flex-col items-start gap-1">
             <div v-if="showCoords && displayCoords" class="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm text-xs font-mono text-gray-500 dark:text-zinc-400 px-2 py-1 rounded shadow-sm border border-gray-200/60 dark:border-zinc-700/60 tabular-nums">{{ displayCoords.lat.toFixed(5) }}, {{ displayCoords.lng.toFixed(5) }}</div>
