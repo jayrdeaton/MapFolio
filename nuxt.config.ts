@@ -90,11 +90,10 @@ export default defineNuxtConfig({
         { name: 'viewport', content: 'width=device-width, initial-scale=1.0, viewport-fit=cover' },
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
-        { name: 'apple-mobile-web-app-title', content: pkg.displayName },
-        { name: 'theme-color', content: '#ffffff' }
+        { name: 'apple-mobile-web-app-title', content: pkg.displayName }
       ],
       link: [
-        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.png' },
+        { rel: 'icon', type: 'image/svg+xml', href: '/icon.svg' },
         { rel: 'apple-touch-icon', href: '/icon-180.png' }
       ]
     }
