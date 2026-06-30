@@ -34,9 +34,12 @@ export default defineNuxtConfig({
       scope: '/',
       icons: [
         { src: '/icon-180.png', sizes: '180x180', type: 'image/png' },
+        { src: '/icon-180-dark.png', sizes: '180x180', type: 'image/png', media: '(prefers-color-scheme: dark)' },
         { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-        { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
-      ],
+        { src: '/icon-192-dark.png', sizes: '192x192', type: 'image/png', media: '(prefers-color-scheme: dark)' },
+        { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+        { src: '/icon-512-dark.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable', media: '(prefers-color-scheme: dark)' }
+      ] as Array<{ src: string; sizes: string; type: string; purpose?: string; media?: string }>,
       // Installed PWA opens .json / .geojson map files directly (Chromium); the
       // launchQueue consumer in App.vue reads them and imports as a new map.
       file_handlers: [
