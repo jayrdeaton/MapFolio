@@ -4,7 +4,7 @@ import { ref } from 'vue'
 
 import RouteListItem from '@/components/RouteListItem.vue'
 import type { Route as RouteType } from '@/types'
-import { routePlaceholder } from '@/utils'
+import { routePlaceholder } from '@/utils/placeholder'
 
 const props = defineProps<{
   routes: RouteType[]

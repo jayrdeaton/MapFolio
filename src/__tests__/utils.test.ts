@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Caption, Pin, Route } from '@/types'
-import { captionPlaceholder, decodeShareState, encodeShareState, parseGeoJsonImport, parseGeoJsonRouteImport, parsePinImport, parseRouteImport, pinPlaceholder, pinsToGeoJson, routePlaceholder, routesToGeoJson } from '@/utils'
+import type { Caption, Pin, PrintArea, Route } from '@/types'
+import { isDarkColor } from '@/utils/color'
+import { isAdditiveEvent } from '@/utils/events'
+import { parseGeoJsonImport, parseGeoJsonRouteImport, parsePinImport, parseRouteImport, pinsToGeoJson, routesToGeoJson } from '@/utils/geojson'
+import { uid } from '@/utils/id'
+import { captionPlaceholder, pinPlaceholder, printAreaPlaceholder, routePlaceholder } from '@/utils/placeholder'
+import { cornerOffsets, localToScreen, screenToLocal } from '@/utils/printAreaMath'
+import { routePreviewSvgString, waypointPreviewSvgString } from '@/utils/routePreview'
+import { decodeShareState, encodeShareState } from '@/utils/share'
 
 const pin: Pin = {
   id: 1,
@@ -378,5 +385,260 @@ describe('captionPlaceholder', () => {
     const withText = makeCaption(1, 'Hello')
     const empty = makeCaption(2)
     expect(captionPlaceholder(empty, [withText, empty])).toBe('Caption 1')
+  })
+})
+
+describe('pinPlaceholder (dot-shape branch)', () => {
+  const makeDotPin = (id: number, name = '', dotShape?: 'circle' | 'square' | 'diamond'): Pin => ({
+    id,
+    name,
+    description: '',
+    emoji: '',
+    color: '#000',
+    lat: 0,
+    lng: 0,
+    dotShape
+  })
+
+  it('defaults to "Circle N" for emoji-less circle pins', () => {
+    const p1 = makeDotPin(1)
+    const p2 = makeDotPin(2)
+    expect(pinPlaceholder(p1, [p1, p2])).toBe('Circle 1')
+    expect(pinPlaceholder(p2, [p1, p2])).toBe('Circle 2')
+  })
+
+  it('uses shape-specific base name for square and diamond', () => {
+    const sq = makeDotPin(1, '', 'square')
+    const di = makeDotPin(2, '', 'diamond')
+    expect(pinPlaceholder(sq, [sq])).toBe('Square 1')
+    expect(pinPlaceholder(di, [di])).toBe('Diamond 1')
+  })
+
+  it('different shapes are counted independently', () => {
+    const circle = makeDotPin(1)
+    const square = makeDotPin(2, '', 'square')
+    expect(pinPlaceholder(circle, [circle, square])).toBe('Circle 1')
+    expect(pinPlaceholder(square, [circle, square])).toBe('Square 1')
+  })
+
+  it('named dot pins do not count toward the sequence', () => {
+    const named = makeDotPin(1, 'Camp')
+    const unnamed = makeDotPin(2)
+    expect(pinPlaceholder(unnamed, [named, unnamed])).toBe('Circle 1')
+  })
+})
+
+describe('printAreaPlaceholder', () => {
+  const makeArea = (id: string, title?: string): PrintArea => ({
+    id,
+    corners: [],
+    angle: 0,
+    paper: 'letter',
+    orientation: 'portrait',
+    grid: '',
+    title
+  })
+
+  it('returns mapName for the first unnamed area', () => {
+    const a = makeArea('a1')
+    expect(printAreaPlaceholder('a1', [a], 'My Map')).toBe('My Map')
+  })
+
+  it('returns "Print" when mapName is omitted', () => {
+    const a = makeArea('a1')
+    expect(printAreaPlaceholder('a1', [a])).toBe('Print')
+  })
+
+  it('appends index (1-based, minus one) for subsequent unnamed areas', () => {
+    const a1 = makeArea('a1')
+    const a2 = makeArea('a2')
+    const a3 = makeArea('a3')
+    expect(printAreaPlaceholder('a1', [a1, a2, a3], 'Trip')).toBe('Trip')
+    expect(printAreaPlaceholder('a2', [a1, a2, a3], 'Trip')).toBe('Trip 1')
+    expect(printAreaPlaceholder('a3', [a1, a2, a3], 'Trip')).toBe('Trip 2')
+  })
+
+  it('titled areas do not count toward the sequence', () => {
+    const titled = makeArea('a0', 'Cover')
+    const u1 = makeArea('a1')
+    const u2 = makeArea('a2')
+    expect(printAreaPlaceholder('a1', [titled, u1, u2], 'Map')).toBe('Map')
+    expect(printAreaPlaceholder('a2', [titled, u1, u2], 'Map')).toBe('Map 1')
+  })
+})
+
+describe('isDarkColor', () => {
+  it('returns true for dark colors', () => {
+    expect(isDarkColor('#000000')).toBe(true)
+    expect(isDarkColor('#1e293b')).toBe(true)
+    expect(isDarkColor('#0d9488')).toBe(true) // app teal accent
+  })
+
+  it('returns false for light colors', () => {
+    expect(isDarkColor('#ffffff')).toBe(false)
+    expect(isDarkColor('#d1d5db')).toBe(false)
+    expect(isDarkColor('#bbf7d0')).toBe(false)
+  })
+
+  it('returns false for transparent and empty', () => {
+    expect(isDarkColor('transparent')).toBe(false)
+    expect(isDarkColor('')).toBe(false)
+  })
+
+  it('returns false for non-6-digit hex', () => {
+    expect(isDarkColor('#fff')).toBe(false)
+    expect(isDarkColor('#12345')).toBe(false)
+  })
+})
+
+describe('isAdditiveEvent', () => {
+  const makeEvent = (meta: boolean, ctrl: boolean) => ({ metaKey: meta, ctrlKey: ctrl }) as unknown as MouseEvent
+
+  it('returns true when metaKey is set', () => {
+    expect(isAdditiveEvent(makeEvent(true, false))).toBe(true)
+  })
+
+  it('returns true when ctrlKey is set', () => {
+    expect(isAdditiveEvent(makeEvent(false, true))).toBe(true)
+  })
+
+  it('returns true when both are set', () => {
+    expect(isAdditiveEvent(makeEvent(true, true))).toBe(true)
+  })
+
+  it('returns false when neither modifier is set', () => {
+    expect(isAdditiveEvent(makeEvent(false, false))).toBe(false)
+  })
+})
+
+describe('uid', () => {
+  it('returns a number', () => {
+    expect(typeof uid()).toBe('number')
+  })
+
+  it('returns strictly increasing values', () => {
+    const a = uid()
+    const b = uid()
+    const c = uid()
+    expect(b).toBeGreaterThan(a)
+    expect(c).toBeGreaterThan(b)
+  })
+
+  it('returns unique values even in rapid succession', () => {
+    const ids = Array.from({ length: 20 }, () => uid())
+    expect(new Set(ids).size).toBe(20)
+  })
+})
+
+describe('cornerOffsets', () => {
+  it('returns four corners in NW/NE/SE/SW order', () => {
+    expect(cornerOffsets(5, 3)).toEqual([
+      [-5, -3],
+      [5, -3],
+      [5, 3],
+      [-5, 3]
+    ])
+  })
+
+  it('handles asymmetric half-dimensions', () => {
+    const co = cornerOffsets(10, 4)
+    expect(co[0]).toEqual([-10, -4]) // NW
+    expect(co[1]).toEqual([10, -4]) // NE
+    expect(co[2]).toEqual([10, 4]) // SE
+    expect(co[3]).toEqual([-10, 4]) // SW
+  })
+
+  it('NW and SE are diagonal opposites', () => {
+    const co = cornerOffsets(6, 8)
+    expect(co[0]![0]).toBe(-co[2]![0])
+    expect(co[0]![1]).toBe(-co[2]![1])
+  })
+})
+
+describe('localToScreen / screenToLocal', () => {
+  it('at zero angle, localToScreen adds the local offset to the center', () => {
+    const pt = localToScreen(5, 3, 100, 200, 0)
+    expect(pt.x).toBeCloseTo(105, 10)
+    expect(pt.y).toBeCloseTo(203, 10)
+  })
+
+  it('at zero angle, screenToLocal subtracts the center', () => {
+    const pt = localToScreen(5, 3, 100, 200, 0) // use a real L.Point
+    const local = screenToLocal(pt, 100, 200, 0)
+    expect(local.x).toBeCloseTo(5, 10)
+    expect(local.y).toBeCloseTo(3, 10)
+  })
+
+  it('localToScreen and screenToLocal are inverses at 45°', () => {
+    const angle = Math.PI / 4
+    const pt = localToScreen(10, -5, 50, 80, angle)
+    const back = screenToLocal(pt, 50, 80, angle)
+    expect(back.x).toBeCloseTo(10, 10)
+    expect(back.y).toBeCloseTo(-5, 10)
+  })
+
+  it('localToScreen and screenToLocal are inverses at 90°', () => {
+    const angle = Math.PI / 2
+    const pt = localToScreen(7, 3, 0, 0, angle)
+    const back = screenToLocal(pt, 0, 0, angle)
+    expect(back.x).toBeCloseTo(7, 10)
+    expect(back.y).toBeCloseTo(3, 10)
+  })
+})
+
+describe('routePreviewSvgString', () => {
+  const baseRoute: Route = { id: 1, name: 'Test', color: '#ff0000', points: [] }
+
+  it('returns an SVG string', () => {
+    expect(routePreviewSvgString(baseRoute)).toMatch(/^<svg/)
+  })
+
+  it('includes the route color', () => {
+    expect(routePreviewSvgString(baseRoute)).toContain('#ff0000')
+  })
+
+  it('dashed line style includes stroke-dasharray', () => {
+    expect(routePreviewSvgString({ ...baseRoute, lineStyle: 'dashed' })).toContain('stroke-dasharray')
+  })
+
+  it('arrow line style includes a marker element', () => {
+    expect(routePreviewSvgString({ ...baseRoute, lineStyle: 'arrow' })).toContain('<marker')
+  })
+
+  it('double line style renders two line elements', () => {
+    const svg = routePreviewSvgString({ ...baseRoute, lineStyle: 'double' })
+    expect((svg.match(/<line/g) ?? []).length).toBe(2)
+  })
+
+  it('none line style renders a gray placeholder', () => {
+    expect(routePreviewSvgString({ ...baseRoute, lineStyle: 'none' })).toContain('#d1d5db')
+  })
+})
+
+describe('waypointPreviewSvgString', () => {
+  const baseRoute: Route = { id: 1, name: 'Test', color: '#0000ff', points: [] }
+
+  it('returns an SVG string', () => {
+    expect(waypointPreviewSvgString(baseRoute, 0)).toMatch(/^<svg/)
+  })
+
+  it('uses the route color by default', () => {
+    expect(waypointPreviewSvgString(baseRoute, 0)).toContain('#0000ff')
+  })
+
+  it('uses colorOverride when provided', () => {
+    const svg = waypointPreviewSvgString(baseRoute, 0, '#aabbcc')
+    expect(svg).toContain('#aabbcc')
+    expect(svg).not.toContain('#0000ff')
+  })
+
+  it('includes the 1-based label when waypointShowNumber is true', () => {
+    const route: Route = { ...baseRoute, waypointShowNumber: true }
+    expect(waypointPreviewSvgString(route, 2)).toContain('>3<') // index 2 → label "3"
+  })
+
+  it('square waypoint style renders a rect', () => {
+    const route: Route = { ...baseRoute, waypointStyle: 'square' }
+    expect(waypointPreviewSvgString(route, 0)).toContain('<rect')
   })
 })

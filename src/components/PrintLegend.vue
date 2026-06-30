@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { dedupeLegendPins } from '@/composables/useMapExport'
 import { formatDistance, routeDistanceM } from '@/composables/useRoutes'
 import type { Pin, Route } from '@/types'
+import { dedupeLegendPins } from '@/utils/exportLegend'
 
 import RoutePreview from './RoutePreview.vue'
 

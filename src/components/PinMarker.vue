@@ -20,7 +20,8 @@ function nextShowIndex(): number {
 import L from 'leaflet'
 
 import type { Pin, PinDotShape, PinDotSize } from '@/types'
-import { isAdditiveEvent, isDarkColor } from '@/utils'
+import { isDarkColor } from '@/utils/color'
+import { isAdditiveEvent } from '@/utils/events'
 
 // Leaflet's internal Draggable, reached to re-anchor the drag origin on snap enter/exit.
 // Not exposed by @types/leaflet, but stable across the snap re-anchoring path used below.

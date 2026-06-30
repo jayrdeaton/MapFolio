@@ -5,7 +5,7 @@ import PrintAreaListItem from '@/components/PrintAreaListItem.vue'
 import type { ExportQuality } from '@/composables/useMapExport'
 import type { MapStyle, PrintArea } from '@/types'
 import { MAP_STYLE_CONFIGS } from '@/types'
-import { printAreaPlaceholder } from '@/utils'
+import { printAreaPlaceholder } from '@/utils/placeholder'
 
 defineProps<{
   printAreas: PrintArea[]

@@ -2,7 +2,7 @@
 import L from 'leaflet'
 
 import type { Pin, Route, RouteWaypointSize, RouteWaypointStyle } from '@/types'
-import { isAdditiveEvent } from '@/utils'
+import { isAdditiveEvent } from '@/utils/events'
 
 const WP_SIZE: Record<RouteWaypointSize, { r: number; sqHalf: number; fontSize: number; hitR: number }> = {
   xs: { r: 4, sqHalf: 4, fontSize: 5, hitR: 8 },

@@ -4,7 +4,7 @@ import { ref } from 'vue'
 
 import PinListItem from '@/components/PinListItem.vue'
 import type { Pin } from '@/types'
-import { pinPlaceholder } from '@/utils'
+import { pinPlaceholder } from '@/utils/placeholder'
 
 const props = defineProps<{
   pins: Pin[]

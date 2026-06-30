@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CaptionSize } from '@/types'
-import { isDarkColor } from '@/utils'
+import { isDarkColor } from '@/utils/color'
 
 const props = defineProps<{
   color: string

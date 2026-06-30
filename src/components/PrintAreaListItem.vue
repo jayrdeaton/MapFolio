@@ -5,7 +5,7 @@ import { ref } from 'vue'
 import ContextMenu from '@/components/ContextMenu.vue'
 import { useElementLongPress } from '@/composables/useElementLongPress'
 import type { PrintArea } from '@/types'
-import { isAdditiveEvent } from '@/utils'
+import { isAdditiveEvent } from '@/utils/events'
 
 defineProps<{ area: PrintArea; selected?: boolean; placeholder?: string; subtitlePlaceholder?: string }>()
 const emit = defineEmits<{

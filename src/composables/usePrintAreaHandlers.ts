@@ -3,7 +3,7 @@ import type { ComputedRef, Ref, ShallowRef } from 'vue'
 
 import type { useSelection } from '@/composables/useSelection'
 import type { PrintArea, PrintOrientation, PrintPaperSize } from '@/types'
-import { printAreaPlaceholder } from '@/utils'
+import { printAreaPlaceholder } from '@/utils/placeholder'
 
 interface UsePrintAreaHandlersOptions {
   printAreas: ComputedRef<PrintArea[]>
