@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PinDotShape, PinDotSize } from '@/types'
-import { isDarkColor } from '@/utils'
+import { isDarkColor } from '@/utils/color'
 import { emojiToDataUrl } from '@/utils/emoji'
 
 const props = defineProps<{

@@ -1,8 +1,8 @@
 import type L from 'leaflet'
 import type { ComputedRef, Ref } from 'vue'
 
-import { dedupeLegendPins, legendBoxFractions } from '@/composables/useMapExport'
 import type { Pin, PrintArea, Route } from '@/types'
+import { dedupeLegendPins, legendBoxFractions } from '@/utils/exportLegend'
 
 interface UseLegendPreviewOptions {
   printBounds: ComputedRef<L.LatLngBounds | null>

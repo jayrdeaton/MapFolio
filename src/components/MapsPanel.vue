@@ -4,7 +4,7 @@ import { Check, FileDown, FileUp, Link, Loader2, Map, Plus, X } from '@lucide/vu
 import MapListItem from '@/components/MapListItem.vue'
 import type { MapExportLayers, MapExportOptions } from '@/composables/useMaps'
 import type { MapData } from '@/types'
-import { encodeShareState, MAX_SHARE_URL_LENGTH } from '@/utils'
+import { encodeShareState, MAX_SHARE_URL_LENGTH } from '@/utils/share'
 
 const props = defineProps<{
   maps: MapData[]

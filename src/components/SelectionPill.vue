@@ -5,7 +5,7 @@ import CaptionPreview from '@/components/CaptionPreview.vue'
 import PinPreview from '@/components/PinPreview.vue'
 import RoutePreview from '@/components/RoutePreview.vue'
 import type { Caption, Pin, PrintArea, Route } from '@/types'
-import { captionPlaceholder, pinPlaceholder, printAreaPlaceholder, routePlaceholder } from '@/utils'
+import { captionPlaceholder, pinPlaceholder, printAreaPlaceholder, routePlaceholder } from '@/utils/placeholder'
 
 const props = defineProps<{
   selectedPins: Pin[]

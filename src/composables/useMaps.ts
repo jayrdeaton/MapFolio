@@ -1,6 +1,6 @@
 import type { MapData, MapStyle, PinDotSize } from '@/types'
-import type { ShareState } from '@/utils'
-import { parseGeoJsonImport, parseGeoJsonRouteImport, pinsToGeoJson, routesToGeoJson } from '@/utils'
+import { parseGeoJsonImport, parseGeoJsonRouteImport, pinsToGeoJson, routesToGeoJson } from '@/utils/geojson'
+import type { ShareState } from '@/utils/share'
 
 const STORAGE_KEY = 'mapfolio_v1'
 const LEGACY_KEY = 'custommap_v1'

@@ -20,7 +20,8 @@ import { useMapInit } from '@/composables/useMapInit'
 import { usePrintAreaHandlers } from '@/composables/usePrintAreaHandlers'
 import { useRubberBand } from '@/composables/useRubberBand'
 import type { Caption, MapStyle, Pin, PinDotShape, PinDotSize, PrintArea, Route } from '@/types'
-import { captionPlaceholder, decodeShareState, pinPlaceholder, printAreaPlaceholder, routePlaceholder } from '@/utils'
+import { captionPlaceholder, pinPlaceholder, printAreaPlaceholder, routePlaceholder } from '@/utils/placeholder'
+import { decodeShareState } from '@/utils/share'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')

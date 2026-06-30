@@ -3,7 +3,7 @@ import type { ShallowRef } from 'vue'
 
 import type { MapExportLayers } from '@/composables/useMaps'
 import type { Caption, MapData, MapStyle, Pin, PrintArea, Route } from '@/types'
-import { encodeShareState, MAX_SHARE_URL_LENGTH } from '@/utils'
+import { encodeShareState, MAX_SHARE_URL_LENGTH } from '@/utils/share'
 
 export function useShareClipboard(options: { pins: Ref<Pin[]>; routes: Ref<Route[]>; captions: Ref<Caption[]>; printAreas: Ref<PrintArea[]>; mapStyle: Ref<MapStyle>; mapTitle: Ref<string>; mapArea: Ref<string>; leafletMap: ShallowRef<L.Map | null>; maps: Ref<MapData[]>; activeId: Ref<string>; showNotification: (message: string, type?: 'success' | 'error' | 'info') => void }) {
   const { pins, routes, captions, printAreas, mapStyle, mapTitle, mapArea, leafletMap, maps, activeId, showNotification } = options

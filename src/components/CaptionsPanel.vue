@@ -4,7 +4,7 @@ import { ref } from 'vue'
 
 import CaptionListItem from '@/components/CaptionListItem.vue'
 import type { Caption } from '@/types'
-import { captionPlaceholder } from '@/utils'
+import { captionPlaceholder } from '@/utils/placeholder'
 
 const props = defineProps<{
   captions: Caption[]
