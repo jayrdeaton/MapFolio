@@ -32,7 +32,7 @@ function cycleColorMode() {
   <header class="relative z-1000 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 px-4 pb-3 flex items-center gap-3 shrink-0 no-print" style="padding-top: calc(0.75rem + env(safe-area-inset-top))">
     <div class="flex-1">
       <button class="flex items-center gap-1.5 group cursor-pointer rounded-lg px-1 -ml-1 py-0.5 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors" title="Switch map" @click="emit('open-maps')">
-        <img src="/icon.png" alt="MapFolio" class="w-5 h-5 shrink-0" />
+        <img src="/icon.svg" alt="MapFolio" class="w-5 h-5 shrink-0" />
         <span class="text-gray-800 dark:text-zinc-100 text-base font-bold truncate max-w-40">{{ activeMapName || 'MapFolio' }}</span>
         <ChevronDown :size="14" class="text-gray-400 dark:text-zinc-500 shrink-0 group-hover:text-gray-600 dark:group-hover:text-zinc-300 transition-colors" />
       </button>
