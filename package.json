@@ -2,7 +2,7 @@
   "name": "mapfolio",
   "displayName": "MapFolio",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Interactive mapping app for creating, annotating, and printing custom maps",
   "license": "ISC",
   "author": "Jay Deaton",
