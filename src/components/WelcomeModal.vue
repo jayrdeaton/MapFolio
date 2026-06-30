@@ -11,7 +11,7 @@ const emit = defineEmits<{ close: [] }>()
       <div class="bg-white dark:bg-zinc-900 rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-200 dark:border-zinc-800 w-full sm:max-w-2xl max-h-[90vh] flex flex-col">
         <!-- Header -->
         <div class="flex items-center gap-3 px-6 pt-5 pb-4 border-b border-gray-100 dark:border-zinc-800 shrink-0">
-          <img src="/icon.svg" alt="" class="w-7 h-7 shrink-0" />
+          <img src="/icon.png" alt="" class="w-7 h-7 shrink-0" />
           <div class="flex-1">
             <h2 class="text-base font-bold leading-tight">MapFolio</h2>
           </div>
