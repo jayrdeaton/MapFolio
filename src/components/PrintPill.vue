@@ -37,13 +37,13 @@ const emit = defineEmits<{
 
     <!-- Actions -->
     <div class="flex items-center gap-1.5 sm:gap-2">
+      <button class="mf-ibtn w-6 h-6" title="Edit" @click.stop="emit('edit')"><PenLine :size="13" /></button>
       <button :class="['mf-ibtn w-6 h-6', snapEnabled && 'mf-ibtn--active']" title="Snap: rotation to 15° increments, legend to corners (Shift inverts)" @click.stop="emit('update:snapEnabled', !snapEnabled)"><Magnet :size="13" /></button>
       <button class="mf-ibtn w-6 h-6" title="Fit print to visible elements" @click.stop="emit('fit')"><ScanSearch :size="13" /></button>
       <button class="mf-ibtn w-6 h-6" :title="orientation === 'portrait' ? 'Switch to landscape' : 'Switch to portrait'" @click.stop="emit('update:orientation', orientation === 'portrait' ? 'landscape' : 'portrait')">
         <RectangleVertical v-if="orientation === 'portrait'" :size="13" />
         <RectangleHorizontal v-else :size="13" />
       </button>
-      <button class="mf-ibtn w-6 h-6" title="Edit" @click.stop="emit('edit')"><PenLine :size="13" /></button>
       <button class="mf-ibtn w-6 h-6" :title="isHidden ? 'Show' : 'Hide'" @click.stop="emit('hide')">
         <EyeOff v-if="isHidden" :size="13" />
         <Eye v-else :size="13" />

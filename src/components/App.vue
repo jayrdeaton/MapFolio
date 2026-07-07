@@ -865,6 +865,12 @@ useKeyboardShortcuts({
     if (activePrintArea.value) handlePrintAreaEdit(activePrintArea.value.id)
   },
   fitActivePrintArea: fitToPrintArea,
+  copyActivePrintArea: () => {
+    if (activePrintAreaId.value) handleClipCopyPrintArea(activePrintAreaId.value)
+  },
+  cutActivePrintArea: () => {
+    if (activePrintAreaId.value) handleClipCutPrintArea(activePrintAreaId.value)
+  },
   startPlacingPin: () => {
     isPlacingPin.value = true
   },

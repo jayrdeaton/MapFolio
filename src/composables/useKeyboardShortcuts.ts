@@ -23,6 +23,8 @@ export function useKeyboardShortcuts(options: {
   deleteSelection: () => void
   copySelection: () => void
   cutSelection: () => void
+  copyActivePrintArea: () => void
+  cutActivePrintArea: () => void
   toggleSelectionVisibility: () => void
   editSelection: () => void
   fitSelection: () => void
@@ -197,15 +199,29 @@ export function useKeyboardShortcuts(options: {
       options.redo()
       return
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === 'c' && !inInput && options.hasSelection.value) {
-      e.preventDefault()
-      options.copySelection()
-      return
+    if ((e.metaKey || e.ctrlKey) && e.key === 'c' && !inInput) {
+      if (options.hasSelection.value) {
+        e.preventDefault()
+        options.copySelection()
+        return
+      }
+      if (options.isAdjustingPrintArea.value) {
+        e.preventDefault()
+        options.copyActivePrintArea()
+        return
+      }
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === 'x' && !inInput && options.hasSelection.value) {
-      e.preventDefault()
-      options.cutSelection()
-      return
+    if ((e.metaKey || e.ctrlKey) && e.key === 'x' && !inInput) {
+      if (options.hasSelection.value) {
+        e.preventDefault()
+        options.cutSelection()
+        return
+      }
+      if (options.isAdjustingPrintArea.value) {
+        e.preventDefault()
+        options.cutActivePrintArea()
+        return
+      }
     }
     if ((e.metaKey || e.ctrlKey) && e.key === 'v' && !inInput) {
       e.preventDefault()
