@@ -671,7 +671,9 @@ function toggleFab(fab: 'style' | 'export' | 'pins' | 'routes' | 'captions') {
   stopPlacing()
   stopPlacingCaption()
   stopDrawing()
-  isAdjustingPrintArea.value = false
+  // The export panel's print settings + print button act on the active print
+  // area, so opening/closing it must not deselect it (unlike every other FAB).
+  if (fab !== 'export') isAdjustingPrintArea.value = false
   selection.clearSelection()
   showMapsPanel.value = false
   activeFab.value = activeFab.value === fab ? null : fab
@@ -1097,6 +1099,7 @@ const panelClass = 'absolute right-16 top-2 z-1100 w-80 max-w-[calc(100vw-80px)]
         <div v-if="activeFab === 'export'" :class="panelClass">
           <PrintPanel
             v-model:enhance-contrast="printSettings.contrast.value"
+            v-model:monochrome="printSettings.monochrome.value"
             v-model:export-quality="printSettings.exportQuality.value"
             :print-areas="printAreas"
             :active-print-area-id="activePrintAreaId"

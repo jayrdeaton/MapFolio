@@ -33,16 +33,18 @@ export function usePrintSettings() {
   const stickyOrientation = ref<PrintOrientation>(saved.stickyOrientation === 'landscape' ? 'landscape' : 'portrait')
 
   const contrast = ref<boolean>(typeof saved.contrast === 'boolean' ? saved.contrast : true)
+  const monochrome = ref<boolean>(typeof saved.monochrome === 'boolean' ? saved.monochrome : false)
   const exportQuality = ref<ExportQuality>(VALID_QUALITY.includes(saved.exportQuality as ExportQuality) ? (saved.exportQuality as ExportQuality) : saved.fastExport === true ? 'draft' : 'standard')
 
-  watch([stickyPaper, stickyOrientation, contrast, exportQuality], () =>
+  watch([stickyPaper, stickyOrientation, contrast, monochrome, exportQuality], () =>
     writeCookie({
       stickyPaper: stickyPaper.value,
       stickyOrientation: stickyOrientation.value,
       contrast: contrast.value,
+      monochrome: monochrome.value,
       exportQuality: exportQuality.value
     })
   )
 
-  return { stickyPaper, stickyOrientation, contrast, exportQuality }
+  return { stickyPaper, stickyOrientation, contrast, monochrome, exportQuality }
 }

@@ -1,5 +1,6 @@
 import { formatDistance, routeDistanceM } from '@/composables/useRoutes'
 import type { Pin, Route } from '@/types'
+import { desaturateCanvas } from '@/utils/color'
 
 import { dedupeLegendPins, drawRoutePreviewInLegend } from './exportLegend'
 
@@ -10,6 +11,7 @@ interface LegendPageContent {
   routes: Route[]
   unit: 'km' | 'mi'
   blankLabels?: boolean
+  monochrome?: boolean
 }
 
 /**
@@ -231,6 +233,12 @@ export async function renderLegendPagesToPng(c: LegendPageContent, paperWidthPt:
         ctx.fillText(`${dist} · ${wp} ${wp === 1 ? 'waypoint' : 'waypoints'}`, textX, textY + nameSize + lineH, textMaxW)
         ctx.restore()
       }
+    }
+  }
+
+  if (c.monochrome) {
+    for (const page of pages) {
+      desaturateCanvas(page.getContext('2d') as unknown as CanvasRenderingContext2D, W, H)
     }
   }
 

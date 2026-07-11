@@ -54,6 +54,7 @@ export function usePrintExport(options: {
   dismissNotification: () => void
   printSettings: {
     contrast: Ref<boolean>
+    monochrome: Ref<boolean>
     exportQuality: Ref<ExportQuality>
   }
   printAreas: Ref<PrintArea[]>
@@ -447,6 +448,7 @@ export function usePrintExport(options: {
         includeScale: area.scale ?? true,
         scaleUnit: units.value,
         enhanceContrast: printSettings.contrast.value,
+        monochrome: printSettings.monochrome.value,
         exportQuality: printSettings.exportQuality.value,
         overlayCorner: area.legendCorner ?? overlayCorner.value,
         paperWidthPt: pw,

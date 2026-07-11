@@ -116,10 +116,13 @@ export interface MapStyleConfig {
   maxNativeZoom?: number
   crossOrigin?: boolean
   retina?: boolean // true when the URL has {r} and the provider supports @2x tiles (512px)
-  // Input black point for print export levels adjustment (0–255).
-  // Values at or below this → black; stretches the tonal range upward so
-  // light-style tiles (which use a tiny slice of the upper range) have
-  // visible contrast on paper. ~150 works well for CartoDB light styles.
+  // Input black point for print export levels adjustment (0–255), applied to a
+  // grayscale conversion of the tile. Values at or below this → black; stretches
+  // the tonal range upward so light-style tiles (which use a tiny slice of the
+  // upper range) have visible contrast on paper. CartoDB's light styles render
+  // real content (roads, buildings, water) only between luma ~206–253, so 195
+  // gives strong black/white separation with headroom below the darkest real
+  // feature color to avoid clipping artifacts.
   printBlackPoint?: number
 }
 
@@ -134,7 +137,7 @@ export const MAP_STYLE_CONFIGS: Record<MapStyle, MapStyleConfig> = {
     maxNativeZoom: 19,
     crossOrigin: true,
     retina: true,
-    printBlackPoint: 150
+    printBlackPoint: 195
   },
   minimal: {
     name: 'Minimal',
@@ -146,7 +149,7 @@ export const MAP_STYLE_CONFIGS: Record<MapStyle, MapStyleConfig> = {
     maxNativeZoom: 19,
     crossOrigin: true,
     retina: true,
-    printBlackPoint: 150
+    printBlackPoint: 195
   },
   standard: {
     name: 'Standard',

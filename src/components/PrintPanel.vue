@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Circle, Contrast, Eye, EyeOff, Maximize2, Plus, Printer, Snail, Trash2, Zap } from '@lucide/vue'
+import { Circle, Contrast, DropletOff, Eye, EyeOff, Maximize2, Plus, Printer, Snail, Trash2, Zap } from '@lucide/vue'
 
 import PrintAreaListItem from '@/components/PrintAreaListItem.vue'
 import type { ExportQuality } from '@/composables/useMapExport'
@@ -35,6 +35,7 @@ const emit = defineEmits<{
 }>()
 
 const enhanceContrast = defineModel<boolean>('enhanceContrast', { required: true })
+const monochrome = defineModel<boolean>('monochrome', { required: true })
 const exportQuality = defineModel<ExportQuality>('exportQuality', { required: true })
 
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
@@ -84,6 +85,7 @@ const sectionLabelClass = 'block text-gray-500 dark:text-zinc-400 font-semibold 
         <span :class="sectionLabelClass" style="margin-bottom: 0">Quality</span>
         <div class="flex gap-1 items-center">
           <button v-if="MAP_STYLE_CONFIGS[mapStyle].printBlackPoint !== undefined" :class="['mf-ibtn w-7 h-7', enhanceContrast && 'mf-ibtn--active']" title="Enhance contrast" @click="enhanceContrast = !enhanceContrast"><Contrast :size="13" /></button>
+          <button v-if="MAP_STYLE_CONFIGS[mapStyle].printBlackPoint !== undefined" :class="['mf-ibtn w-7 h-7', monochrome && 'mf-ibtn--active']" title="Black &amp; white" @click="monochrome = !monochrome"><DropletOff :size="13" /></button>
           <div v-if="!isIOS" class="mf-seg">
             <button :class="['mf-seg-btn w-7', exportQuality === 'draft' && 'mf-seg-btn--active']" title="Draft" @click="exportQuality = 'draft'"><Zap :size="13" /></button>
             <button :class="['mf-seg-btn w-7', exportQuality === 'standard' && 'mf-seg-btn--active']" title="Standard" @click="exportQuality = 'standard'"><Circle :size="13" /></button>

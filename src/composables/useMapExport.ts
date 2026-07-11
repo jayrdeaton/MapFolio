@@ -2,6 +2,7 @@ import { PDFDocument } from 'pdf-lib'
 
 import type { Caption, MapStyle, MapStyleConfig, Pin, Route } from '@/types'
 import { MAP_STYLE_CONFIGS } from '@/types'
+import { desaturateCanvas, luma, toGrayscaleColor } from '@/utils/color'
 import { drawCaptions, drawPins, drawRoutes } from '@/utils/exportDraw'
 import type { OverlayCorner } from '@/utils/exportLegend'
 import { drawInfoBox } from '@/utils/exportLegend'
@@ -33,6 +34,7 @@ export interface ExportOptions {
   includeScale: boolean
   scaleUnit: 'km' | 'mi'
   enhanceContrast: boolean
+  monochrome?: boolean // fully black-and-white export: basemap, pins, routes, captions, emoji
   exportQuality?: ExportQuality // 'draft' = fast/low-detail, 'standard' = default, 'hires' = large-format
   paperWidthPt: number // PDF page width in points (1pt = 1/72 inch)
   paperHeightPt: number // PDF page height in points
@@ -105,7 +107,41 @@ function estimateHiresNativeSize(corners: [number, number][], angle: number, con
 // For singlePageGrid cells: gridCols * 612 / paperWidthPt. Multiplied by the actual cell
 // canvas width (paperWidthPx) inside renderPageToPng to get the overlay scaleW.
 // Undefined for 1×1 or standard-grid (separate-page) exports — no scaling needed.
-async function renderPageToPng(corners: [number, number][], angle: number, config: MapStyleConfig, pins: Pin[], hiddenPinIds: Set<number>, routes: Route[], hiddenRouteIds: Set<number>, captions: Caption[], hiddenCaptionIds: Set<number>, includePins: boolean, includeRoutes: boolean, includeCompass: boolean, includeScale: boolean, scaleUnit: 'km' | 'mi', enhanceContrast: boolean, exportQuality: ExportQuality, mapTitle: string, mapArea: string, blankLabels: boolean, legendScale?: number, legendX?: number | null, legendY?: number | null, legendPins?: Pin[], legendRoutes?: Route[], onProgress?: (msg: string) => void, overlaySFactor?: number, signal?: AbortSignal, markerScale?: number, overlayCorner: OverlayCorner = 2): Promise<Uint8Array> {
+interface RenderPageOptions {
+  corners: [number, number][]
+  angle: number
+  config: MapStyleConfig
+  pins: Pin[]
+  hiddenPinIds: Set<number>
+  routes: Route[]
+  hiddenRouteIds: Set<number>
+  captions: Caption[]
+  hiddenCaptionIds: Set<number>
+  includePins: boolean
+  includeRoutes: boolean
+  includeCompass: boolean
+  includeScale: boolean
+  scaleUnit: 'km' | 'mi'
+  enhanceContrast: boolean
+  monochrome: boolean
+  exportQuality: ExportQuality
+  mapTitle: string
+  mapArea: string
+  blankLabels: boolean
+  legendScale?: number
+  legendX?: number | null
+  legendY?: number | null
+  legendPins?: Pin[]
+  legendRoutes?: Route[]
+  onProgress?: (msg: string) => void
+  overlaySFactor?: number
+  signal?: AbortSignal
+  markerScale?: number
+  overlayCorner?: OverlayCorner
+}
+
+async function renderPageToPng(opts: RenderPageOptions): Promise<Uint8Array> {
+  const { corners, angle, config, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, includePins, includeRoutes, includeCompass, includeScale, scaleUnit, enhanceContrast, monochrome, exportQuality, mapTitle, mapArea, blankLabels, legendScale, legendX, legendY, legendPins, legendRoutes, onProgress, overlaySFactor, signal, markerScale, overlayCorner = 2 } = opts
   // --- 1. Compute the AABB of the 4 corners in lat/lng space ---
   const lats = corners.map((c) => c[0])
   const lngs = corners.map((c) => c[1])
@@ -225,17 +261,30 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
   await fetchTilesConcurrent(tileJobs, TILE_CONCURRENCY, signal)
   outCtx.restore()
 
-  // Levels adjustment on the output canvas.
-  if (enhanceContrast && config.printBlackPoint !== undefined) {
+  // Levels adjustment on the output canvas. Enhance Contrast and Black & White are
+  // independent axes: Enhance Contrast applies the black-point stretch (CartoDB's light
+  // styles pack every feature into a ~40-level luma band near white, so without it the
+  // result is flat regardless of color); Black & White collapses to grayscale first —
+  // stretching R/G/B independently would otherwise leave a faint, inconsistent color cast.
+  // Combining both is what gives a genuinely punchy black-and-white result.
+  if ((enhanceContrast || monochrome) && config.printBlackPoint !== undefined) {
     onProgress?.('Adjusting Levels…')
     const lo = config.printBlackPoint,
       range = 255 - lo
+    const stretch = (v: number) => (enhanceContrast ? Math.round(Math.max(0, Math.min(255, ((v - lo) / range) * 255))) : v)
     const imgData = outCtx.getImageData(0, 0, paperWidthPx, paperHeightPx)
     const d = imgData.data
     for (let i = 0; i < d.length; i += 4) {
-      d[i] = Math.round(Math.max(0, (((d[i] ?? 0) - lo) / range) * 255))
-      d[i + 1] = Math.round(Math.max(0, (((d[i + 1] ?? 0) - lo) / range) * 255))
-      d[i + 2] = Math.round(Math.max(0, (((d[i + 2] ?? 0) - lo) / range) * 255))
+      if (monochrome) {
+        const v = stretch(luma(d[i] ?? 0, d[i + 1] ?? 0, d[i + 2] ?? 0))
+        d[i] = v
+        d[i + 1] = v
+        d[i + 2] = v
+      } else {
+        d[i] = stretch(d[i] ?? 0)
+        d[i + 1] = stretch(d[i + 1] ?? 0)
+        d[i + 2] = stretch(d[i + 2] ?? 0)
+      }
     }
     outCtx.putImageData(imgData, 0, 0)
   }
@@ -276,6 +325,11 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
   drawCaptions(outCtx, captions, hiddenCaptionIds, geoToOutputPx, paperWidthPx, paperHeightPx, overlayScaleW)
   drawInfoBox(outCtx, mapTitle, mapArea, legendPins ?? pinsInArea, legendRoutes ?? routesInArea, angle, corners, scaleUnit, includePins, includeRoutes, includeCompass, includeScale, blankLabels, paperWidthPx, paperHeightPx, overlayCorner, legendScale, legendX ?? null, legendY ?? null, pins, overlayScaleW)
 
+  // Color emoji glyphs ignore fillStyle, so they survive the pin/route/caption hex→grayscale
+  // recolor done up front in exportMapToPdf. Catch them with a final full-canvas desaturation
+  // pass — ctx.filter is not reliably applied to OffscreenCanvas text in a Worker context.
+  if (monochrome) desaturateCanvas(outCtx, paperWidthPx, paperHeightPx)
+
   // --- 8. Return PNG bytes ---
   onProgress?.('Encoding…')
   const blob = await outCanvas.convertToBlob({ type: 'image/png' })
@@ -283,7 +337,24 @@ async function renderPageToPng(corners: [number, number][], angle: number, confi
 }
 
 export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
-  const { corners, angle, mapStyle, mapTitle, mapArea = '', pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, legend, legendPins: legendPinsEnabled = true, legendRoutes: legendRoutesEnabled = true, legendSeparatePage = false, legendBlankLabels = false, legendScale = 1, legendX = null, legendY = null, markerScale = 1, includeCompass, includeScale, scaleUnit, enhanceContrast, exportQuality = 'standard', paperWidthPt, paperHeightPt, onProgress, signal } = opts
+  const config = MAP_STYLE_CONFIGS[opts.mapStyle]
+  // Black & White only applies to styles with a printBlackPoint — mirrors the v-if that
+  // hides the toggle in PrintPanel.vue, so a monochrome setting persisted from a different
+  // style never silently desaturates an export the UI currently gives no way to control.
+  const monochrome = (opts.monochrome ?? false) && config.printBlackPoint !== undefined
+
+  // Desaturate overlays up front so every downstream use (on-map legend, separate legend
+  // pages, full-area grid legend collection) picks up the grayscale colors automatically.
+  if (monochrome) {
+    opts = {
+      ...opts,
+      pins: opts.pins.map((p) => ({ ...p, color: toGrayscaleColor(p.color) })),
+      routes: opts.routes.map((r) => ({ ...r, color: toGrayscaleColor(r.color) })),
+      captions: opts.captions.map((c) => ({ ...c, color: toGrayscaleColor(c.color) }))
+    }
+  }
+
+  const { corners, angle, mapTitle, mapArea = '', pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, legend, legendPins: legendPinsEnabled = true, legendRoutes: legendRoutesEnabled = true, legendSeparatePage = false, legendBlankLabels = false, legendScale = 1, legendX = null, legendY = null, markerScale = 1, includeCompass, includeScale, scaleUnit, enhanceContrast, exportQuality = 'standard', paperWidthPt, paperHeightPt, onProgress, signal } = opts
   const infoCorner = (opts.overlayCorner ?? 2) as OverlayCorner
   // gridCols/gridRows are mutable — hi-res may auto-increase them to keep each cell's canvas
   // at native resolution (capScale = 1) without hitting browser memory limits.
@@ -294,7 +365,6 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
   const onMapPins = legend && legendPinsEnabled && !legendSeparatePage
   const onMapRoutes = legend && legendRoutesEnabled && !legendSeparatePage
   const onMapLegend = onMapPins || onMapRoutes // used for full-area pre-collection gate
-  const config = MAP_STYLE_CONFIGS[mapStyle]
 
   // For hi-res: auto-compute the minimum grid so each cell's native canvas fits within
   // browser limits. Cells render at a higher zoom than the full area (smaller AABB = more
@@ -360,7 +430,38 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
       // it in cell renders to avoid duplicate headers. For multi-page grids, only the info cell gets it.
       const cellTitle = singlePageGrid || !isInfoCell ? '' : mapTitle
       const cellArea = singlePageGrid || !isInfoCell ? '' : mapArea
-      const pngBytes = await renderPageToPng(cellCorners, angle, config, pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, cellIncludePins, cellIncludeRoutes, cellCompass, cellScale, scaleUnit, enhanceContrast, exportQuality, cellTitle, cellArea, legendBlankLabels, legendScale, legendX, legendY, cellHasKeys ? fullAreaLegendPins : undefined, cellHasKeys ? fullAreaLegendRoutes : undefined, (msg) => onProgress?.(`${prefix}${msg}`), overlaySFactor, signal, markerScale, infoCorner)
+      const pngBytes = await renderPageToPng({
+        corners: cellCorners,
+        angle,
+        config,
+        pins,
+        hiddenPinIds,
+        routes,
+        hiddenRouteIds,
+        captions,
+        hiddenCaptionIds,
+        includePins: cellIncludePins,
+        includeRoutes: cellIncludeRoutes,
+        includeCompass: cellCompass,
+        includeScale: cellScale,
+        scaleUnit,
+        enhanceContrast,
+        monochrome,
+        exportQuality,
+        mapTitle: cellTitle,
+        mapArea: cellArea,
+        blankLabels: legendBlankLabels,
+        legendScale,
+        legendX,
+        legendY,
+        legendPins: cellHasKeys ? fullAreaLegendPins : undefined,
+        legendRoutes: cellHasKeys ? fullAreaLegendRoutes : undefined,
+        onProgress: (msg) => onProgress?.(`${prefix}${msg}`),
+        overlaySFactor,
+        signal,
+        markerScale,
+        overlayCorner: infoCorner
+      })
 
       onProgress?.(`${prefix}Embedding…`)
       const pdfImage = await pdfDoc.embedPng(pngBytes)
@@ -389,7 +490,9 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
     const infoW = Math.round(paperWidthPt * 2)
     const infoH = Math.round(paperHeightPt * 2)
     const infoCanvas = new OffscreenCanvas(infoW, infoH)
-    drawInfoBox(infoCanvas.getContext('2d') as unknown as CanvasRenderingContext2D, mapTitle, mapArea, fullAreaLegendPins ?? [], fullAreaLegendRoutes ?? [], angle, corners, scaleUnit, onMapPins, onMapRoutes, includeCompass, includeScale, legendBlankLabels, infoW, infoH, infoCorner, legendScale, legendX ?? null, legendY ?? null, pins)
+    const infoCtx = infoCanvas.getContext('2d') as unknown as CanvasRenderingContext2D
+    drawInfoBox(infoCtx, mapTitle, mapArea, fullAreaLegendPins ?? [], fullAreaLegendRoutes ?? [], angle, corners, scaleUnit, onMapPins, onMapRoutes, includeCompass, includeScale, legendBlankLabels, infoW, infoH, infoCorner, legendScale, legendX ?? null, legendY ?? null, pins)
+    if (monochrome) desaturateCanvas(infoCtx, infoW, infoH)
     const infoBlob = await infoCanvas.convertToBlob({ type: 'image/png' })
     const infoBytes = new Uint8Array(await infoBlob.arrayBuffer())
     stitchedPage!.drawImage(await pdfDoc.embedPng(infoBytes), { x: 0, y: 0, width: paperWidthPt, height: paperHeightPt })
@@ -415,7 +518,7 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
 
     if (sepPins.length > 0 || sepRoutes.length > 0 || mapTitle || mapArea) {
       onProgress?.('Rendering legend…')
-      const legendPages = await renderLegendPagesToPng({ title: mapTitle, area: mapArea, pins: sepPins, routes: sepRoutes, unit: scaleUnit, blankLabels: legendBlankLabels }, paperWidthPt, paperHeightPt)
+      const legendPages = await renderLegendPagesToPng({ title: mapTitle, area: mapArea, pins: sepPins, routes: sepRoutes, unit: scaleUnit, blankLabels: legendBlankLabels, monochrome }, paperWidthPt, paperHeightPt)
       for (const png of legendPages) {
         const img = await pdfDoc.embedPng(png)
         const page = pdfDoc.addPage([paperWidthPt, paperHeightPt])
