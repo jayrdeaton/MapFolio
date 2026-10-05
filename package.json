@@ -1,10 +1,9 @@
 {
   "name": "mapfolio",
   "displayName": "MapFolio",
-  "private": true,
   "version": "1.6.0",
+  "private": true,
   "description": "Interactive mapping app for creating, annotating, and printing custom maps",
-  "license": "ISC",
   "author": "Jay Deaton",
   "type": "module",
   "scripts": {
@@ -12,18 +11,23 @@
     "dev": "nuxt dev",
     "fix": "eslint . --fix",
     "generate": "nuxt generate",
-    "lint": "eslint .",
     "postinstall": "nuxt prepare",
+    "lint": "eslint .",
     "preview": "nuxt preview",
-    "preversion": "npm ci && npm run validate",
-    "validate": "npm run typecheck && npm run lint && npm test && npm run build",
-    "release:major": "npm version major && git push --follow-tags",
-    "release:minor": "npm version minor && git push --follow-tags",
-    "release:patch": "npm version patch && git push --follow-tags",
+    "release": "git push --follow-tags",
+    "release:major": "npm version major && npm run release",
+    "release:minor": "npm version minor && npm run release",
+    "release:patch": "npm version patch && npm run release",
     "test": "NODE_OPTIONS=--no-experimental-webstorage vitest run",
     "test:watch": "NODE_OPTIONS=--no-experimental-webstorage vitest",
     "tunnel": "cloudflared tunnel --url http://localhost:3000",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "verify": "npm run lint && npm test && npm run typecheck && npm run build",
+    "preversion": "npm ci && npm run verify"
+  },
+  "prettier": "@infinitetoken/eslint-config/prettier",
+  "overrides": {
+    "esbuild": "^0.28.1"
   },
   "dependencies": {
     "@lucide/vue": "^1.17.0",
@@ -41,27 +45,18 @@
     "vue-router": "^5.1.0",
     "vuedraggable": "^4.1.0"
   },
-  "overrides": {
-    "esbuild": "^0.28.1"
-  },
   "devDependencies": {
+    "@infinitetoken/eslint-config": "^0.1.4",
     "@nuxt/test-utils": "^4.0.3",
     "@types/leaflet": "^1.9.4",
     "@types/node": "^25.0.0",
-    "@typescript-eslint/parser": "^8.61.0",
     "@vite-pwa/nuxt": "^1.1.1",
     "@vue/test-utils": "^2.4.0",
     "eslint": "^10.4.1",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-prettier": "^5.5.6",
-    "eslint-plugin-simple-import-sort": "^13.0.0",
-    "eslint-plugin-vue": "^10.9.1",
     "happy-dom": "^20.9.0",
     "prettier": "^3.8.4",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.61.0",
     "vitest": "^4.1.8",
-    "vue-eslint-parser": "^10.4.0",
     "vue-tsc": "^3.3.3"
   }
 }
