@@ -4,21 +4,21 @@ An interactive mapping app for creating, annotating, and printing custom maps.
 
 ## Features
 
-- **Pins** — right-click or long-press to drop emoji-labeled markers; drag to reposition; edit name, description, emoji, and color
-- **Routes** — draw paths by clicking waypoints; shows distance; custom color per route
-- **Captions** — geo-anchored text labels; drag to reposition, rotate, or resize from the panel
-- **6 map styles** — Clean, Minimal, Standard, Satellite, Terrain, Dark (CartoDB & Esri)
-- **Marker clustering** — nearby pins group at low zoom; auto-expands at zoom 17+
-- **Location search** — worldwide geocoding with keyboard navigation
-- **Go to my location** — one-click geolocation via browser GPS
-- **Fit to view** — zoom map to frame all visible pins, routes, and captions
-- **Focus mode** — hide the toolbar for a full-screen map view
-- **Undo / Redo** — 20-level history stack (⌘Z / ⌘⇧Z)
-- **Selection** — tap any pin, route, or caption to select it; supports copy / cut / paste
-- **Print to PDF** — set a print area rectangle, choose paper size and orientation, add a legend, compass, and scale bar
-- **Share link** — copy a URL that encodes the entire map; no account needed
-- **Export / Import** — save as JSON or GeoJSON; import to merge with an existing map
-- **Persistence** — all data and settings survive page refresh
+- **Pins**: right-click or long-press to drop emoji-labeled markers; drag to reposition; edit name, description, emoji, and color
+- **Routes**: draw paths by clicking waypoints; shows distance; custom color per route
+- **Captions**: geo-anchored text labels; drag to reposition, rotate, or resize from the panel
+- **6 map styles**: Clean, Minimal, Standard, Satellite, Terrain, Dark (CartoDB & Esri)
+- **Marker clustering**: nearby pins group at low zoom; auto-expands at zoom 17+
+- **Location search**: worldwide geocoding with keyboard navigation
+- **Go to my location**: one-click geolocation via browser GPS
+- **Fit to view**: zoom map to frame all visible pins, routes, and captions
+- **Focus mode**: hide the toolbar for a full-screen map view
+- **Undo / Redo**: 20-level history stack (⌘Z / ⌘⇧Z)
+- **Selection**: tap any pin, route, or caption to select it; supports copy / cut / paste
+- **Print to PDF**: set a print area rectangle, choose paper size and orientation, add a legend, compass, and scale bar
+- **Share link**: copy a URL that encodes the entire map; no account needed
+- **Export / Import**: save as JSON or GeoJSON; import to merge with an existing map
+- **Persistence**: all data and settings survive page refresh
 
 ## Getting Started
 
@@ -89,3 +89,9 @@ npm test
 - [Tailwind CSS v4](https://tailwindcss.com/)
 - [Lucide Vue](https://lucide.dev/)
 - [Vitest](https://vitest.dev/)
+
+## License
+
+The code is released under the MIT License, see [LICENSE](LICENSE).
+
+The app's name, logo, and icons, and the original artwork in this repository, are not covered by that license and remain all rights reserved. If you fork it, please give your version its own name and look.
