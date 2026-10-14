@@ -6,7 +6,7 @@ import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 // menu itself is teleported to <body> so it never gets clipped by the panel's
 // `overflow-y-auto`. Opens via the kebab (anchored under it) or via
 // `openAt(x, y)` for right-click / long-press on the host row.
-// `noTrigger` renders only the teleported menu (no kebab button) — for hosts that open it
+// `noTrigger` renders only the teleported menu (no kebab button) - for hosts that open it
 // purely via `openAt(x, y)`, e.g. a map right-click menu.
 withDefaults(defineProps<{ triggerClass?: string; iconSize?: number; noTrigger?: boolean }>(), {
   triggerClass: 'w-7 h-7',

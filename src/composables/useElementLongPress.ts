@@ -2,7 +2,7 @@ import { onBeforeUnmount, type Ref, watch } from 'vue'
 
 // Fires `onLongPress` after a ~600ms touch hold that hasn't moved more than
 // 10px, then swallows the synthetic click so the element's tap handler doesn't
-// also fire. The touch equivalent of a right-click — mirrors the map-level
+// also fire. The touch equivalent of a right-click - mirrors the map-level
 // long press in `useLongPress.ts`, but bound to an arbitrary DOM element.
 export function useElementLongPress(elRef: Ref<HTMLElement | null>, onLongPress: (x: number, y: number) => void): void {
   let timer: ReturnType<typeof setTimeout> | null = null

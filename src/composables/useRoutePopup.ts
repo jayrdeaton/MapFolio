@@ -44,7 +44,7 @@ export function useRoutePopup({ routes, pins, hiddenPinIds, leafletMap, isDrawin
     routePopup.setLatLng([lat, lng])
     routePopup.setContent(content)
     routePopup.openOn(leafletMap.value!)
-    // Popup DOM is synchronously ready after openOn — bind handlers directly
+    // Popup DOM is synchronously ready after openOn - bind handlers directly
     bindButtons()
   }
 

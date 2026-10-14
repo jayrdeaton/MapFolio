@@ -167,7 +167,7 @@ export function useMarkerCluster({ isPlacingPin, isPlacingCaption, isDrawingRout
         const ne = bnd?._northEast
         if (!sw || !ne) return
 
-        // All markers share the exact same location — zoom would do nothing useful.
+        // All markers share the exact same location - zoom would do nothing useful.
         if (sw.lat === ne.lat && sw.lng === ne.lng) {
           ;(this as unknown as { spiderfy: () => void }).spiderfy()
           return
@@ -191,7 +191,7 @@ export function useMarkerCluster({ isPlacingPin, isPlacingCaption, isDrawingRout
         }
 
         if (boundsZoom > zoom) {
-          // Cluster hierarchy bottomed out — jump directly to disableClusteringAtZoom.
+          // Cluster hierarchy bottomed out - jump directly to disableClusteringAtZoom.
           mapObj.setView(this._latlng, this._group._maxZoom + 1)
         } else if (boundsZoom <= mapZoom) {
           mapObj.setView(this._latlng, mapZoom + 1)
@@ -202,11 +202,11 @@ export function useMarkerCluster({ isPlacingPin, isPlacingCaption, isDrawingRout
     }
 
     // Patch _animationSpiderfy: two dual-instance problems fixed together:
-    //   1. Spider leg polylines are created with window.L.Polyline whose _clipPoints crashes —
+    //   1. Spider leg polylines are created with window.L.Polyline whose _clipPoints crashes -
     //      swap in ESM L.Polyline so legs go through the correct rendering path.
     //   2. The cluster's this._latlng is a window.L.LatLng. ESM L.Polyline._projectLatlngs
     //      checks `latlngs[0] instanceof LatLng` (ESM), which fails for window.L.LatLng and
-    //      leaves the polyline with no bounds, crashing Bounds.intersects — convert temporarily.
+    //      leaves the polyline with no bounds, crashing Bounds.intersects - convert temporarily.
     if (mcProto && typeof mcProto._animationSpiderfy === 'function' && !mcProto._animationSpiderfyPatched) {
       mcProto._animationSpiderfyPatched = true
       const _origAnimSpiderfy = mcProto._animationSpiderfy
@@ -237,7 +237,7 @@ export function useMarkerCluster({ isPlacingPin, isPlacingCaption, isDrawingRout
     //
     // IMPORTANT: Leaflet 1.9.4 uses `Bounds.prototype = {...}` (full replacement), so
     // Bounds.prototype.constructor === Object (not Bounds). Using .constructor.prototype would
-    // patch Object.prototype instead — poisoning every object. Use Object.getPrototypeOf instead.
+    // patch Object.prototype instead - poisoning every object. Use Object.getPrototypeOf instead.
     const boundsInstance = L.bounds([0, 0], [1, 1])
     const boundsProto = Object.getPrototypeOf(boundsInstance) as {
       intersects?: (bounds: unknown) => boolean
@@ -415,7 +415,7 @@ export function useMarkerCluster({ isPlacingPin, isPlacingCaption, isDrawingRout
   // (map container clientHeight/Width still 0), getBounds().pad() divides by zero and
   // produces NaN bounds. Every subsequent addLayer() call's contains() check then
   // returns false, so markers are stored in the cluster tree but never added to the
-  // featureGroup — and are therefore never positioned on screen.
+  // featureGroup - and are therefore never positioned on screen.
   //
   // Fix: recompute _currentShownBounds from the live viewport, do a full cluster
   // rebuild (clearLayers → addLayers). addLayers' final _recursivelyAddChildrenToMap

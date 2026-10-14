@@ -306,7 +306,7 @@ function onPointerMove(e: PointerEvent) {
 
   const SNAP_PX = 28
   // Only apply position-based snaps once the pointer has escaped the snap radius from where the
-  // drag started — prevents a snapped waypoint from immediately re-snapping when you begin to drag
+  // drag started - prevents a snapped waypoint from immediately re-snapping when you begin to drag
   const escaped = Math.hypot(pixel[0] - dragState.value.startPixel[0], pixel[1] - dragState.value.startPixel[1]) > SNAP_PX
 
   if (escaped && props.snapEnabled && dragState.value.mode === 'waypoint') {
@@ -355,7 +355,7 @@ function onPointerUp(e: PointerEvent) {
       pendingTapWaypoint = { routeId, pointIndex }
       emit('move-point', routeId, pointIndex, latlng.lat, latlng.lng, dragState.value.snappedPinId)
     } else {
-      // Tap — emit directly and suppress the subsequent native click
+      // Tap - emit directly and suppress the subsequent native click
       const { routeId, pointIndex } = dragState.value
       if (props.drawingRouteId !== routeId) {
         pendingTapWaypoint = { routeId, pointIndex }
@@ -371,7 +371,7 @@ function onPointerUp(e: PointerEvent) {
       })
       emit('move-route', dragState.value.routeId, points)
     } else {
-      // Tap on line — select route and suppress native click
+      // Tap on line - select route and suppress native click
       pendingTapLine = dragState.value.routeId
       emit('select-route', dragState.value.routeId, isAdditiveEvent(e))
     }
@@ -457,8 +457,8 @@ onUnmounted(() => {
 
       <!-- Selection ring filters: dilate outer, dilate inner, subtract to get a true ring band
            (no filled blob), then flood cyan. Gap between shape and ring matches CSS outline-offset.
-           mf-wp-sel: route-level (dim, 60% opacity) — all waypoints of a selected route.
-           mf-wp-sel-active: per-waypoint (full opacity) — the specifically selected waypoint. -->
+           mf-wp-sel: route-level (dim, 60% opacity): all waypoints of a selected route.
+           mf-wp-sel-active: per-waypoint (full opacity): the specifically selected waypoint. -->
       <defs>
         <filter id="mf-wp-sel" x="-60%" y="-60%" width="220%" height="220%">
           <feMorphology in="SourceAlpha" operator="dilate" radius="4" result="outer" />
@@ -603,7 +603,7 @@ onUnmounted(() => {
           @contextmenu.prevent.stop="onWaypointContextMenu($event, route.id, i)"
         >
           <template v-if="drawingRouteId === route.id || wpStyle(route) !== 'none' || selectedRouteIds?.has(route.id) || selectedWaypointKey?.routeId === route.id || route.points[i]?.pinId !== undefined || wpStyle(route) === 'none'">
-            <!-- Hit area — for locked waypoints (pinId set), extend to cover the full pin marker
+            <!-- Hit area - for locked waypoints (pinId set), extend to cover the full pin marker
                  width (iconSize [40,*] = ±20 px from center). The default hitR for smaller sizes
                  can fall short of that, leaving a gap where caption or map background captures
                  the click instead of the route. 28 px clears the 20 px half-width with margin. -->
@@ -612,7 +612,7 @@ onUnmounted(() => {
             <!-- Active drawing anchor ring -->
             <circle v-if="drawingRouteId === route.id && drawingAnchorIndex === i" :cx="x" :cy="y" :r="WP_SIZE[route.waypointSize ?? 'm'].r + 5" fill="none" :stroke="route.color" stroke-width="2" stroke-dasharray="4 2" style="pointer-events: none" />
 
-            <!-- Circle — hidden when a pin is linked (pin replaces it visually) -->
+            <!-- Circle - hidden when a pin is linked (pin replaces it visually) -->
             <circle v-if="(drawingRouteId === route.id || wpStyle(route) === 'circle') && route.points[i]?.pinId === undefined" :cx="x" :cy="y" :r="WP_SIZE[route.waypointSize ?? 'm'].r" :fill="waypointColor(route, i)" stroke="white" stroke-width="2" :filter="selectedWaypointKey?.routeId === route.id && selectedWaypointKey?.pointIndex === i ? 'url(#mf-wp-sel-active)' : selectedRouteIds?.has(route.id) && drawingRouteId !== route.id ? 'url(#mf-wp-sel)' : undefined" />
 
             <!-- Square -->
@@ -625,7 +625,7 @@ onUnmounted(() => {
                  Active selected waypoint: larger cyan dotted ring. Others: small dashed route-color dot. -->
             <circle v-else-if="(selectedRouteIds?.has(route.id) || selectedWaypointKey?.routeId === route.id) && wpStyle(route) === 'none' && route.points[i]?.pinId === undefined && drawingRouteId !== route.id" :cx="x" :cy="y" :r="selectedWaypointKey?.routeId === route.id && selectedWaypointKey?.pointIndex === i ? 8 : 5" fill="none" :stroke="selectedWaypointKey?.routeId === route.id && selectedWaypointKey?.pointIndex === i ? '#0d9488' : route.color" :stroke-width="selectedWaypointKey?.routeId === route.id && selectedWaypointKey?.pointIndex === i ? 2 : 1.5" stroke-dasharray="3 2" :stroke-opacity="selectedWaypointKey?.routeId === route.id && selectedWaypointKey?.pointIndex === i ? 1 : 0.85" style="pointer-events: none" />
 
-            <!-- Number overlay — hidden when a pin is linked -->
+            <!-- Number overlay - hidden when a pin is linked -->
             <text v-if="(drawingRouteId === route.id || wpShowNumber(route)) && route.points[i]?.pinId === undefined" :x="x" :y="y" text-anchor="middle" dominant-baseline="central" :font-size="WP_SIZE[route.waypointSize ?? 'm'].fontSize" fill="white" font-weight="bold" style="user-select: none; pointer-events: none">{{ i + 1 }}</text>
           </template>
         </g>

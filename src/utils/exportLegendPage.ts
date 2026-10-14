@@ -18,10 +18,10 @@ interface LegendPageContent {
  * Render the legend (title, subtitle, pins, routes) as one or more standalone PDF
  * pages, flowing items into columns and spilling onto extra pages when they don't
  * fit. Used when the user chooses "legend on its own page". Compass and scale are
- * NOT drawn here — they stay on the map. Returns one PNG (page) per canvas.
+ * NOT drawn here - they stay on the map. Returns one PNG (page) per canvas.
  */
 export async function renderLegendPagesToPng(c: LegendPageContent, paperWidthPt: number, paperHeightPt: number): Promise<Uint8Array[]> {
-  const K = 4 // px per point — ~288 DPI for crisp text; max paper ~1224pt → 4896px (< MAX_OUTPUT_PX)
+  const K = 4 // px per point - ~288 DPI for crisp text; max paper ~1224pt → 4896px (< MAX_OUTPUT_PX)
   const pt = (n: number) => n * K
   const W = Math.round(paperWidthPt * K)
   const H = Math.round(paperHeightPt * K)

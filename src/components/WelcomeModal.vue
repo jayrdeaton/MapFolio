@@ -28,7 +28,7 @@ const emit = defineEmits<{ close: [] }>()
             <p class="text-sm text-gray-500 dark:text-zinc-400 leading-relaxed">Drop pins, routes, and captions anywhere in the world. Add style with emojis, colors, and labels. Export a print-ready PDF or copy a shareable link.</p>
           </div>
 
-          <!-- Feature sections — 2-col grid on wider screens -->
+          <!-- Feature sections - 2-col grid on wider screens -->
           <div class="grid sm:grid-cols-2 gap-3.5">
             <div class="flex gap-3">
               <div class="w-8 h-8 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 shadow-sm flex items-center justify-center shrink-0 mt-0.5">

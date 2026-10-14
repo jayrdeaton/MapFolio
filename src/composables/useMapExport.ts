@@ -25,7 +25,7 @@ export interface ExportOptions {
   legendPins?: boolean // include pin list in legend
   legendRoutes?: boolean // include route list in legend
   legendSeparatePage?: boolean // render pin/route keys on their own page(s); on-map box keeps title/subtitle/compass/scale
-  legendBlankLabels?: boolean // hide pin/route names — exploration mode so viewers can fill them in
+  legendBlankLabels?: boolean // hide pin/route names - exploration mode so viewers can fill them in
   legendScale?: number // multiplier for the on-map legend box size (default 1)
   legendX?: number | null // explicit legend position: fraction of paper width for left edge (null = auto-corner)
   legendY?: number | null // explicit legend position: fraction of paper height for top edge (null = auto-corner)
@@ -69,7 +69,7 @@ function subCornersForCell(corners: [number, number][], ci: number, rj: number, 
   return [cnw, cne, cse, csw]
 }
 
-// Estimates the native half-dimensions (stitch-pixels) of a print area for hi-res mode —
+// Estimates the native half-dimensions (stitch-pixels) of a print area for hi-res mode -
 // same zoom selection logic as renderPageToPng but without allocating any canvas.
 function estimateHiresNativeSize(corners: [number, number][], angle: number, config: MapStyleConfig): { halfW: number; halfH: number } {
   const lats = corners.map((c) => c[0])
@@ -106,7 +106,7 @@ function estimateHiresNativeSize(corners: [number, number][], angle: number, con
 
 // For singlePageGrid cells: gridCols * 612 / paperWidthPt. Multiplied by the actual cell
 // canvas width (paperWidthPx) inside renderPageToPng to get the overlay scaleW.
-// Undefined for 1×1 or standard-grid (separate-page) exports — no scaling needed.
+// Undefined for 1×1 or standard-grid (separate-page) exports - no scaling needed.
 interface RenderPageOptions {
   corners: [number, number][]
   angle: number
@@ -164,7 +164,7 @@ async function renderPageToPng(opts: RenderPageOptions): Promise<Uint8Array> {
     zoom = z
   }
 
-  // No stitch canvas size guard needed — tiles are drawn directly to the (size-capped)
+  // No stitch canvas size guard needed - tiles are drawn directly to the (size-capped)
   // output canvas, so there is no intermediate giant canvas to overflow.
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
   // Safari on macOS enforces a hard 268,435,456 px (width × height) canvas area limit.
@@ -178,7 +178,7 @@ async function renderPageToPng(opts: RenderPageOptions): Promise<Uint8Array> {
   const gridW = tileXMax - tileXMin + 1
   const gridH = tileYMax - tileYMin + 1
 
-  // --- 4. Stitch-space geometry (pure math — no intermediate canvas).
+  // --- 4. Stitch-space geometry (pure math - no intermediate canvas).
   //    drawSize is 512 for @2x retina tiles, 256 for standard 1x tiles.
   const drawSize = config.retina ? 512 : TILE_SIZE
   const centerLat = (minLat + maxLat) / 2,
@@ -204,14 +204,14 @@ async function renderPageToPng(opts: RenderPageOptions): Promise<Uint8Array> {
   }
 
   // --- 5. Build the output canvas ---
-  // Hi-res: capScale = 1 — native tile pixels, no paper-size or DPI targeting.
+  // Hi-res: capScale = 1 - native tile pixels, no paper-size or DPI targeting.
   //   The file is as detailed as the tile source provides; the printer (or viewer) decides
   //   how to scale it. Only the browser's canvas memory limit constrains the output.
   // Standard/draft: scale to a fixed longest-side cap for speed.
   const outputCap = isIOS ? MAX_OUTPUT_PX_FAST : exportQuality === 'draft' ? MAX_OUTPUT_PX_FAST : MAX_OUTPUT_PX
   let capScale = exportQuality === 'hires' ? 1 : Math.min(1, outputCap / Math.max(halfW * 2, halfH * 2))
 
-  // Browser canvas area limits — the only constraint on hi-res output.
+  // Browser canvas area limits - the only constraint on hi-res output.
   // iOS: ~16 MP hard limit. Safari macOS: 268 MP hard limit. Chrome desktop: ~500 MP practical safe limit.
   const maxCanvasArea = isIOS ? 16_000_000 : isSafari ? 268_000_000 : 500_000_000
   const projectedArea = halfW * 2 * capScale * (halfH * 2 * capScale)
@@ -264,7 +264,7 @@ async function renderPageToPng(opts: RenderPageOptions): Promise<Uint8Array> {
   // Levels adjustment on the output canvas. Enhance Contrast and Black & White are
   // independent axes: Enhance Contrast applies the black-point stretch (CartoDB's light
   // styles pack every feature into a ~40-level luma band near white, so without it the
-  // result is flat regardless of color); Black & White collapses to grayscale first —
+  // result is flat regardless of color); Black & White collapses to grayscale first -
   // stretching R/G/B independently would otherwise leave a faint, inconsistent color cast.
   // Combining both is what gives a genuinely punchy black-and-white result.
   if ((enhanceContrast || monochrome) && config.printBlackPoint !== undefined) {
@@ -327,7 +327,7 @@ async function renderPageToPng(opts: RenderPageOptions): Promise<Uint8Array> {
 
   // Color emoji glyphs ignore fillStyle, so they survive the pin/route/caption hex→grayscale
   // recolor done up front in exportMapToPdf. Catch them with a final full-canvas desaturation
-  // pass — ctx.filter is not reliably applied to OffscreenCanvas text in a Worker context.
+  // pass - ctx.filter is not reliably applied to OffscreenCanvas text in a Worker context.
   if (monochrome) desaturateCanvas(outCtx, paperWidthPx, paperHeightPx)
 
   // --- 8. Return PNG bytes ---
@@ -338,7 +338,7 @@ async function renderPageToPng(opts: RenderPageOptions): Promise<Uint8Array> {
 
 export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
   const config = MAP_STYLE_CONFIGS[opts.mapStyle]
-  // Black & White only applies to styles with a printBlackPoint — mirrors the v-if that
+  // Black & White only applies to styles with a printBlackPoint - mirrors the v-if that
   // hides the toggle in PrintPanel.vue, so a monochrome setting persisted from a different
   // style never silently desaturates an export the UI currently gives no way to control.
   const monochrome = (opts.monochrome ?? false) && config.printBlackPoint !== undefined
@@ -356,7 +356,7 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
 
   const { corners, angle, mapTitle, mapArea = '', pins, hiddenPinIds, routes, hiddenRouteIds, captions, hiddenCaptionIds, legend, legendPins: legendPinsEnabled = true, legendRoutes: legendRoutesEnabled = true, legendSeparatePage = false, legendBlankLabels = false, legendScale = 1, legendX = null, legendY = null, markerScale = 1, includeCompass, includeScale, scaleUnit, enhanceContrast, exportQuality = 'standard', paperWidthPt, paperHeightPt, onProgress, signal } = opts
   const infoCorner = (opts.overlayCorner ?? 2) as OverlayCorner
-  // gridCols/gridRows are mutable — hi-res may auto-increase them to keep each cell's canvas
+  // gridCols/gridRows are mutable - hi-res may auto-increase them to keep each cell's canvas
   // at native resolution (capScale = 1) without hitting browser memory limits.
   let gridCols = opts.gridCols ?? 1
   let gridRows = opts.gridRows ?? 1
@@ -422,11 +422,11 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
       const cellScale = !singlePageGrid && legend && includeScale && isInfoCell
 
       signal?.throwIfAborted()
-      const prefix = singlePageGrid ? `Section ${pageNum} of ${totalPages} — ` : totalPages > 1 ? `Page ${pageNum} of ${totalPages} — ` : ''
+      const prefix = singlePageGrid ? `Section ${pageNum} of ${totalPages}: ` : totalPages > 1 ? `Page ${pageNum} of ${totalPages}: ` : ''
       // captions still use overlaySFactor so their text scales correctly in the assembled page.
       const overlaySFactor = singlePageGrid ? (gridCols * 612) / paperWidthPt : undefined
       const cellHasKeys = cellIncludePins || cellIncludeRoutes
-      // For singlePageGrid, the full-page overlay draws the title/legend after stitching — suppress
+      // For singlePageGrid, the full-page overlay draws the title/legend after stitching - suppress
       // it in cell renders to avoid duplicate headers. For multi-page grids, only the info cell gets it.
       const cellTitle = singlePageGrid || !isInfoCell ? '' : mapTitle
       const cellArea = singlePageGrid || !isInfoCell ? '' : mapArea
@@ -483,7 +483,7 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
   }
 
   // For singlePageGrid: composite the info box on a full-page overlay canvas after all cells are
-  // stitched. legendX/legendY are fractions of the full paper — using the full canvas here means
+  // stitched. legendX/legendY are fractions of the full paper - using the full canvas here means
   // the coordinates map correctly regardless of grid size or which cell the box would have landed on.
   if (singlePageGrid && legend) {
     onProgress?.('Rendering overlay…')
@@ -498,7 +498,7 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
     stitchedPage!.drawImage(await pdfDoc.embedPng(infoBytes), { x: 0, y: 0, width: paperWidthPt, height: paperHeightPt })
   }
 
-  // Dedicated legend page(s) — named pins/routes within the print area's bounding box.
+  // Dedicated legend page(s) - named pins/routes within the print area's bounding box.
   if (legend && legendSeparatePage) {
     const lats = corners.map((c) => c[0])
     const lngs = corners.map((c) => c[1])
@@ -508,7 +508,7 @@ export async function exportMapToPdf(opts: ExportOptions): Promise<Uint8Array> {
       maxLng = Math.max(...lngs)
     const inArea = (lat: number, lng: number) => lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng
 
-    // Sequence numbers must match the map — derive them from the full ordered pin list.
+    // Sequence numbers must match the map - derive them from the full ordered pin list.
     const seq = new Map<number, number>()
     let n = 0
     for (const p of pins) if (p.showNumber) seq.set(p.id, ++n)

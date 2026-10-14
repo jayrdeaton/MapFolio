@@ -139,7 +139,7 @@ export function drawRoutePreviewInLegend(ctx: CanvasRenderingContext2D, route: R
   ctx.restore()
 }
 
-/** What the info box will contain — enough to compute its footprint without drawing. */
+/** What the info box will contain - enough to compute its footprint without drawing. */
 export interface LegendBoxContent {
   hasTitle: boolean
   hasArea: boolean
@@ -154,7 +154,7 @@ export interface LegendBoxContent {
 /**
  * Footprint of the info box as fractions of paper WIDTH. Every dimension in
  * `drawInfoBox` scales with `S = paperW/612`, so the box is a fixed fraction of
- * the paper regardless of size — letting the on-screen print-area preview size a
+ * the paper regardless of size - letting the on-screen print-area preview size a
  * matching box. Mirrors the `S = 1` constants in `drawInfoBox`; keep them in sync.
  * Returns null when nothing would be drawn.
  */
@@ -258,7 +258,7 @@ export function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: 
   const hasHeader = hasTitle || hasArea || includeCompass
   if (!hasHeader && !hasLegend && !includeScale) return
 
-  // scaleW is the full assembled paper width — equals paperW for single-page exports but is
+  // scaleW is the full assembled paper width - equals paperW for single-page exports but is
   // larger for singlePageGrid cells so the legend/overlays scale to the assembled page size.
   // Cap so legendW never overflows the cell canvas.
   let S = (scaleW / 612) * legendScale
@@ -285,7 +285,7 @@ export function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: 
   const previewW = Math.round(44 * S)
   const previewH = Math.round(16 * S)
 
-  // Compass — small, inline with title row
+  // Compass - small, inline with title row
   const compCircleR = Math.round(10 * S)
   const compDiam = compCircleR * 2
   const compTipR = compCircleR
@@ -577,7 +577,7 @@ export function drawInfoBox(ctx: CanvasRenderingContext2D, title: string, area: 
     }
   }
 
-  // Scale footer — compact, full width
+  // Scale footer - compact, full width
   if (includeScale) {
     const [nw, ne] = corners as [[number, number], [number, number]]
     const widthKm = haversineKm(nw[0], nw[1], ne[0], ne[1])

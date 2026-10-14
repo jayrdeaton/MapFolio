@@ -5,7 +5,7 @@ export const EDGE_HIT = 14
 export const ROTATE_OFFSET = 28
 export const CORNER_CURSORS = ['nw-resize', 'ne-resize', 'se-resize', 'sw-resize'] as const
 
-// Custom rotation cursor — a circular arrow (dark glyph + white halo so it reads on any
+// Custom rotation cursor - a circular arrow (dark glyph + white halo so it reads on any
 // tile). CSS has no native "rotate" cursor; data-URI SVG is the only way. Hotspot centered.
 export const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">' + '<g stroke="white" stroke-width="4"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></g>' + '<g stroke="#1f2937" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></g>' + '</svg>')}") 12 12, grab`
 

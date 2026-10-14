@@ -17,12 +17,12 @@ export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w
   ctx.closePath()
 }
 
-// Inner dot diameter (px) per size — matches the on-map `.pin-dot--*` CSS rules.
+// Inner dot diameter (px) per size - matches the on-map `.pin-dot--*` CSS rules.
 const DOT_CONTENT_PX: Record<PinDotSize, number> = { xs: 8, s: 12, m: 17, l: 22, xl: 28 }
 // Number is only legible (and shown) on m/l/xl dots, mirroring the map marker.
 const DOT_NUM_PX: Partial<Record<PinDotSize, number>> = { m: 8, l: 10, xl: 13 }
 
-// Bubble emoji size per dot-size step — matches BUBBLE_EMOJI_SIZE in PinMarker/PinPreview.
+// Bubble emoji size per dot-size step - matches BUBBLE_EMOJI_SIZE in PinMarker/PinPreview.
 const BUBBLE_EMOJI_PX: Record<PinDotSize, number> = { xs: 14, s: 16, m: 20, l: 24, xl: 30 }
 const BUBBLE_PAD_V = 2 // equal padding all around
 const BUBBLE_PAD_H = 2
@@ -69,7 +69,7 @@ export function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinId
 
       const isClear = pin.color === 'transparent'
       if (!isClear) {
-        // Colored bubble + matching tip — drawn as one path so the shadow
+        // Colored bubble + matching tip - drawn as one path so the shadow
         // applies to the combined silhouette (no seam at the chevron junction).
         ctx.save()
         ctx.shadowColor = 'rgba(0,0,0,0.25)'
@@ -83,7 +83,7 @@ export function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinId
         ctx.quadraticCurveTo(bLeft + bubbleW, bubbleTop, bLeft + bubbleW, bubbleTop + br)
         ctx.lineTo(bLeft + bubbleW, bubbleBottom - br)
         ctx.quadraticCurveTo(bLeft + bubbleW, bubbleBottom, bLeft + bubbleW - br, bubbleBottom)
-        // Go directly from each rounded-corner endpoint to the tip — no horizontal shelf
+        // Go directly from each rounded-corner endpoint to the tip - no horizontal shelf
         // segments, which appeared as visible seams on the left and right sides in the PDF.
         ctx.lineTo(bx, oy)
         ctx.lineTo(bLeft + br, bubbleBottom)
@@ -142,7 +142,7 @@ export function drawPins(ctx: CanvasRenderingContext2D, pins: Pin[], hiddenPinId
       }
       ctx.restore()
 
-      // Number inside dot — only on m/l/xl.
+      // Number inside dot - only on m/l/xl.
       const pinNum = pinSeqMap.get(pin.id)
       const numPx = DOT_NUM_PX[size]
       if (pinNum !== undefined && numPx !== undefined) {

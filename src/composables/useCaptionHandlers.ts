@@ -44,7 +44,7 @@ export function useCaptionHandlers({ captions, editingCaption, editingRouteRef, 
   }
 
   // The caption the on-map rotate handle tracks: the one just dropped in placing mode, the one
-  // being edited, or — so single-selection gives full control without opening the sheet — the lone
+  // being edited, or - so single-selection gives full control without opening the sheet - the lone
   // selected caption (no other selection).
   const activeCaptionId = computed<number | null>(() => {
     if (isPlacingCaption.value) return lastPlacedCaptionId.value
@@ -121,7 +121,7 @@ export function useCaptionHandlers({ captions, editingCaption, editingRouteRef, 
     openEditCaption(caption)
   }
 
-  // Drops a caption at the click point during placing mode — like pin placement, it stays in the
+  // Drops a caption at the click point during placing mode - like pin placement, it stays in the
   // mode for the next drop and does NOT open the editor. Each drop gets empty text (shown on the
   // map as 'Caption' placeholder); rotate/retitle afterwards via the on-map handle or the edit sheet.
   function placeCaptionDrop(lat: number, lng: number) {
@@ -137,7 +137,7 @@ export function useCaptionHandlers({ captions, editingCaption, editingRouteRef, 
     history.push('add caption')
     captions.value = [...captions.value, caption]
     placingCaptionCount.value++
-    // Make it the active caption so its rotate handle appears immediately — no selection needed,
+    // Make it the active caption so its rotate handle appears immediately - no selection needed,
     // which would otherwise close placing mode and drop the angle-snap toggle.
     lastPlacedCaptionId.value = caption.id
   }
@@ -151,7 +151,7 @@ export function useCaptionHandlers({ captions, editingCaption, editingRouteRef, 
   }
 
   // The pill's size stepper sets the sticky default (for the next drop) AND live-resizes the
-  // active just-placed caption, so the change is visible immediately — mirrors live rotation.
+  // active just-placed caption, so the change is visible immediately - mirrors live rotation.
   function onPlacingSizeChange(size: CaptionSize) {
     stickyCaptionSize.value = size
     const id = lastPlacedCaptionId.value

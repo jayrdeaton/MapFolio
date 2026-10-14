@@ -9,7 +9,7 @@
 //
 // On reload `last` resets to 0, but the first uid() returns Date.now(), which
 // is greater than any previously persisted Date.now()-based id (time only moves
-// forward) — so freshly generated ids never collide with stored ones.
+// forward) - so freshly generated ids never collide with stored ones.
 let last = 0
 
 export function uid(): number {

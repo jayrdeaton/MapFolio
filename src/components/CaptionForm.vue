@@ -43,7 +43,7 @@ function toggleBackground() {
 
 function save() {
   if (!props.editingCaption) return
-  // rotation is omitted here — it's edited live on the map via the rotate handle, and the
+  // rotation is omitted here - it's edited live on the map via the rotate handle, and the
   // parent re-applies the caption's current rotation when saving.
   const updated: Caption = {
     ...props.editingCaption,

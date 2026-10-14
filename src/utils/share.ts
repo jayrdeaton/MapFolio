@@ -5,7 +5,7 @@ import { uid } from './id'
 // Practical ceiling for a share-link URL. Modern browsers tolerate far more, but
 // many chat apps / proxies / link crawlers silently truncate well below this; this
 // keeps a shared link reliable everywhere. Past it, the export dialog steers the
-// user to a file download instead. Single knob — tune freely.
+// user to a file download instead. Single knob - tune freely.
 export const MAX_SHARE_URL_LENGTH = 8000
 
 export interface ShareState {

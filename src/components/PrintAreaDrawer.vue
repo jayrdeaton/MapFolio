@@ -39,13 +39,13 @@ export interface PrintAreaInfo {
 const emit = defineEmits<{
   'bounds-set': [info: PrintAreaInfo]
   select: [shiftHeld: boolean]
-  // Viewport coords of the right-click — the host opens a Leaflet popup there. The print area
+  // Viewport coords of the right-click - the host opens a Leaflet popup there. The print area
   // now lives in a pane below the popup pane, so the popup paints above it.
   context: [clientX: number, clientY: number]
   // Legend direct-manipulation: position (fractions of paper w/h) and scale multiplier.
   'legend-move': [xFrac: number, yFrac: number]
   'legend-scale': [scale: number]
-  // Drag ended with the legend snapped to a print-area corner — store that corner instead of fracs.
+  // Drag ended with the legend snapped to a print-area corner - store that corner instead of fracs.
   'legend-corner': [corner: 0 | 1 | 2 | 3]
   'legend-reset': []
   // Fired at the start of any user drag so the host can push an undo snapshot before state changes.
@@ -79,7 +79,7 @@ let edgeEls: HTMLDivElement[] = []
 let rotateEl: HTMLDivElement | null = null
 let legendBoxEl: HTMLDivElement | null = null
 let legendResizeEl: HTMLDivElement | null = null
-// Which corner of the legend box the resize handle currently sits at — tracks the caddy-corner
+// Which corner of the legend box the resize handle currently sits at - tracks the caddy-corner
 // from whichever print-area corner the legend is snapped to. 'br' when floating freely.
 let legendResizeCorner: 'br' | 'bl' | 'tl' | 'tr' = 'br'
 
@@ -161,7 +161,7 @@ function buildHandles() {
   )
   rectEl.addEventListener('contextmenu', onContextMenu, { passive: false })
   // The pointerdown above stops Leaflet's drag, but the native click/dblclick that follow are
-  // separate events that still bubble to the map container — firing map.click (handleMapClick),
+  // separate events that still bubble to the map container - firing map.click (handleMapClick),
   // which would deselect the area right after a move or re-select. Swallow them here.
   rectEl.addEventListener('click', stopEventPropagation)
   rectEl.addEventListener('dblclick', stopEventPropagation)
@@ -173,7 +173,7 @@ function buildHandles() {
     { passive: true }
   )
 
-  // Outline hit-strips — interactive only while the area is locked (opaque), where the
+  // Outline hit-strips - interactive only while the area is locked (opaque), where the
   // body passes pointer events through to the map. They keep left/right click working on
   // the border. Children of rectEl so they inherit its position, size, and rotation.
   const EDGE_STYLES = [`left:${-EDGE_HIT / 2}px;right:${-EDGE_HIT / 2}px;top:${-EDGE_HIT / 2}px;height:${EDGE_HIT}px;`, `left:${-EDGE_HIT / 2}px;right:${-EDGE_HIT / 2}px;bottom:${-EDGE_HIT / 2}px;height:${EDGE_HIT}px;`, `top:${-EDGE_HIT / 2}px;bottom:${-EDGE_HIT / 2}px;left:${-EDGE_HIT / 2}px;width:${EDGE_HIT}px;`, `top:${-EDGE_HIT / 2}px;bottom:${-EDGE_HIT / 2}px;right:${-EDGE_HIT / 2}px;width:${EDGE_HIT}px;`]
@@ -192,7 +192,7 @@ function buildHandles() {
     edgeEls.push(el)
   }
 
-  // Legend footprint preview — sized to the PDF info box, placed in the overlay corner.
+  // Legend footprint preview - sized to the PDF info box, placed in the overlay corner.
   // A child of rectEl so it inherits the print area's rotation, position, and scale.
   // Draggable to reposition; resize handle in bottom-right corner to scale.
   legendBoxEl = document.createElement('div')
@@ -299,7 +299,7 @@ function updateLegendBox() {
     legendBoxEl.style.bottom = ''
   } else {
     // Corner mode (pinned or auto): anchor the legend to the corner via right/bottom CSS so the
-    // box grows inward when its height changes — no drift regardless of content or orientation.
+    // box grows inward when its height changes - no drift regardless of content or orientation.
     const m = box.mFrac * rectW
     const isRight = c === 1 || c === 2
     const isBottom = c === 2 || c === 3
@@ -324,7 +324,7 @@ function updateLegendBox() {
       const m = box.mFrac * rectW
       let snappedCorner: 0 | 1 | 2 | 3 | null = null
       if (lx === null || lx === undefined || ly === null || ly === undefined) {
-        // Corner mode — c is the active corner.
+        // Corner mode - c is the active corner.
         snappedCorner = c as 0 | 1 | 2 | 3
       } else {
         const curL = lx * rectW,
@@ -430,7 +430,7 @@ function onLegendBoxDown(startEvent: PointerEvent) {
       const localDy = -dxS * sinA + dyS * cosA
       let newLeft = Math.max(0, Math.min(rectW - boxW, startLeft + localDx))
       let newTop = Math.max(0, Math.min(rectH - boxH, startTop + localDy))
-      // Snap to corners — same inversion as rotation snap (Shift toggles snap while dragging).
+      // Snap to corners - same inversion as rotation snap (Shift toggles snap while dragging).
       const shiftHeld = ev.pointerType !== 'touch' && ev.shiftKey
       if (props.snapEnabled !== shiftHeld) {
         for (const sc of snapCorners) {
@@ -450,7 +450,7 @@ function onLegendBoxDown(startEvent: PointerEvent) {
       const finalLeft = parseFloat(legendBoxEl!.style.left)
       const finalTop = parseFloat(legendBoxEl!.style.top)
       // If the final position is exactly at a corner snap, store the corner index rather than
-      // explicit fractions — this keeps the legend anchored to the corner when content changes.
+      // explicit fractions - this keeps the legend anchored to the corner when content changes.
       const snappedIdx = snapCorners.findIndex((sc) => Math.abs(finalLeft - sc.left) < 2 && Math.abs(finalTop - sc.top) < 2)
       if (snappedIdx !== -1) {
         emit('legend-corner', snappedIdx as 0 | 1 | 2 | 3)
@@ -478,13 +478,13 @@ function onLegendResizeDown(startEvent: PointerEvent) {
   const hwRatio = startBoxH / startBoxW
   const mStart = box.mFrac * rectW
 
-  // Capture the handle corner now — reactive updates to legendResizeCorner (triggered by
+  // Capture the handle corner now - reactive updates to legendResizeCorner (triggered by
   // updateLegendBox on each emit) must not flip the anchor mid-drag.
   const capturedCorner = legendResizeCorner
 
   // Detect whether the legend is snapped to a print-area corner at drag start.
   // For snapped resizes, we re-derive the exact corner position at each new scale so that
-  // snap detection in updateLegendBox stays valid — preventing legendResizeCorner from flipping.
+  // snap detection in updateLegendBox stays valid - preventing legendResizeCorner from flipping.
   let snappedAtStart: 0 | 1 | 2 | 3 | null = null
   const lx0 = props.legendX,
     ly0 = props.legendY
@@ -574,7 +574,7 @@ function onLegendResizeDown(startEvent: PointerEvent) {
     () => {
       setDragCursor(null)
       // If the resize started while the legend was snapped to a corner, emit legend-corner so the
-      // stored state is a corner index (not explicit fracs) — keeps the corner flush after future
+      // stored state is a corner index (not explicit fracs) - keeps the corner flush after future
       // content changes.
       if (snappedAtStart !== null) emit('legend-corner', snappedAtStart)
     }
@@ -699,7 +699,7 @@ function updateHandlePositions() {
     })
     if (rotateEl) rotateEl.style.display = 'none'
   } else {
-    // Unlocked (adjusting): the body is interactive — drag it to move, click to (re)select,
+    // Unlocked (adjusting): the body is interactive - drag it to move, click to (re)select,
     // resize via the corner handles, rotate via the rotate handle. Hold Alt to pass clicks
     // through to pins/routes underneath (setHandlePassthrough). The outline strips are a
     // locked-mode affordance only, so disable them here and let the body own the whole area.
@@ -714,7 +714,7 @@ function updateHandlePositions() {
     })
   }
 
-  // Selection ring — shown in both visible and locked modes so a selected area always reads.
+  // Selection ring - shown in both visible and locked modes so a selected area always reads.
   if (rectEl) rectEl.style.boxShadow = props.selected ? '0 0 0 2px #0d9488, 0 0 10px rgba(13,148,136,0.45)' : 'none'
 
   updateLegendBox()
@@ -941,7 +941,7 @@ function onAltUp(e: KeyboardEvent) {
 }
 
 // Fade the whole handle layer out instantly during a zoom animation and back in over 0.2s
-// once it settles — mirrors the pin/route fade. The handles ride the map pane's zoom transform,
+// once it settles - mirrors the pin/route fade. The handles ride the map pane's zoom transform,
 // but their pixel dimensions are computed for the pre-zoom scale; fading hides the stretched
 // state until the zoom ends and updateHandlePositions recomputes at the new zoom.
 function applyLayerOpacity() {

@@ -77,7 +77,7 @@ describe('sanitizeMap', () => {
     })
     const { map, changed } = sanitizeMap(m)
     expect(changed).toBe(false)
-    expect(map).toBe(m) // same reference — nothing to fix
+    expect(map).toBe(m) // same reference - nothing to fix
     expect(map.routes[0]!.points[0]!.pinId).toBe(1)
   })
 

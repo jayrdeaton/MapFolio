@@ -118,7 +118,7 @@ export function emojiToName(emoji: string): string {
 const _emojiUrlCache = new Map<string, string>()
 
 // fontPx: the CSS font-size used to draw the emoji (controls visual weight).
-// canvasPx: the canvas/img display size — larger than fontPx to give a buffer so glyphs
+// canvasPx: the canvas/img display size - larger than fontPx to give a buffer so glyphs
 // whose ink box slightly exceeds the em-square are not clipped by the canvas boundary.
 export function emojiToDataUrl(emoji: string, fontPx: number, canvasPx: number): string {
   const dpr = Math.ceil(window.devicePixelRatio ?? 1)
@@ -134,7 +134,7 @@ export function emojiToDataUrl(emoji: string, fontPx: number, canvasPx: number):
     ctx.textBaseline = 'alphabetic'
     ctx.textAlign = 'left'
     // Use the actual ink bounding box to center the glyph precisely.
-    // textBaseline:'middle' centers on the em-square midpoint, not the visual glyph center —
+    // textBaseline:'middle' centers on the em-square midpoint, not the visual glyph center -
     // emoji like 🕊️ have ink that extends well above the em-square so they'd appear high.
     const m = ctx.measureText(emoji)
     // Center ink in the (larger) canvas: positive actualBoundingBoxLeft means ink starts left of drawX

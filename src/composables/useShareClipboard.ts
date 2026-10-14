@@ -27,8 +27,8 @@ export function useShareClipboard(options: { pins: Ref<Pin[]>; routes: Ref<Route
   }
 
   // Builds the share URL for the active map's live view, including only the layers
-  // requested (defaults to everything). The link now carries full styling — pins,
-  // routes, AND captions — so it round-trips a map identically to a file export.
+  // requested (defaults to everything). The link now carries full styling - pins,
+  // routes, AND captions - so it round-trips a map identically to a file export.
   function buildShareUrl(layers: MapExportLayers): string {
     const c = leafletMap.value?.getCenter()
     const z = leafletMap.value?.getZoom()

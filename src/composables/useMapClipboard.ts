@@ -67,7 +67,7 @@ export function useMapClipboard() {
     return { pins: newPins, routes: newRoutes, captions: newCaptions, printAreas: newPrintAreas }
   }
 
-  // Assigns new IDs but keeps original coords — used when pasting onto a different map.
+  // Assigns new IDs but keeps original coords - used when pasting onto a different map.
   function pasteInPlace(): Omit<MapClipboard, 'sourceMapId'> | null {
     if (!clipboard.value) return null
     const { pins, routes, captions, printAreas } = clipboard.value

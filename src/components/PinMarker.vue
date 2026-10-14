@@ -147,7 +147,7 @@ function buildIcon() {
     const canvasPx = emojiPx + 4
     const bubbleCls = isClear ? 'pin-bubble pin-bubble--clear' : 'pin-bubble'
     const emojiSrc = emojiToDataUrl(props.pin.emoji, emojiPx, canvasPx)
-    // Use inline CSS width/height — Tailwind preflight sets `img { height: auto }` at author
+    // Use inline CSS width/height - Tailwind preflight sets `img { height: auto }` at author
     // specificity which overrides HTML width/height attributes (UA-level hints), making the img
     // render at the canvas's full pixel dimensions instead of the intended emoji size.
     const emojiImg = `<img src="${emojiSrc}" style="display:block;width:${canvasPx}px;height:${canvasPx}px;min-width:0;min-height:0;pointer-events:none;${isClear ? 'filter:drop-shadow(0 1px 3px rgba(0,0,0,0.4))' : ''}">`
@@ -292,7 +292,7 @@ function patchDragging(m: L.Marker) {
   // When a cluster group calls _moveChild on dragend it does removeLayer+addLayer,
   // which goes through onRemove (sets _icon=null) then onAdd (createIcon(null) → NEW div).
   // Leaflet's _initInteraction calls dragging.enable() but since _enabled is already true
-  // it returns early — leaving the Draggable bound to the old, now-detached icon element.
+  // it returns early - leaving the Draggable bound to the old, now-detached icon element.
   // Patch _initInteraction to rebind the Draggable whenever the icon element changes.
   const mi = m as unknown as LeafletMarkerPrivate
   const orig = mi._initInteraction.bind(mi)
@@ -357,7 +357,7 @@ function createMarker() {
     const oe = (e as LeafletDragEvent).originalEvent
     if (!props.findSnap || !marker || !dragStartLatLng || !oe) return
 
-    // Use raw pointer position for all distance checks — marker.getLatLng() returns
+    // Use raw pointer position for all distance checks - marker.getLatLng() returns
     // the snapped position while snapped, which would make escape distance wrong
     const pointer = 'touches' in oe ? oe.touches[0] : oe
     if (!pointer) return
@@ -380,7 +380,7 @@ function createMarker() {
       snapTarget = L.latLng(snapped.lat, snapped.lng)
       marker.setLatLng(snapTarget)
       if (!wasSnapped) {
-        // Re-anchor Leaflet's draggable once on snap entry — not on every frame.
+        // Re-anchor Leaflet's draggable once on snap entry - not on every frame.
         // Anchoring every frame resets the escape threshold to the current pointer
         // each tick, making it impossible to drag away (need 28px in a single frame).
         wasSnapped = true
@@ -426,7 +426,7 @@ onMounted(() => {
 })
 
 // Array-of-getters form: Vue compares each primitive value individually, so the callback only
-// fires when a watched value actually changes — not whenever props.pin gets a new object
+// fires when a watched value actually changes - not whenever props.pin gets a new object
 // reference (e.g. an async address update replacing the pin object in pins.value).
 // A single getter returning an array would compare the array by reference (always "changed").
 watch([() => props.pin.emoji, () => props.pin.color, () => props.pin.dotSize, () => props.pin.dotShape, () => props.pin.showNumber, () => props.dotSize, () => props.locked, () => props.pinIndex], () => {
@@ -434,7 +434,7 @@ watch([() => props.pin.emoji, () => props.pin.color, () => props.pin.dotSize, ()
   marker.setIcon(buildIcon())
 })
 
-// Selection state is toggled via direct class manipulation instead of setIcon() — setIcon()
+// Selection state is toggled via direct class manipulation instead of setIcon() - setIcon()
 // removes and re-appends the icon element, shifting its DOM order within the marker pane.
 // Markers later in DOM order sit on top; that stacking changes on every select/deselect and
 // causes clicks on overlapping icons to resolve to different pins across interactions.
@@ -522,7 +522,7 @@ watch(
 onUnmounted(() => {
   // Remove defensively: a throw here (cross-Leaflet-instance cleanup can hit
   // `obj[eventsKey]` undefined) must not abort the hook and orphan the marker on
-  // the map — that left "deleted" pins visible. Remove from both the layer and
+  // the map - that left "deleted" pins visible. Remove from both the layer and
   // the map (removeLayer is a no-op if the marker isn't on that target), and
   // disable dragging first so no stale Draggable keeps a handle to the icon.
   if (marker) {

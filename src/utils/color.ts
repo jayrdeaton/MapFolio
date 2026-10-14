@@ -1,4 +1,4 @@
-// WCAG relative luminance — returns true when the color is perceptually dark
+// WCAG relative luminance - returns true when the color is perceptually dark
 // (i.e. light text reads better on it). Returns false for transparent/unknown.
 export function isDarkColor(color: string): boolean {
   if (!color || color === 'transparent') return false
@@ -11,7 +11,7 @@ export function isDarkColor(color: string): boolean {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) < 0.5
 }
 
-// ITU-R BT.601 luma — perceived brightness of an sRGB triple, used to collapse a color to
+// ITU-R BT.601 luma - perceived brightness of an sRGB triple, used to collapse a color to
 // its grayscale equivalent (as opposed to isDarkColor's WCAG-linearized luminance above,
 // which answers a different question: "is white or black text more readable on this?").
 export function luma(r: number, g: number, b: number): number {
@@ -32,7 +32,7 @@ export function toGrayscaleColor(color: string): string {
 }
 
 // Desaturates every pixel already painted on a canvas. Recoloring pin/route/caption hex
-// values (toGrayscaleColor, above) doesn't touch color emoji glyphs — canvas fillText
+// values (toGrayscaleColor, above) doesn't touch color emoji glyphs - canvas fillText
 // ignores fillStyle for color-font glyphs, and ctx.filter is not reliably applied to
 // OffscreenCanvas text rendering inside a Worker (this runs in pdfExport.worker.ts), so a
 // pixel-level pass after drawing is the only mechanism that's actually guaranteed to work.

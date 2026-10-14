@@ -64,7 +64,7 @@ function buildIcon() {
 
   // Safari doesn't hit-test CSS-transformed children that extend outside their
   // parent's layout area. With iconSize:undefined the outer div is 0×0, so the
-  // inner pill (translated -50%,-50%) is entirely outside its parent — only the
+  // inner pill (translated -50%,-50%) is entirely outside its parent - only the
   // anchor pixel is clickable. Fix: size the outer div to contain the rotated pill,
   // center it with iconAnchor, and nullify its pointer-events via CSS so the large
   // transparent container doesn't block map panning outside the visible pill.
@@ -273,7 +273,7 @@ onUnmounted(() => {
 })
 
 // See PinMarker: HMR patching a renderless Leaflet-managing component orphans markers.
-// `.decline()` was removed in Vite 8 — use `.accept()` + reload instead, same as PinMarker.
+// `.decline()` was removed in Vite 8 - use `.accept()` + reload instead, same as PinMarker.
 if (import.meta.hot) import.meta.hot.accept(() => window.location.reload())
 </script>
 

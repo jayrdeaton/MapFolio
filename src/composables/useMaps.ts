@@ -6,7 +6,7 @@ const STORAGE_KEY = 'mapfolio_v1'
 const LEGACY_KEY = 'custommap_v1'
 
 // Which layers to include in an export. Captions and printAreas can only ride
-// along in MapFolio JSON or share links — GeoJSON has no equivalent concepts.
+// along in MapFolio JSON or share links - GeoJSON has no equivalent concepts.
 export interface MapExportLayers {
   pins: boolean
   routes: boolean
@@ -24,7 +24,7 @@ export interface MapExportOptions {
 // Repairs a map's pins/routes on load:
 //   • gives every pin/route a unique id (re-id collisions or invalid ids),
 //   • relinks route waypoints whose pinId pointed at a re-id'd or missing pin.
-// Idempotent — a no-op on already-clean data — so it can run on every load and
+// Idempotent - a no-op on already-clean data - so it can run on every load and
 // self-heals any duplicate-id state left by the old Date.now() id bug.
 // Returns the (possibly identical) map plus whether anything changed.
 const VALID_MAP_STYLES = new Set<string>(['clean', 'minimal', 'standard', 'satellite', 'terrain'])
@@ -52,7 +52,7 @@ export function sanitizeMap(m: MapData): { map: MapData; changed: boolean } {
   for (const p of m.pins ?? []) {
     let id = p.id
     if (typeof id !== 'number' || usedPinIds.has(id)) id = uid()
-    // An id-collision survivor is re-id'd but we do NOT record a remap — the
+    // An id-collision survivor is re-id'd but we do NOT record a remap - the
     // earlier holder keeps the original id, so existing route refs stay valid.
     usedPinIds.add(id)
     const dotSize = p.dotSize && VALID_DOT_SIZES.has(p.dotSize) ? p.dotSize : undefined
@@ -86,7 +86,7 @@ export function sanitizeMap(m: MapData): { map: MapData; changed: boolean } {
 
   const usedRouteIds = new Set<number>()
   // Resolve a waypoint's pinId to a surviving pin: follow any remap, then drop the
-  // link entirely (undefined) if it points at a pin that no longer exists — e.g. a
+  // link entirely (undefined) if it points at a pin that no longer exists - e.g. a
   // route-linked pin was deleted, leaving a dangling reference.
   const resolvePinId = (pinId: number): number | undefined => {
     const resolved = idRemap.get(pinId) ?? pinId
@@ -108,7 +108,7 @@ export function sanitizeMap(m: MapData): { map: MapData; changed: boolean } {
     return next
   })
 
-  // Validate printAreas — strip any entries missing required fields.
+  // Validate printAreas - strip any entries missing required fields.
   let printAreas: MapData['printAreas']
   if (Array.isArray(m.printAreas) && m.printAreas.length > 0) {
     const valid = m.printAreas.filter((a) => a && typeof a.id === 'string' && Array.isArray(a.corners) && typeof a.angle === 'number' && typeof a.paper === 'string' && typeof a.orientation === 'string')
@@ -192,7 +192,7 @@ function downloadBlob(blob: Blob, filename: string) {
 
 // On touch devices, hand the file to the OS share sheet (send straight to
 // Messages/Mail/AirDrop/etc.). On desktop, navigator.canShare may still return
-// true (macOS Safari/Chrome support it) but the share sheet is awkward there —
+// true (macOS Safari/Chrome support it) but the share sheet is awkward there -
 // just download directly instead. Must stay synchronous up to navigator.share()
 // so it runs inside the click's user activation window.
 function outputFile(filename: string, content: string, mime: string) {
@@ -213,7 +213,7 @@ function slugify(name: string): string {
   return name.trim() || 'mapfolio'
 }
 
-// A copy of the map with unchecked layers emptied — used for both single-map and
+// A copy of the map with unchecked layers emptied - used for both single-map and
 // all-maps JSON export so the file still round-trips as a valid MapData.
 function filterMapLayers(m: MapData, layers: MapExportLayers): MapData {
   const vis = <T extends { hidden?: boolean }>(arr: T[]) => (layers.includeHidden ? arr : arr.filter((x) => !x.hidden))

@@ -19,7 +19,7 @@ const emit = defineEmits<{
 // Same custom rotate cursor as PrintAreaDrawer (circular arrow, white halo + dark glyph).
 const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">' + '<g stroke="white" stroke-width="4"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></g>' + '<g stroke="#1f2937" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></g>' + '</svg>')}") 12 12, grab`
 
-// Force the rotate cursor everywhere during the drag — the pointer leaves the small handle.
+// Force the rotate cursor everywhere during the drag - the pointer leaves the small handle.
 let dragCursorStyle: HTMLStyleElement | null = null
 function setDragCursor(on: boolean) {
   if (on) {
@@ -46,7 +46,7 @@ const HANDLE_MARGIN = 26
 // so the stem clears the highlighted box, not just the text.
 const RING_EXTENT = 5
 
-// Rough half-height from font metrics — only a fallback for the frames before the rendered
+// Rough half-height from font metrics - only a fallback for the frames before the rendered
 // caption element can be measured. The measured value below is what's normally used.
 function estimateHalfHeight(): number {
   const fontPx = CAPTION_PX[props.caption.size] ?? CAPTION_PX.m
@@ -65,7 +65,7 @@ function captionEdgeRadius(): number {
   if (key === cachedKey && cachedEdge) return cachedEdge
   const el = props.map.getContainer().querySelector<HTMLElement>(`.mf-caption-inner[data-caption-id="${props.caption.id}"]`)
   const h = el?.offsetHeight ?? 0
-  if (!h) return estimateHalfHeight() + RING_EXTENT // not mounted/laid out yet — retry next reposition
+  if (!h) return estimateHalfHeight() + RING_EXTENT // not mounted/laid out yet - retry next reposition
   cachedKey = key
   cachedEdge = h / 2 + RING_EXTENT
   return cachedEdge
@@ -103,7 +103,7 @@ function reposition() {
 }
 
 // During a zoom animation the marker pane is dropped to opacity 0 (no transition) and fades
-// back in on zoomend — see the .leaflet-zoom-anim rules in App.vue. `zoomanim` fires only when
+// back in on zoomend - see the .leaflet-zoom-anim rules in App.vue. `zoomanim` fires only when
 // the zoom is actually animated, so the handle fades in lockstep with the caption it tracks.
 function onZoomAnim() {
   if (!layer) return

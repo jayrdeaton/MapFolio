@@ -32,17 +32,17 @@ body {
 }
 
 
-/* ── Icon buttons — one shared style for every menu + pill icon button ────────
+/* ── Icon buttons - one shared style for every menu + pill icon button ────────
    Three dev constants drive global classes on <html> (see config/buttons.ts):
      OUTLINED_BUTTONS → .mf-outlined   (draw a border)
      HOVER_STYLE      → .mf-hover-dim  (neutral hover instead of cyan highlight)
-   The hover palette lives in CSS vars so the dim variant just swaps values —
+   The hover palette lives in CSS vars so the dim variant just swaps values -
    no specificity fights. `--danger` always hovers red; `--active` is cyan-fill.
    Size (w-7/h-7, etc.) stays an inline utility.
 
    Wrapped in `@layer components` so Tailwind utility classes (e.g. `hidden`,
    `sm:hidden`, `sm:flex`) always win over these rules regardless of source
-   order or specificity — cascade layers rank by layer, not specificity, so
+   order or specificity - cascade layers rank by layer, not specificity, so
    an unlayered `display: inline-flex` here would otherwise permanently defeat
    a responsive `hidden`/`flex` utility applied to the same element. */
 
@@ -98,7 +98,7 @@ body {
 /* Primary action (Add / New) → solid cyan fill with a white icon: the single
    bold accent in a panel. Darkens (not highlights) on hover. Each line lifts
    specificity just enough to beat the matching `.dark .mf-ibtn` /
-   `.mf-outlined .mf-ibtn` base rule above — otherwise dark mode paints the icon
+   `.mf-outlined .mf-ibtn` base rule above - otherwise dark mode paints the icon
    grey (#a1a1aa) on the cyan fill and the border stays neutral. */
 .mf-ibtn--primary { color: #fff; background-color: #0d9488; border-color: #0d9488; }
 .dark .mf-ibtn--primary { color: #fff; }
@@ -128,7 +128,7 @@ body {
 /* Disabled → inert, no hover response */
 .mf-ibtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* ── Segmented control — mutually exclusive option groups ────────────────── */
+/* ── Segmented control - mutually exclusive option groups ────────────────── */
 /* Container: thin border + rounded corners, clips item backgrounds cleanly. */
 .mf-seg {
   display: inline-flex;
@@ -158,7 +158,7 @@ body {
 .mf-seg-btn:not(.mf-seg-btn--active):hover { background-color: #f3f4f6; }
 .dark .mf-seg-btn:not(.mf-seg-btn--active):hover { background-color: #27272a; }
 
-/* Active: mirrors mf-ibtn--active exactly — faint teal bg + teal glyph/text. */
+/* Active: mirrors mf-ibtn--active exactly - faint teal bg + teal glyph/text. */
 .mf-seg-btn--active { color: #0f766e; background-color: #ccfbf1; }
 .dark .mf-seg-btn--active { color: #2dd4bf; background-color: rgba(15, 118, 110, 0.22); }
 .mf-ibtn:disabled:hover { color: #4b5563; background-color: transparent; border-color: transparent; }
@@ -211,7 +211,7 @@ input, textarea, select {
 /* ── Marker cluster overrides ────────────────────────────────────────────── */
 
 /* Kill the cluster-expansion CSS transition so markers snap directly to their
-   final positions instead of animating from the cluster centroid — that animation
+   final positions instead of animating from the cluster centroid - that animation
    was leaving icons at wrong screen coordinates after zoom 16→17 expansion. */
 .leaflet-cluster-anim .leaflet-marker-icon,
 .leaflet-cluster-anim .leaflet-marker-shadow {
@@ -330,7 +330,7 @@ input, textarea, select {
   outline-offset: 2px;
 }
 
-/* Outer Leaflet marker element for pins linked to a route waypoint (z-index 600) — pass pointer
+/* Outer Leaflet marker element for pins linked to a route waypoint (z-index 600) - pass pointer
    events through so the underlying waypoint (in mfRoutePane at z-index 450) is reachable in the
    margin area of the icon (outside the inner visual elements). Uses :has() so this applies
    immediately via CSS without requiring a JS icon rebuild. The inner .pin-marker keeps
@@ -347,7 +347,7 @@ input, textarea, select {
   overflow: hidden;
 }
 
-/* Emoji bubble marker — white pill with a colored downward triangle tip */
+/* Emoji bubble marker - white pill with a colored downward triangle tip */
 .pin-bubble {
   display: flex;
   align-items: center;
@@ -374,7 +374,7 @@ input, textarea, select {
   border-radius: 5px;
 }
 
-/* Transparent / no-color bubble — just the emoji, no background or shadow */
+/* Transparent / no-color bubble - just the emoji, no background or shadow */
 .pin-bubble--clear {
   background: transparent !important;
   overflow: visible; /* emoji filter:drop-shadow must paint outside the bubble box */
@@ -382,7 +382,7 @@ input, textarea, select {
 
 .pin-dot {
   border-radius: 50%;
-  /* White contrast ring (drawn as a box-shadow so it doesn't grow the box — keeps DOT_GEO
+  /* White contrast ring (drawn as a box-shadow so it doesn't grow the box - keeps DOT_GEO
      anchor math valid) lets dark/pale colors stay visible on any map background. */
   box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0, 0, 0, 0.35);
   margin-top: 0; /* emoji base flush with the dot top */
@@ -416,7 +416,7 @@ input, textarea, select {
 
 /* The outer Leaflet marker div for captions is sized to fully contain the rotated pill
    (so Safari correctly hit-tests the inner div). pointer-events:none makes the large
-   transparent container invisible to clicks — the inner .mf-caption-inner keeps
+   transparent container invisible to clicks - the inner .mf-caption-inner keeps
    pointer-events:auto, so Leaflet's parentNode traversal still finds the marker. */
 .leaflet-marker-icon.mf-caption-icon {
   pointer-events: none !important;
@@ -772,7 +772,7 @@ input, textarea, select {
   width: 88%;
 }
 
-/* ── Print legend overlay — dark mode ───────────────────────────────────── */
+/* ── Print legend overlay - dark mode ───────────────────────────────────── */
 
 .dark .print-legend {
   background: rgba(24, 24, 27, 0.96);
@@ -899,7 +899,7 @@ input, textarea, select {
   }
 
   /* vw/vh in Safari @media print = screen viewport, not paper. Use position:fixed
-     with inset:0 only — that stretches to the page box edges regardless of viewport. */
+     with inset:0 only - that stretches to the page box edges regardless of viewport. */
   .map-print-container {
     position: fixed !important;
     inset: 0 !important;

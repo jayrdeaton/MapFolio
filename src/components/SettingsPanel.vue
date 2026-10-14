@@ -28,7 +28,7 @@ const STYLES: MapStyle[] = ['clean', 'minimal', 'standard', 'satellite', 'terrai
 const labelsApplicable = computed(() => props.mapStyle === 'clean' || props.mapStyle === 'satellite')
 
 // Preview swatch rendered from each style's own tile source at the map's current
-// center/zoom — a live preview with no bundled assets.
+// center/zoom - a live preview with no bundled assets.
 function previewUrl(style: MapStyle): string {
   const cfg = MAP_STYLE_CONFIGS[style]
   const base = props.isDark && cfg.darkUrl ? cfg.darkUrl : cfg.url
@@ -61,7 +61,7 @@ function previewUrl(style: MapStyle): string {
       <div class="flex items-center justify-between">
         <span :class="sectionLabelClass" style="margin-bottom: 0">Display</span>
         <div class="flex items-center gap-1">
-          <!-- Distance units (km/mi) — drives the scale bar, route distances, and PDF scale -->
+          <!-- Distance units (km/mi) - drives the scale bar, route distances, and PDF scale -->
           <div class="mf-seg">
             <button v-for="u in ['km', 'mi'] as const" :key="u" :title="`Show distances in ${u === 'km' ? 'kilometers' : 'miles'}`" :class="['mf-seg-btn', mapUnits === u && 'mf-seg-btn--active']" @click="mapUnits = u">{{ u }}</button>
           </div>

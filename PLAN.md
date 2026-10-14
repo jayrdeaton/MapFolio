@@ -1,4 +1,4 @@
-# MapFolio — Future Plans
+# MapFolio - Future Plans
 
 ## Import / Export formats
 
@@ -9,7 +9,7 @@ Google Earth's native format. Large install base with outdoor / travel users.
 
 ### GPX (.gpx)
 Standard for GPS devices and apps (Garmin, Strava, AllTrails, etc.).
-- Import: read `<wpt>` (waypoints) as pins — name, desc, lat/lon
+- Import: read `<wpt>` (waypoints) as pins - name, desc, lat/lon
 - Export: write pins as `<wpt>` elements
 - Future: optionally import `<trk>` track segments as a polyline overlay
 
@@ -26,5 +26,5 @@ Simplest format for spreadsheet users.
 
 - **Drag-to-reorder pins** in the list panel
 - **Pin categories / tags** for filtering large collections
-- **OSM Overpass import** — query POIs by type within the print area
+- **OSM Overpass import** - query POIs by type within the print area
 - **PNG icon assets** for better PWA icon support on iOS (currently SVG only)

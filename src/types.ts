@@ -98,7 +98,7 @@ export interface MapData {
 // export. Keep roughly proportional to CAPTION_PX (the on-screen sizes).
 export const CAPTION_PT: Record<CaptionSize, number> = { xs: 9, s: 11, m: 14, l: 18, xl: 24 }
 
-// On-screen font sizes (px) for the live map — shared by CaptionMarker (label) and
+// On-screen font sizes (px) for the live map - shared by CaptionMarker (label) and
 // CaptionRotateHandle (to offset the handle clear of the text).
 export const CAPTION_PX: Record<CaptionSize, number> = { xs: 11, s: 13, m: 16, l: 20, xl: 26 }
 
@@ -116,11 +116,11 @@ export interface MapStyleConfig {
   maxNativeZoom?: number
   crossOrigin?: boolean
   retina?: boolean // true when the URL has {r} and the provider supports @2x tiles (512px)
-  // Input black point for print export levels adjustment (0–255), applied to a
+  // Input black point for print export levels adjustment (0-255), applied to a
   // grayscale conversion of the tile. Values at or below this → black; stretches
   // the tonal range upward so light-style tiles (which use a tiny slice of the
   // upper range) have visible contrast on paper. CartoDB's light styles render
-  // real content (roads, buildings, water) only between luma ~206–253, so 195
+  // real content (roads, buildings, water) only between luma ~206-253, so 195
   // gives strong black/white separation with headroom below the darkest real
   // feature color to avoid clipping artifacts.
   printBlackPoint?: number

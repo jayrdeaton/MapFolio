@@ -194,7 +194,7 @@ describe('useHistory', () => {
       push()
       // mutate the object that was spread into the snapshot
       p.name = 'mutated after snapshot'
-      // undo restores the snapshot — should see the original name, not the mutation
+      // undo restores the snapshot - should see the original name, not the mutation
       undo()
       expect(pins.value[1]!.name).toBe('Pin 2')
     })

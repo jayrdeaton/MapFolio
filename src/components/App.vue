@@ -48,7 +48,7 @@ const loadedFromUrl = !!urlState
 
 if (urlState) {
   importFromShare(urlState)
-  // window.history, not a bare `history` — the local `const history = useHistory(...)` below shadows
+  // window.history, not a bare `history` - the local `const history = useHistory(...)` below shadows
   // the global for the whole setup scope, so a bare `history` here is a temporal-dead-zone ReferenceError.
   window.history.replaceState(null, '', location.pathname)
 }
@@ -88,7 +88,7 @@ const isPlacingPin = ref(false)
 const placingPinCount = ref(0)
 const isPlacingCaption = ref(false)
 const placingCaptionCount = ref(0)
-// The caption dropped most recently in placing mode — made "active" without going through
+// The caption dropped most recently in placing mode - made "active" without going through
 // selection, so the placing pill (and its angle-snap toggle) stays open.
 const lastPlacedCaptionId = ref<number | null>(null)
 
@@ -250,7 +250,7 @@ const selectedWaypointLinkedPin = computed(() => {
   return pt?.pinId !== undefined ? (pins.value.find((p) => p.id === pt.pinId) ?? null) : null
 })
 
-// useMapModeState must only see pin/route/caption selection — print area selection must be
+// useMapModeState must only see pin/route/caption selection - print area selection must be
 // invisible to it, otherwise the hasSelection watcher kills isAdjustingPrintArea the moment
 // a print area row is selected, and the clearSelection watcher wipes selectedPrintAreaIds
 // the moment the adjusting state turns on.
