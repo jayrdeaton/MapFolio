@@ -46,7 +46,7 @@
     "vuedraggable": "^4.1.0"
   },
   "devDependencies": {
-    "@infinitetoken/eslint-config": "^0.1.4",
+    "@infinitetoken/eslint-config": "^0.2.1",
     "@nuxt/test-utils": "^4.0.3",
     "@types/leaflet": "^1.9.4",
     "@types/node": "^25.0.0",
