@@ -106,6 +106,8 @@ export default defineNuxtConfig({
         { name: 'twitter:image', content: 'https://mapfolio.infinitetoken.com/og.png' }
       ],
       link: [
+        // The .png (192px, rendered from icon.svg) is for crawlers and services that look for a PNG favicon
+        { rel: 'icon', type: 'image/png', sizes: '192x192', href: '/favicon.png' },
         { rel: 'icon', type: 'image/svg+xml', href: '/icon.svg' },
         { rel: 'apple-touch-icon', href: '/icon-180.png' }
       ]
