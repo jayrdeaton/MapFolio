@@ -1,7 +1,7 @@
 {
   "name": "mapfolio",
   "displayName": "MapFolio",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "private": true,
   "description": "Interactive mapping app for creating, annotating, and printing custom maps",
   "author": "Jay Deaton",
